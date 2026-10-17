@@ -1,0 +1,254 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
+package com.zhuquan.tijian.ui
+
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.PictureAsPdf
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.zhuquan.tijian.data.CategoryRow
+import com.zhuquan.tijian.data.DocRow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@Composable
+fun LibraryScreen(vm: AppVm) {
+    var pickCategory by remember { mutableStateOf(false) }
+    var pendingFile by remember { mutableStateOf<File?>(null) }
+    var pendingDoc by remember { mutableStateOf<DocRow?>(null) }
+    val scope = rememberCoroutineScope()
+
+    val createPdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri: Uri? ->
+        val f = pendingFile
+        if (uri != null && f != null) vm.saveTo(uri, f)
+        pendingFile = null
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        TjTopBar(
+            title = "知识库",
+            subtitle = "${vm.docs.size} 篇 · 从错题里长出来的知识点",
+            actions = {
+                IconCircle(Icons.Rounded.AutoAwesome, "生成") { pickCategory = true }
+            }
+        )
+
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 6.dp)) {
+            item {
+                GenerateCard(vm.categories.filter { it.count > 0 }.size) { pickCategory = true }
+                SectionLabel("最近生成") {
+                    Text("${vm.docs.size} 篇", fontSize = 11.sp, color = Muted)
+                }
+            }
+            if (vm.docs.isEmpty()) {
+                item { EmptyState("还没有知识文档", "选一个错题分类，AI 会提炼知识点并整理成文") }
+            } else {
+                items(vm.docs, key = { it.id }) { doc ->
+                    DocRowItem(doc,
+                        onOpen = { vm.go(Route.Doc(doc.id)) },
+                        onPdf = {
+                            pendingDoc = doc
+                            scope.launch {
+                                vm.busy = true; vm.busyLabel = "生成 PDF"
+                                val f = vm.buildDocPdf(doc)
+                                vm.busy = false; vm.busyLabel = ""
+                                pendingFile = f
+                                createPdf.launch("${doc.title}_${dateStamp()}.pdf")
+                            }
+                        })
+                    HorizontalDivider(color = Color(0xFFF1F1EB), thickness = 1.dp)
+                }
+            }
+            item { Spacer(Modifier.height(80.dp)) }
+        }
+    }
+
+    if (pickCategory) {
+        CategoryPicker(
+            current = "",
+            categories = vm.categories.filter { it.count > 0 }.map { it.name },
+            onDismiss = { pickCategory = false },
+            onPick = { name ->
+                pickCategory = false
+                vm.categories.firstOrNull { it.name == name }?.let { vm.generateKnowledge(it) }
+            }
+        )
+    }
+    if (vm.busy) BusyOverlay(vm.busyLabel)
+}
+
+@Composable
+private fun GenerateCard(categoryCount: Int, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF17171C), Color(0xFF26263A))))
+            .clickableNoRipple(onClick).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Color(0x1FFFFFFF)),
+            contentAlignment = Alignment.Center
+        ) { Text("∂", fontSize = 22.sp, color = Color(0xFFB9BEFF)) }
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text("生成知识文档", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+            Text("从 $categoryCount 个分类里提炼要点与易错点", fontSize = 10.5.sp, color = Color(0x8CFFFFFF), modifier = Modifier.padding(top = 3.dp))
+        }
+        Box(
+            Modifier.clip(RoundedCornerShape(999.dp)).background(Color.White)
+                .padding(horizontal = 12.dp, vertical = 7.dp)
+        ) { Text("选择分类", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = Ink) }
+    }
+}
+
+@Composable
+private fun DocRowItem(doc: DocRow, onOpen: () -> Unit, onPdf: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickableNoRipple(onOpen).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFF6F6F1)),
+            contentAlignment = Alignment.Center
+        ) { Text("∂", fontSize = 15.sp, color = Color(0xFF9A9AA2)) }
+        Column(Modifier.weight(1f).padding(start = 10.dp)) {
+            Text(doc.title, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${countPoints(doc.contentMd)} 个知识点 · ${formatDay(doc.createdAt)}", fontSize = 10.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
+        }
+        Box(Modifier.clickableNoRipple(onPdf).padding(6.dp)) {
+            androidx.compose.material3.Icon(Icons.Rounded.PictureAsPdf, "导出 PDF", tint = Color(0xFFA6A6AE), modifier = Modifier.size(19.dp))
+        }
+    }
+}
+
+@Composable
+fun DocScreen(vm: AppVm) {
+    val id = (vm.route as? Route.Doc)?.id ?: return
+    var doc by remember { mutableStateOf<DocRow?>(null) }
+    var pendingFile by remember { mutableStateOf<File?>(null) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(id) { doc = withContext(Dispatchers.IO) { vm.db.doc(id) } }
+
+    val createPdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri: Uri? ->
+        val f = pendingFile
+        if (uri != null && f != null) vm.saveTo(uri, f)
+        pendingFile = null
+    }
+
+    val d = doc ?: return
+    Column(Modifier.fillMaxSize()) {
+        TjTopBar(
+            title = d.title,
+            subtitle = "${countPoints(d.contentMd)} 个知识点",
+            onBack = { vm.back() },
+            actions = {
+                IconCircle(Icons.Rounded.PictureAsPdf, "导出") {
+                    scope.launch {
+                        vm.busy = true; vm.busyLabel = "排版 PDF"
+                        val f = vm.buildDocPdf(d)
+                        vm.busy = false; vm.busyLabel = ""
+                        pendingFile = f
+                        createPdf.launch("${d.title}_${dateStamp()}.pdf")
+                    }
+                }
+            }
+        )
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
+            MarkdownText(d.contentMd)
+            Spacer(Modifier.height(18.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(11.dp)).background(Color(0xFFF4F4EF))
+                        .clickableNoRipple {
+                            scope.launch {
+                                vm.busy = true; vm.busyLabel = "排版 PDF"
+                                val f = vm.buildDocPdf(d)
+                                vm.busy = false; vm.busyLabel = ""
+                                shareFile(vm.getApplication(), f)
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) { Text("生成并分享", fontSize = 12.sp, color = Ink2) }
+                Box(
+                    Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(11.dp)).background(Accent)
+                        .clickableNoRipple {
+                            scope.launch {
+                                vm.busy = true; vm.busyLabel = "排版 PDF"
+                                val f = vm.buildDocPdf(d)
+                                vm.busy = false; vm.busyLabel = ""
+                                pendingFile = f
+                                createPdf.launch("${d.title}_${dateStamp()}.pdf")
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) { Text("保存 PDF", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold) }
+            }
+            Spacer(Modifier.height(60.dp))
+        }
+    }
+    if (vm.busy) BusyOverlay(vm.busyLabel)
+}
+
+@Composable
+fun MarkdownText(md: String) {
+    Column {
+        md.lineSequence().forEach { raw ->
+            val line = raw.trimEnd()
+            when {
+                line.startsWith("# ") -> Text(line.removePrefix("# "), fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 6.dp, bottom = 10.dp))
+                line.startsWith("## ") -> Text(line.removePrefix("## "), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp))
+                line.startsWith("- ") || line.startsWith("* ") -> Row(Modifier.padding(vertical = 2.dp)) {
+                    Text("·", fontSize = 12.sp, color = Muted, modifier = Modifier.width(12.dp))
+                    Text(line.drop(2), fontSize = 12.5.sp, lineHeight = 20.sp, color = Ink2)
+                }
+                line.startsWith("**") && line.endsWith("**") -> Text(line.trim('*'), fontSize = 10.sp, letterSpacing = 1.sp, color = Muted, modifier = Modifier.padding(top = 10.dp, bottom = 3.dp))
+                line.isBlank() -> Spacer(Modifier.height(6.dp))
+                else -> Text(line, fontSize = 12.5.sp, lineHeight = 21.sp, color = Ink2, modifier = Modifier.padding(vertical = 2.dp))
+            }
+        }
+    }
+}
+
+fun countPoints(md: String): Int = md.lineSequence().count { it.startsWith("## ") }
+
+fun formatDay(ms: Long): String = SimpleDateFormat("MM-dd", Locale.CHINA).format(Date(ms))

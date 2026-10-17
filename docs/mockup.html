@@ -1,0 +1,839 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>题笺 · 界面草案 v2</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:#EDEDE7;color:#141418;
+    font-family:"Inter","PingFang SC","Microsoft YaHei",system-ui,-apple-system,sans-serif}
+  body{padding:36px 28px 56px}
+  .stage{display:flex;gap:44px;align-items:flex-start;flex-wrap:wrap;max-width:1080px;margin:0 auto}
+  .brandline{width:100%;display:flex;align-items:baseline;gap:14px;margin-bottom:6px}
+  .brandline h2{font-size:15px;font-weight:600;letter-spacing:-.01em;margin:0}
+  .brandline span{font-size:12px;color:#8A8A90}
+  .brandline .rule{flex:1;height:1px;background:#DCDCD5}
+
+  /* ---------- phone shell ---------- */
+  .phone{width:412px;background:#101014;border-radius:50px;padding:10px;
+    box-shadow:0 30px 70px rgba(20,20,24,.22),inset 0 0 0 1px rgba(255,255,255,.08);
+    position:relative;flex:none}
+  .screen{width:392px;height:812px;border-radius:41px;overflow:hidden;position:relative;
+    background:#FAFAF7;display:flex;flex-direction:column;
+    --ink:#141418;--ink2:#3C3C42;--muted:#8A8A90;--line:#E7E7E1;--bg:#FAFAF7;--card:#fff;
+    --accent:#4457D6;--accent-soft:#EEF0FC;--green:#2E7D5B;--amber:#B0741F;--red:#C0453B}
+  .cam{position:absolute;top:18px;left:50%;transform:translateX(-50%);width:9px;height:9px;
+    border-radius:50%;background:#1B1B20;box-shadow:inset 0 0 0 2px #2A2A31;z-index:40}
+  .status{height:34px;display:flex;align-items:flex-end;justify-content:space-between;
+    padding:0 22px 5px;font-size:10.5px;font-weight:600;letter-spacing:.02em;color:var(--ink);
+    flex:none;position:relative;z-index:30}
+  .status .right{display:flex;gap:5px;align-items:center}
+  .status .bar{width:16px;height:8px;border:1px solid currentColor;border-radius:2.5px;position:relative;opacity:.8}
+  .status .bar::after{content:"";position:absolute;inset:1.5px;right:5px;background:currentColor;border-radius:1px}
+  .status .wifi{width:12px;height:9px;border-top:1.4px solid currentColor;border-radius:50% 50% 0 0;opacity:.8}
+
+  .page{position:absolute;inset:34px 0 0;display:none;flex-direction:column}
+  .page.active{display:flex}
+  .scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 18px 96px;scrollbar-width:none}
+  .scroll::-webkit-scrollbar{display:none}
+
+  /* ---------- shared ---------- */
+  .topbar{display:flex;justify-content:space-between;align-items:flex-start;padding:10px 0 12px}
+  h1{font-size:27px;line-height:1.15;font-weight:600;letter-spacing:-.025em;margin:0}
+  .sub{margin-top:6px;font-size:11.5px;color:var(--muted);letter-spacing:.01em;font-variant-numeric:tabular-nums}
+  .icons{display:flex;gap:6px;padding-top:2px}
+  .icobtn{width:34px;height:34px;border:1px solid var(--line);border-radius:50%;background:#fff;
+    display:flex;align-items:center;justify-content:center;color:var(--ink2);padding:0;cursor:pointer}
+  .icobtn svg{width:17px;height:17px}
+  .eyebrow{font-size:10px;letter-spacing:.12em;color:var(--muted);font-weight:600}
+  .section-head{display:flex;justify-content:space-between;align-items:center;margin:22px 0 10px}
+  .link{font-size:11.5px;color:var(--accent);font-weight:500;cursor:pointer}
+
+  /* ---------- hero ---------- */
+  .hero{background:#17171C;color:#fff;border-radius:18px;padding:14px 17px 14px;position:relative;overflow:hidden}
+  .hero::after{content:"";position:absolute;right:-30px;top:-50px;width:150px;height:150px;
+    border-radius:50%;border:1px solid rgba(255,255,255,.09)}
+  .hero-top{display:flex;justify-content:space-between;align-items:flex-start}
+  .hero .eyebrow{color:rgba(255,255,255,.55)}
+  .hero-count{font-size:38px;font-weight:300;line-height:1;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+  .hero-count small{font-size:12px;color:rgba(255,255,255,.5);margin-left:5px;letter-spacing:0}
+  .hero-bar{height:3px;background:rgba(255,255,255,.14);border-radius:2px;margin:14px 0 12px;overflow:hidden}
+  .hero-bar i{display:block;height:100%;background:#8E9BFF;border-radius:2px}
+  .hero-foot{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:rgba(255,255,255,.6)}
+  .pill{background:#fff;color:#17171C;border:0;border-radius:999px;font-size:11.5px;font-weight:600;
+    padding:7px 14px;cursor:pointer;font-family:inherit}
+
+  /* ---------- category grid ---------- */
+  .cat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .cat{background:var(--card);border:1px solid var(--line);border-radius:15px;overflow:hidden;
+    padding:0;text-align:left;cursor:pointer;font-family:inherit;color:inherit;
+    transition:transform .16s ease, box-shadow .16s ease}
+  .cat:active{transform:scale(.975)}
+  .cat-cover{height:58px;position:relative;background:linear-gradient(135deg,var(--g1),var(--g2));
+    display:flex;align-items:center;justify-content:flex-start;padding-left:14px}
+  .cat-cover .glyph{font-family:Georgia,"Times New Roman",serif;font-size:36px;line-height:1;
+    color:rgba(20,20,24,.20);transform:translateY(-1px)}
+  .cat-count{position:absolute;right:11px;bottom:8px;font-size:10.5px;font-weight:600;
+    color:rgba(20,20,24,.45);font-variant-numeric:tabular-nums}
+  .cat-body{padding:8px 11px 10px}
+  .cat-name{font-size:13px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cat-meta{font-size:10.5px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+  .meter{height:2px;background:#EEEEE9;border-radius:2px;margin-top:6px;overflow:hidden}
+  .meter i{display:block;height:100%;background:var(--green);opacity:.75;border-radius:2px}
+  .cat.new .cat-cover::after{content:"AI 新建";position:absolute;left:9px;top:8px;font-size:9px;
+    background:var(--accent-soft);color:var(--accent);padding:2.5px 6px;border-radius:4px;font-weight:600;letter-spacing:.02em}
+
+  /* ---------- fab + tabbar ---------- */
+  .fab{position:absolute;right:18px;bottom:86px;width:52px;height:52px;border-radius:50%;
+    background:var(--accent);color:#fff;border:0;font-size:23px;font-weight:300;line-height:1;
+    box-shadow:0 10px 22px rgba(68,87,214,.34);cursor:pointer;z-index:20;display:flex;
+    align-items:center;justify-content:center;padding-bottom:2px}
+  .tabbar{position:absolute;left:0;right:0;bottom:0;height:70px;display:grid;grid-template-columns:repeat(3,1fr);
+    background:rgba(255,255,255,.94);backdrop-filter:blur(12px);border-top:1px solid var(--line);z-index:25;
+    padding-bottom:6px}
+  .tab{background:none;border:0;font-family:inherit;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:4px;color:#A2A2A8;font-size:10px;cursor:pointer;padding:0}
+  .tab svg{width:21px;height:21px}
+  .tab.on{color:var(--ink)}
+
+  /* ---------- nav (sub pages) ---------- */
+  .nav{height:52px;display:flex;align-items:center;gap:10px;flex:none;padding:0 12px 0 6px}
+  .back{width:36px;height:36px;border:0;background:none;display:flex;align-items:center;justify-content:center;
+    color:var(--ink);cursor:pointer;padding:0}
+  .back svg{width:20px;height:20px}
+  .nav-title{font-size:15.5px;font-weight:600;letter-spacing:-.015em;flex:1;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .text-btn{background:none;border:0;font-family:inherit;font-size:12.5px;color:var(--accent);font-weight:500;cursor:pointer;padding:8px}
+
+  /* ---------- table ---------- */
+  .chips{display:flex;gap:6px;padding:0 18px 12px;overflow-x:auto;scrollbar-width:none}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{flex:none;border:1px solid var(--line);background:#fff;border-radius:999px;padding:5.5px 11px;
+    font-size:11px;color:var(--ink2);font-family:inherit;cursor:pointer;white-space:nowrap}
+  .chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+  .tbl{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff;margin:0 18px}
+  .tbl-scroll{overflow-x:auto;scrollbar-width:none}
+  .tbl-scroll::-webkit-scrollbar{display:none}
+  .tr{display:grid;grid-template-columns:44px 70px 1fr 54px;gap:9px;align-items:center;
+    padding:9px 11px;border-top:1px solid #F0F0EB}
+  .tr:first-child{border-top:0}
+  .th{background:#FBFBF8;font-size:9.5px;letter-spacing:.1em;color:var(--muted);font-weight:600;
+    padding:8px 11px;border-top:0}
+  .cell-first{position:relative;width:38px;height:46px}
+  .paper{width:38px;height:46px;background:#fff;border:1px solid #E2E2DA;border-radius:3px;
+    position:relative;overflow:hidden;flex:none}
+  .paper::before{content:"";position:absolute;inset:5px 4px;
+    background:repeating-linear-gradient(#D6D6CE 0 1px,transparent 1px 5px);opacity:.85}
+  .paper::after{content:"";position:absolute;left:4px;right:8px;top:4px;height:2px;background:#C9C9C0;border-radius:1px}
+  .qtype{font-size:11.5px;color:var(--ink2)}
+  .kpt{font-size:11.5px;color:var(--ink);line-height:1.35}
+  .kpt em{font-style:normal;font-size:9px;color:var(--accent);background:var(--accent-soft);
+    border-radius:3px;padding:1.5px 4px;margin-left:4px;vertical-align:1px;font-weight:600}
+  .dots{display:flex;gap:3px;justify-content:flex-end}
+  .dots i{width:5px;height:5px;border-radius:50%;background:#DEDED8}
+  .dots i.f{background:var(--green)}
+  .selmode .paper{display:none}
+  .check{width:19px;height:19px;border-radius:50%;border:1.4px solid #C9C9C2;display:none;
+    align-items:center;justify-content:center;margin:0 auto;background:#fff}
+  .selmode .check{display:flex}
+  .tr.sel .check{background:var(--accent);border-color:var(--accent);color:#fff}
+  .check svg{width:11px;height:11px;opacity:0}
+  .tr.sel .check svg{opacity:1}
+  .selbar{position:absolute;left:12px;right:12px;bottom:16px;background:#17171C;color:#fff;border-radius:16px;
+    padding:12px 14px;display:none;align-items:center;justify-content:space-between;z-index:26;
+    box-shadow:0 14px 30px rgba(0,0,0,.26)}
+  .selbar.show{display:flex}
+  .selbar b{font-size:12px;font-weight:600}
+  .selbar .acts{display:flex;gap:8px}
+  .selbar .acts button{background:rgba(255,255,255,.12);border:0;color:#fff;font-family:inherit;
+    font-size:11.5px;padding:7px 11px;border-radius:9px;cursor:pointer}
+  .selbar .acts button.primary{background:#fff;color:#17171C;font-weight:600}
+
+  /* ---------- capture ---------- */
+  .sheet-preview{margin:0 18px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff;flex:none}
+  .shot{position:relative;height:214px;background:#F4F3EE;overflow:hidden}
+  .shot-lines{position:absolute;inset:16px 18px;
+    background:repeating-linear-gradient(#D9D8D0 0 1px,transparent 1px 9px);opacity:.55}
+  .box{position:absolute;border:1.4px dashed var(--accent);background:rgba(68,87,214,.07);border-radius:3px}
+  .box b{position:absolute;left:-1px;top:-17px;background:var(--accent);color:#fff;font-size:9px;
+    font-weight:600;padding:1.5px 5px;border-radius:3px 3px 3px 0;letter-spacing:.04em}
+  .box.low{border-color:var(--amber);background:rgba(176,116,31,.08)}
+  .box.low b{background:var(--amber)}
+  .rev-list{flex:1;overflow-y:auto;padding:12px 18px 110px;scrollbar-width:none}
+  .rev-list::-webkit-scrollbar{display:none}
+  .rev{border:1px solid var(--line);background:#fff;border-radius:13px;padding:11px 12px;margin-bottom:9px}
+  .rev-head{display:flex;align-items:center;gap:7px;margin-bottom:6px}
+  .rev-no{font-size:10px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums;letter-spacing:.04em}
+  .tag{font-size:9.5px;padding:2px 6px;border-radius:4px;background:#F3F3EE;color:var(--ink2);font-weight:500}
+  .tag.ai{background:var(--accent-soft);color:var(--accent)}
+  .conf{margin-left:auto;display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--muted)}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+  .dot.mid{background:var(--amber)}
+  .dot.low{background:var(--red)}
+  .rev-stem{font-size:12.5px;line-height:1.5;color:var(--ink);letter-spacing:-.005em;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .rev-stem i{font-family:Georgia,serif;font-style:italic;color:#2B2B33}
+  .rev-cat{display:flex;align-items:center;gap:6px;margin-top:8px}
+  .cat-chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:7px;
+    padding:4px 8px;font-size:10.5px;color:var(--ink2);background:#FCFCF9;cursor:pointer}
+  .cat-chip svg{width:9px;height:9px;color:var(--muted)}
+  .bottom-actions{position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;padding:12px 18px 18px;
+    background:linear-gradient(180deg,rgba(250,250,247,0),#FAFAF7 32%);z-index:15}
+  .btn{flex:1;height:44px;border-radius:12px;border:1px solid var(--line);background:#fff;
+    font-family:inherit;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.ghost{flex:0 0 96px;background:transparent;font-weight:500;color:var(--muted)}
+
+  /* ---------- library / player ---------- */
+  .listen-card{background:#17171C;color:#fff;border-radius:18px;padding:15px 16px;display:flex;
+    align-items:center;gap:13px;margin-bottom:18px;cursor:pointer}
+  .listen-glyph{width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,#2C2C36,#4A4A5C);
+    display:flex;align-items:center;justify-content:center;font-family:Georgia,serif;font-size:24px;color:#B9BEFF;flex:none}
+  .listen-meta{flex:1;min-width:0}
+  .listen-meta b{display:block;font-size:12.5px;font-weight:600;letter-spacing:-.01em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .listen-meta span{font-size:10.5px;color:rgba(255,255,255,.5);display:block;margin-top:3px}
+  .playbtn{width:36px;height:36px;border-radius:50%;background:#fff;color:#17171C;border:0;
+    display:flex;align-items:center;justify-content:center;flex:none;cursor:pointer}
+  .playbtn svg{width:13px;height:13px;margin-left:1px}
+  .doc{display:flex;gap:11px;padding:12px 0;border-bottom:1px solid #EFEFE9;cursor:pointer;align-items:center}
+  .doc:last-child{border-bottom:0}
+  .doc-ic{width:34px;height:42px;border:1px solid var(--line);border-radius:4px;background:#fff;
+    display:flex;align-items:center;justify-content:center;flex:none;
+    font-family:Georgia,serif;font-size:14px;color:#B6B6AE}
+  .doc-body{flex:1;min-width:0}
+  .doc-body b{display:block;font-size:12.5px;font-weight:600;letter-spacing:-.005em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .doc-body span{font-size:10.5px;color:var(--muted);display:block;margin-top:3px;font-variant-numeric:tabular-nums}
+  .doc .dur{font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+  .cover{height:190px;margin:0 18px;border-radius:18px;position:relative;overflow:hidden;
+    background:linear-gradient(145deg,#1A1A22 0%,#2C2C3E 55%,#3D3D58 100%);display:flex;
+    align-items:flex-end;padding:18px}
+  .cover::before{content:"∫";position:absolute;right:-6px;top:-26px;font-family:Georgia,serif;
+    font-size:190px;color:rgba(255,255,255,.07);line-height:1}
+  .cover-t{position:relative;color:#fff}
+  .cover-t .eyebrow{color:rgba(255,255,255,.45)}
+  .cover-t b{display:block;font-size:19px;font-weight:600;letter-spacing:-.02em;margin-top:5px}
+  .script{margin:18px 18px 0;background:#fff;border:1px solid var(--line);border-radius:14px;padding:4px 0;overflow:hidden}
+  .line{padding:9px 14px;font-size:12.5px;line-height:1.6;color:#9A9AA0;transition:.2s}
+  .line.now{color:var(--ink);background:var(--accent-soft);border-left:2px solid var(--accent);padding-left:12px}
+  .player-foot{padding:0 18px}
+  .rail{height:3px;background:#E9E9E3;border-radius:2px;margin:16px 18px 8px;overflow:hidden}
+  .rail i{display:block;height:100%;width:42%;background:var(--ink);border-radius:2px}
+  .times{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);
+    padding:0 18px;font-variant-numeric:tabular-nums}
+  .controls{display:flex;align-items:center;justify-content:center;gap:30px;margin-top:14px}
+  .ctrl{background:none;border:0;color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  .ctrl svg{width:22px;height:22px}
+  .ctrl.main{width:54px;height:54px;border-radius:50%;background:var(--ink);color:#fff}
+  .ctrl.main svg{width:19px;height:19px;margin-left:2px}
+  .ctrl small{font-size:9px;font-weight:600;letter-spacing:.02em}
+  .pchips{display:flex;gap:7px;justify-content:center;margin-top:16px;padding-bottom:20px}
+
+  /* ---------- settings ---------- */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);background:#fff;border:1px solid var(--line);
+    border-radius:15px;padding:14px 0;margin-bottom:18px}
+  .stat{text-align:center;border-left:1px solid #F0F0EA}
+  .stat:first-child{border-left:0}
+  .stat b{display:block;font-size:19px;font-weight:500;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .stat span{font-size:10px;color:var(--muted)}
+  .rows{background:#fff;border:1px solid var(--line);border-radius:15px;overflow:hidden}
+  .row{display:flex;align-items:center;gap:11px;padding:13px 14px;border-top:1px solid #F1F1EB;
+    font-size:12.5px;cursor:pointer;background:none;border-left:0;border-right:0;border-bottom:0;
+    width:100%;font-family:inherit;color:inherit;text-align:left}
+  .row:first-child{border-top:0}
+  .row .ri{width:28px;height:28px;border-radius:8px;background:#F6F6F1;display:flex;align-items:center;
+    justify-content:center;color:var(--ink2);flex:none}
+  .row .ri svg{width:14px;height:14px}
+  .row .rt{flex:1}
+  .row .rt span{display:block;font-size:10px;color:var(--muted);margin-top:2px}
+  .chev{color:#C4C4BC}
+  .chev svg{width:15px;height:15px}
+  .switch{width:38px;height:22px;border-radius:999px;background:#DDDDD6;position:relative;transition:.18s}
+  .switch i{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;
+    box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.18s}
+  .switch.on{background:var(--accent)}
+  .switch.on i{left:18px}
+
+  /* ---------- provider ---------- */
+  .field{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:9px}
+  .field label{display:block;font-size:9.5px;letter-spacing:.1em;color:var(--muted);font-weight:600;margin-bottom:4px}
+  .field .val{font-size:12.5px;color:var(--ink);display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .field .val span{color:var(--muted);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px}
+  .okline{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--green);margin:2px 2px 16px}
+  .role{display:flex;align-items:center;gap:9px;padding:11px 0;border-bottom:1px solid #F1F1EB;font-size:12px}
+  .role:last-child{border-bottom:0}
+  .role .rm{color:var(--muted);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10px;margin-left:auto}
+
+  /* ---------- sheet / toast / overlay ---------- */
+  .mask{position:absolute;inset:0;background:rgba(16,16,20,.34);opacity:0;pointer-events:none;
+    transition:opacity .2s;z-index:45}
+  .mask.show{opacity:1;pointer-events:auto}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:22px 22px 0 0;
+    padding:10px 18px 20px;transform:translateY(102%);transition:transform .26s cubic-bezier(.2,.8,.2,1);
+    z-index:46;box-shadow:0 -12px 40px rgba(0,0,0,.14)}
+  .sheet.show{transform:translateY(0)}
+  .grab{width:34px;height:4px;border-radius:2px;background:#E2E2DB;margin:0 auto 12px}
+  .sheet h3{font-size:15px;font-weight:600;letter-spacing:-.015em;margin:0 0 2px}
+  .sheet .hint{font-size:10.5px;color:var(--muted);margin-bottom:13px}
+  .opt{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid #F2F2EC}
+  .opt:first-of-type{border-top:0}
+  .opt .ol{font-size:12px;color:var(--ink)}
+  .seg{display:flex;background:#F4F4EF;border-radius:8px;padding:2px}
+  .seg button{border:0;background:none;font-family:inherit;font-size:10.5px;color:var(--muted);
+    padding:5px 9px;border-radius:6px;cursor:pointer}
+  .seg button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .est{font-size:10.5px;color:var(--muted);margin:12px 0 10px;font-variant-numeric:tabular-nums}
+  .toast{position:absolute;left:50%;bottom:104px;transform:translate(-50%,10px);background:#17171C;color:#fff;
+    font-size:11.5px;padding:9px 14px;border-radius:10px;opacity:0;pointer-events:none;transition:.22s;z-index:60;
+    white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+
+  .overlay{position:absolute;inset:0;z-index:70;display:none}
+  .overlay.show{display:block}
+  .ovdim{position:absolute;inset:0;background:rgba(16,16,20,.36);backdrop-filter:blur(1.5px)}
+  .ovpanel{position:absolute;left:10px;right:10px;bottom:10px;background:#fff;border-radius:20px;
+    padding:14px;box-shadow:0 20px 50px rgba(0,0,0,.28)}
+  .ovhead{display:flex;align-items:center;gap:7px;margin-bottom:9px}
+  .ovhead b{font-size:12px;font-weight:600}
+  .ovhead span{font-size:9.5px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+  .ctx{font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:6px;
+    padding:5px 8px;display:inline-block;margin-bottom:10px}
+  .bubble{background:#F5F5F0;border-radius:12px 12px 12px 3px;padding:10px 11px;font-size:11.5px;
+    line-height:1.55;color:var(--ink);margin-bottom:8px}
+  .bubble .cite{display:inline-block;margin-top:6px;font-size:9.5px;color:var(--accent);
+    border-bottom:1px dotted var(--accent);cursor:pointer}
+  .quick{display:flex;gap:6px;margin-bottom:9px}
+  .quick button{flex:1;border:1px solid var(--line);background:#fff;border-radius:8px;font-family:inherit;
+    font-size:10.5px;color:var(--ink2);padding:7px 4px;cursor:pointer}
+  .ovinput{display:flex;gap:8px;align-items:center;border-top:1px solid #F0F0EA;padding-top:10px}
+  .ovinput input{flex:1;border:0;background:#F6F6F1;border-radius:9px;padding:9px 11px;font-size:11.5px;
+    font-family:inherit;outline:none}
+  .send{width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;border:0;
+    display:flex;align-items:center;justify-content:center;flex:none}
+  .bubble-ball{position:absolute;right:0;top:38%;width:46px;height:46px;border-radius:46px 0 0 46px;
+    background:#17171C;color:#fff;display:flex;align-items:center;justify-content:center;
+    font-family:Georgia,serif;font-size:19px;box-shadow:-4px 6px 18px rgba(0,0,0,.22)}
+
+  /* ---------- notes ---------- */
+  .notes{width:300px;flex:0 0 300px;padding-top:6px}
+  .notes h3{font-size:12px;font-weight:600;letter-spacing:.02em;margin:0 0 10px}
+  .notes p{font-size:11.5px;line-height:1.65;color:#5C5C62;margin:0 0 14px}
+  .notes ul{margin:0 0 18px;padding-left:16px;font-size:11.5px;line-height:1.75;color:#5C5C62}
+  .notes li{margin-bottom:3px}
+  .notes code{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;background:#E4E4DC;
+    padding:1px 4px;border-radius:3px;color:#3C3C42}
+  .sw{display:flex;gap:6px;margin-bottom:18px}
+  .sw i{width:30px;height:30px;border-radius:7px;display:block;border:1px solid rgba(0,0,0,.06)}
+  .hintbox{border:1px dashed #CFCFC6;border-radius:10px;padding:10px 12px;font-size:11px;
+    line-height:1.6;color:#77777D}
+  .demo-btn{border:1px solid #D5D5CC;background:#FAFAF7;border-radius:9px;padding:8px 11px;
+    font-family:inherit;font-size:11.5px;color:#3C3C42;cursor:pointer;margin-top:4px}
+  @media(max-width:820px){body{padding:20px 12px 40px}.notes{display:none}.phone{transform-origin:top left}}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="brandline">
+    <h2>题笺 · 界面草案 v2</h2>
+    <span>错题本 / 知识库 · 可点击</span>
+    <div class="rule"></div>
+    <button class="demo-btn" onclick="toggleOverlay()">试一下悬浮助手 →</button>
+  </div>
+
+  <div class="phone">
+    <div class="screen" id="screen">
+      <div class="cam"></div>
+      <div class="status">
+        <span>9:41</span>
+        <span class="right"><span class="wifi"></span><span class="bar"></span></span>
+      </div>
+
+      <!-- ================= HOME ================= -->
+      <section class="page active" id="home">
+        <div class="scroll">
+          <div class="topbar">
+            <div>
+              <h1>错题本</h1>
+              <div class="sub">128 道 · 7 个分类 · 12 道待复习</div>
+            </div>
+            <div class="icons">
+              <button class="icobtn" title="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg></button>
+              <button class="icobtn" title="排序"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h16M4 12h10M4 17h6"/></svg></button>
+            </div>
+          </div>
+
+          <div class="hero">
+            <div class="hero-top">
+              <div>
+                <div class="eyebrow">今日复习</div>
+                <div style="margin-top:8px;font-size:12px;color:rgba(255,255,255,.62)">函数与导数 · 立体几何</div>
+              </div>
+              <div class="hero-count">12<small>题</small></div>
+            </div>
+            <div class="hero-bar"><i style="width:38%"></i></div>
+            <div class="hero-foot"><span>已完成 5 / 12</span><button class="pill" onclick="toast('进入复习卡')">继续复习</button></div>
+          </div>
+
+          <div class="section-head"><span class="eyebrow">分类</span><span class="link">管理</span></div>
+          <div class="cat-grid">
+            <button class="cat" onclick="go('category')">
+              <div class="cat-cover" style="--g1:#E7EAF8;--g2:#F5F3EC"><span class="glyph">∫</span><span class="cat-count">32</span></div>
+              <div class="cat-body"><div class="cat-name">函数与导数</div><div class="cat-meta">已掌握 14 / 32</div><div class="meter"><i style="width:44%"></i></div></div>
+            </button>
+            <button class="cat" onclick="go('category')">
+              <div class="cat-cover" style="--g1:#EDEAE1;--g2:#F7F4ED"><span class="glyph">△</span><span class="cat-count">21</span></div>
+              <div class="cat-body"><div class="cat-name">立体几何</div><div class="cat-meta">已掌握 9 / 21</div><div class="meter"><i style="width:43%"></i></div></div>
+            </button>
+            <button class="cat" onclick="go('category')">
+              <div class="cat-cover" style="--g1:#E4EFE9;--g2:#F3F7F1"><span class="glyph">∑</span><span class="cat-count">18</span></div>
+              <div class="cat-body"><div class="cat-name">概率统计</div><div class="cat-meta">已掌握 11 / 18</div><div class="meter"><i style="width:61%"></i></div></div>
+            </button>
+            <button class="cat" onclick="go('category')">
+              <div class="cat-cover" style="--g1:#F2E7E3;--g2:#F8F2EC"><span class="glyph">∿</span><span class="cat-count">16</span></div>
+              <div class="cat-body"><div class="cat-name">电磁感应</div><div class="cat-meta">已掌握 5 / 16</div><div class="meter"><i style="width:31%"></i></div></div>
+            </button>
+            <button class="cat" onclick="go('category')">
+              <div class="cat-cover" style="--g1:#E9E6F2;--g2:#F6F3F2"><span class="glyph">⚗</span><span class="cat-count">9</span></div>
+              <div class="cat-body"><div class="cat-name">化学反应原理</div><div class="cat-meta">已掌握 3 / 9</div><div class="meter"><i style="width:33%"></i></div></div>
+            </button>
+            <button class="cat new" onclick="go('category')">
+              <div class="cat-cover" style="--g1:#E8EAF7;--g2:#F4F2EC"><span class="glyph">∂</span><span class="cat-count">4</span></div>
+              <div class="cat-body"><div class="cat-name">极值点偏移</div><div class="cat-meta">待确认 · 来自 10-16</div><div class="meter"><i style="width:0"></i></div></div>
+            </button>
+          </div>
+          <div style="height:14px"></div>
+        </div>
+        <button class="fab" onclick="go('capture')" title="识别导入">＋</button>
+      </section>
+
+      <!-- ================= CATEGORY TABLE ================= -->
+      <section class="page" id="category">
+        <div class="nav">
+          <button class="back" onclick="go('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M15 5 8 12l7 7"/></svg></button>
+          <div class="nav-title">函数与导数</div>
+          <button class="text-btn" id="selBtn" onclick="toggleSelect()">选择</button>
+        </div>
+        <div class="chips">
+          <button class="chip on">全部 32</button>
+          <button class="chip">未掌握 18</button>
+          <button class="chip">本周 6</button>
+          <button class="chip">有错因 12</button>
+        </div>
+        <div class="tbl" id="tbl">
+          <div class="tbl-scroll">
+            <div class="tr th"><span>题目</span><span>题型</span><span>知识点</span><span style="text-align:right">掌握</span></div>
+            <div class="tr" onclick="pick(this)">
+              <div class="cell-first"><div class="paper"></div><div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 13 4 4L19 7"/></svg></div></div>
+              <div class="qtype">选择题</div>
+              <div class="kpt">导数与单调性</div>
+              <div class="dots"><i class="f"></i><i class="f"></i><i></i></div>
+            </div>
+            <div class="tr" onclick="pick(this)">
+              <div class="cell-first"><div class="paper"></div><div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 13 4 4L19 7"/></svg></div></div>
+              <div class="qtype">解答题</div>
+              <div class="kpt">极值点偏移<em>新</em></div>
+              <div class="dots"><i class="f"></i><i></i><i></i></div>
+            </div>
+            <div class="tr" onclick="pick(this)">
+              <div class="cell-first"><div class="paper"></div><div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 13 4 4L19 7"/></svg></div></div>
+              <div class="qtype">填空题</div>
+              <div class="kpt">切线方程</div>
+              <div class="dots"><i class="f"></i><i class="f"></i><i class="f"></i></div>
+            </div>
+            <div class="tr" onclick="pick(this)">
+              <div class="cell-first"><div class="paper"></div><div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 13 4 4L19 7"/></svg></div></div>
+              <div class="qtype">选择题</div>
+              <div class="kpt">函数零点</div>
+              <div class="dots"><i class="f"></i><i class="f"></i><i></i></div>
+            </div>
+            <div class="tr" onclick="pick(this)">
+              <div class="cell-first"><div class="paper"></div><div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 13 4 4L19 7"/></svg></div></div>
+              <div class="qtype">解答题</div>
+              <div class="kpt">不等式恒成立</div>
+              <div class="dots"><i></i><i></i><i></i></div>
+            </div>
+            <div class="tr" onclick="pick(this)">
+              <div class="cell-first"><div class="paper"></div><div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m5 13 4 4L19 7"/></svg></div></div>
+              <div class="qtype">选择题</div>
+              <div class="kpt">导数与单调性</div>
+              <div class="dots"><i class="f"></i><i class="f"></i><i></i></div>
+            </div>
+          </div>
+        </div>
+        <div style="padding:10px 18px;font-size:10px;color:#A2A2A8">点行看详情 · 右上「选择」可多选 · 长按预览原图</div>
+        <div class="selbar" id="selbar">
+          <b id="selCount">已选 0 题</b>
+          <div class="acts">
+            <button onclick="openSheet()">导出 Word</button>
+            <button onclick="toast('移动分类')">移动</button>
+            <button class="primary" onclick="openSheet()">导出</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= CAPTURE / REVIEW ================= -->
+      <section class="page" id="capture">
+        <div class="nav">
+          <button class="back" onclick="go('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M15 5 8 12l7 7"/></svg></button>
+          <div class="nav-title">识别校对</div>
+          <span style="font-size:11px;color:var(--muted);padding-right:8px;font-variant-numeric:tabular-nums">3 / 8</span>
+        </div>
+        <div class="sheet-preview">
+          <div class="shot">
+            <div class="shot-lines"></div>
+            <div class="box" style="left:7%;top:9%;width:86%;height:25%"><b>01</b></div>
+            <div class="box low" style="left:7%;top:38%;width:86%;height:22%"><b>02</b></div>
+            <div class="box" style="left:7%;top:64%;width:86%;height:27%"><b>03</b></div>
+          </div>
+        </div>
+        <div class="rev-list">
+          <div class="rev">
+            <div class="rev-head"><span class="rev-no">01</span><span class="tag">选择题</span><span class="tag ai">AI 新建</span>
+              <span class="conf"><i class="dot"></i>高置信 0.93</span></div>
+            <div class="rev-stem">已知函数 <i>f(x)=x³−3x</i>，则 <i>f(x)</i> 的单调递增区间是（ ）</div>
+            <div class="rev-cat"><span class="cat-chip">数学 / 函数与导数 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"/></svg></span></div>
+          </div>
+          <div class="rev">
+            <div class="rev-head"><span class="rev-no">02</span><span class="tag">解答题</span>
+              <span class="conf"><i class="dot mid"></i>低置信 0.54</span></div>
+            <div class="rev-stem">设 <i>f(x)=ln x − ax</i>，讨论 <i>f(x)</i> 的零点个数，并证明 ⟨?⟩ 时 <i>a&gt;1/e</i>。</div>
+            <div class="rev-cat"><span class="cat-chip" style="border-color:#E6C89A;background:#FDF8EF;color:#8A5E1F">数学 / 极值点偏移 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"/></svg></span></div>
+          </div>
+          <div class="rev">
+            <div class="rev-head"><span class="rev-no">03</span><span class="tag">填空题</span>
+              <span class="conf"><i class="dot"></i>高置信 0.89</span></div>
+            <div class="rev-stem">曲线 <i>y=x³−2x</i> 在点 <i>(1,−1)</i> 处的切线方程为 ______。</div>
+            <div class="rev-cat"><span class="cat-chip">数学 / 函数与导数 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"/></svg></span></div>
+          </div>
+          <div class="rev">
+            <div class="rev-head"><span class="rev-no">04</span><span class="tag">解答题</span>
+              <span class="conf"><i class="dot"></i>高置信 0.87</span></div>
+            <div class="rev-stem">已知函数 <i>f(x)=eˣ−ax</i>，若 <i>f(x)≥0</i> 恒成立，求 <i>a</i> 的取值范围。</div>
+            <div class="rev-cat"><span class="cat-chip">数学 / 函数与导数 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"/></svg></span></div>
+          </div>
+        </div>
+        <div class="bottom-actions">
+          <button class="btn ghost" onclick="toast('已重新识别')">重新识别</button>
+          <button class="btn primary" onclick="go('home');toast('已入库 8 题 · 2 个新分类待确认')">确认入库 8 题</button>
+        </div>
+      </section>
+
+      <!-- ================= LIBRARY ================= -->
+      <section class="page" id="library">
+        <div class="scroll">
+          <div class="topbar">
+            <div><h1>知识库</h1><div class="sub">14 篇 · 186 个知识点 · 3.2 小时音频</div></div>
+            <div class="icons">
+              <button class="icobtn" title="新建"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 5v14M5 12h14"/></svg></button>
+            </div>
+          </div>
+
+          <div class="listen-card" onclick="go('player')">
+            <div class="listen-glyph">∫</div>
+            <div class="listen-meta"><b>导数应用 · 8 个知识点</b><span>正在播放 · 第 3 段 / 共 42 段</span></div>
+            <button class="playbtn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+          </div>
+
+          <div class="section-head"><span class="eyebrow">最近生成</span><span class="link">全部</span></div>
+          <div class="doc" onclick="go('player')">
+            <div class="doc-ic">∂</div>
+            <div class="doc-body"><b>极值点偏移 · 三类模型</b><span>来自 9 道错题 · 12 个知识点</span></div>
+            <span class="dur">18:24</span>
+          </div>
+          <div class="doc" onclick="toast('打开文档')">
+            <div class="doc-ic">△</div>
+            <div class="doc-body"><b>立体几何 · 辅助线套路</b><span>来自 7 道错题 · 9 个知识点</span></div>
+            <span class="dur">14:06</span>
+          </div>
+          <div class="doc" onclick="toast('打开文档')">
+            <div class="doc-ic">∑</div>
+            <div class="doc-body"><b>概率统计 · 易错清单</b><span>来自 5 道错题 · 7 个知识点</span></div>
+            <span class="dur">09:41</span>
+          </div>
+          <div class="doc" onclick="toast('打开文档')">
+            <div class="doc-ic">∿</div>
+            <div class="doc-body"><b>电磁感应 · 楞次定律</b><span>来自 4 道错题 · 6 个知识点</span></div>
+            <span class="dur">11:15</span>
+          </div>
+          <div style="height:8px"></div>
+        </div>
+      </section>
+
+      <!-- ================= PLAYER ================= -->
+      <section class="page" id="player">
+        <div class="nav">
+          <button class="back" onclick="go('library')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M15 5 8 12l7 7"/></svg></button>
+          <div class="nav-title">正在听</div>
+          <button class="text-btn" onclick="toast('已加入收藏')">收藏</button>
+        </div>
+        <div class="cover">
+          <div class="cover-t">
+            <div class="eyebrow">数学 · 函数与导数</div>
+            <b>导数应用<br>8 个知识点</b>
+          </div>
+        </div>
+        <div class="script">
+          <div class="line">先来看第一个知识点。函数在某区间上单调递增，等价于导数在这个区间上大于等于零。</div>
+          <div class="line now">注意，这里说的是恒成立。如果导数只是偶尔大于零，函数并不一定单调。</div>
+          <div class="line">我们来看一个反例。分段函数在一点处导数为零，但两侧都递增……</div>
+        </div>
+        <div class="rail"><i></i></div>
+        <div class="times"><span>06:12</span><span>−12:48</span></div>
+        <div class="controls">
+          <button class="ctrl"><small>−15s</small></button>
+          <button class="ctrl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15 6 9 12l6 6"/></svg></button>
+          <button class="ctrl main"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg></button>
+          <button class="ctrl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m9 6 6 6-6 6"/></svg></button>
+          <button class="ctrl"><small>+15s</small></button>
+        </div>
+        <div class="pchips">
+          <button class="chip on">1.25×</button>
+          <button class="chip">定时 30:00</button>
+          <button class="chip">讲解模式</button>
+        </div>
+      </section>
+
+      <!-- ================= SETTINGS ================= -->
+      <section class="page" id="settings">
+        <div class="scroll">
+          <div class="topbar">
+            <div><h1>我的</h1><div class="sub">本地存储 128 MB · 已备份 2 天前</div></div>
+            <div class="icons"><button class="icobtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg></button></div>
+          </div>
+
+          <div class="stats">
+            <div class="stat"><b>128</b><span>错题</span></div>
+            <div class="stat"><b>6</b><span>连续复习</span></div>
+            <div class="stat"><b>41</b><span>已掌握</span></div>
+          </div>
+
+          <div class="rows" style="margin-bottom:10px">
+            <button class="row" onclick="go('provider')">
+              <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3 4 7v10l8 4 8-4V7z"/><path d="M12 12 4 7M12 12l8-5M12 12v9"/></svg></div>
+              <div class="rt">AI 接入<span>4 个角色 · 主模型 gemini-3-flash</span></div>
+              <div class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 6 6 6-6 6"/></svg></div>
+            </button>
+            <button class="row" onclick="toast('导出记录：6 份')">
+              <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/></svg></div>
+              <div class="rt">导出记录<span>最近：函数与导数_20261016.docx</span></div>
+              <div class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 6 6 6-6 6"/></svg></div>
+            </button>
+            <button class="row" onclick="toast('开始备份')">
+              <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7a8 8 0 1 1 2.3 5.7"/><path d="M4 3v4h4"/></svg></div>
+              <div class="rt">备份与恢复<span>含图片的完整备份包</span></div>
+              <div class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 6 6 6-6 6"/></svg></div>
+            </button>
+          </div>
+
+          <div class="rows">
+            <button class="row" onclick="toggleSwitch(this)">
+              <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2.5"/></svg></div>
+              <div class="rt">悬浮助手<span>需悬浮窗权限 · 当前关闭</span></div>
+              <div class="switch"><i></i></div>
+            </button>
+            <button class="row" onclick="toast('深色模式')">
+              <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg></div>
+              <div class="rt">外观<span>深色 · 题干字号 16</span></div>
+              <div class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 6 6 6-6 6"/></svg></div>
+            </button>
+          </div>
+          <div style="height:12px"></div>
+        </div>
+      </section>
+
+      <!-- ================= PROVIDER ================= -->
+      <section class="page" id="provider">
+        <div class="nav">
+          <button class="back" onclick="go('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M15 5 8 12l7 7"/></svg></button>
+          <div class="nav-title">AI 接入</div>
+          <button class="text-btn" onclick="toast('已保存')">保存</button>
+        </div>
+        <div class="scroll" style="padding-top:2px">
+          <div class="field"><label>协议</label><div class="val">OpenAI 兼容 <span>chat/completions</span></div></div>
+          <div class="field"><label>BASE URL</label><div class="val"><span style="color:var(--ink);font-family:inherit;font-size:12.5px">https://api.example.com/v1</span></div></div>
+          <div class="field"><label>API KEY</label><div class="val">••••••••••••3f7a <span>已加密</span></div></div>
+          <div class="field"><label>模型</label><div class="val">gemini-3-flash <span>视觉 · JSON</span></div></div>
+          <div class="okline"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 13 4 4L19 7"/></svg>连接正常 · 842 ms · 支持图片输入</div>
+
+          <div class="section-head" style="margin-top:4px"><span class="eyebrow">角色分配</span><span class="link">新增</span></div>
+          <div class="rows" style="padding:2px 14px">
+            <div class="role">识别<span class="rm">gemini-3-flash</span></div>
+            <div class="role">分类<span class="rm">deepseek-v4-flash</span></div>
+            <div class="role">知识抽取<span class="rm">deepseek-v4-flash</span></div>
+            <div class="role">助手<span class="rm">gemini-3-flash</span></div>
+            <div class="role">朗读<span class="rm">系统 TTS · 讯飞</span></div>
+          </div>
+          <div style="padding:12px 2px;font-size:10.5px;color:var(--muted);line-height:1.6">
+            每批识别约 1.8k tokens；分类走便宜模型，单批 &lt; ¥0.01。
+          </div>
+        </div>
+      </section>
+
+      <!-- tabbar -->
+      <nav class="tabbar" id="tabbar">
+        <button class="tab on" data-go="home" onclick="go('home')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M13 4h5.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H13z"/></svg>
+          <span>错题本</span>
+        </button>
+        <button class="tab" data-go="library" onclick="go('library')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h6a2 2 0 0 1 2 2v11a2 2 0 0 0-2-2H4z"/><path d="M20 6h-6a2 2 0 0 0-2 2v11a2 2 0 0 1 2-2h6z"/></svg>
+          <span>知识库</span>
+        </button>
+        <button class="tab" data-go="settings" onclick="go('settings')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.2 3.5-5 7-5s6.2 1.8 7 5"/></svg>
+          <span>我的</span>
+        </button>
+      </nav>
+
+      <!-- export sheet -->
+      <div class="mask" id="mask" onclick="closeSheet()"></div>
+      <div class="sheet" id="sheet">
+        <div class="grab"></div>
+        <h3>导出 Word</h3>
+        <div class="hint">已选 3 题 · 数学 / 函数与导数</div>
+        <div class="opt"><span class="ol">版式</span>
+          <div class="seg"><button class="on">一题一页</button><button>紧凑</button></div>
+        </div>
+        <div class="opt"><span class="ol">内容</span>
+          <div class="seg"><button class="on">题+答+析</button><button>仅题目</button></div>
+        </div>
+        <div class="opt"><span class="ol">长截图自动切分</span>
+          <div class="seg"><button class="on">开</button><button>关</button></div>
+        </div>
+        <div class="opt"><span class="ol">图片质量</span>
+          <div class="seg"><button class="on">压缩</button><button>原图</button></div>
+        </div>
+        <div class="est">预计 6 页 · 4.2 MB · A4 / 2cm 页边距</div>
+        <button class="btn primary" style="width:100%" onclick="closeSheet();toast('已导出 函数与导数_20261017.docx')">导出 Word</button>
+      </div>
+
+      <!-- overlay assistant -->
+      <div class="overlay" id="overlay">
+        <div class="ovdim" onclick="toggleOverlay()"></div>
+        <div class="bubble-ball">∫</div>
+        <div class="ovpanel">
+          <div class="ovhead"><b>错题助手</b><span>gemini-3-flash</span>
+            <button class="text-btn" style="margin-left:auto;padding:0" onclick="toggleOverlay()">收起</button></div>
+          <div class="ctx">正在看：函数与导数 · 第 12 题</div>
+          <div class="quick"><button>讲讲这题</button><button>出个类似的</button><button>我为什么错</button></div>
+          <div class="bubble">这题错在把「导数大于零」直接当成了「单调递增」的充要条件。实际上只要 <i>f′(x)≥0</i> 且不恒为零即可，端点处导数为零不影响单调性。<br><span class="cite">《错题本》第 12 题 · 知识点「导数与单调性」</span></div>
+          <div class="ovinput"><input placeholder="问点什么…"><button class="send"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button></div>
+        </div>
+      </div>
+
+      <div class="toast" id="toast"></div>
+    </div>
+  </div>
+
+  <aside class="notes">
+    <h3>这一版补了什么</h3>
+    <p>你的原始需求是「识别 → 分类 → 展示 → 导出」。这版在中间插了一道<b>校对关</b>，把「图」拆成了「题」，并给错题本补上复习闭环。</p>
+    <ul>
+      <li>一张试卷多道题：识别后按 bbox 切分，逐题入库</li>
+      <li>AI 新建分类默认「待确认」，防分类爆炸</li>
+      <li>表格冻结缩略图列，横向滚动看知识点/掌握度</li>
+      <li>Word 导出：A4 内容区计算 + 超长图切片 + 不跨页</li>
+      <li>知识库与错题本共用底层数据，只是产物不同</li>
+      <li>朗读稿先口语化改写，再逐句 TTS，才能高亮跟读</li>
+      <li>悬浮助手默认关闭，带权限引导与通知降级</li>
+    </ul>
+    <h3>色板</h3>
+    <div class="sw">
+      <i style="background:#141418"></i><i style="background:#4457D6"></i>
+      <i style="background:#FAFAF7"></i><i style="background:#E7E7E1"></i>
+      <i style="background:#2E7D5B"></i><i style="background:#B0741F"></i>
+    </div>
+    <h3>可以点的路径</h3>
+    <div class="hintbox">
+      分类卡 → 表格<br>
+      FAB ＋ → 识别校对<br>
+      表格「选择」→ 勾题 → 导出<br>
+      知识库 → 播放器<br>
+      我的 → AI 接入<br>
+      右上「试一下悬浮助手」
+    </div>
+  </aside>
+</div>
+
+<script>
+  const tabbed = ['home','library','settings'];
+
+  function go(id){
+    document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === id));
+    document.getElementById('tabbar').style.display = tabbed.includes(id) ? 'grid' : 'none';
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.go === id));
+    document.querySelectorAll('.scroll').forEach(s => s.scrollTop = 0);
+    const bar = document.getElementById('selbar');
+    if (bar) bar.classList.remove('show');
+    selecting = false; selected.clear(); updateSel();
+    const tbl = document.getElementById('tbl');
+    if (tbl) tbl.classList.remove('selmode');
+    document.getElementById('selBtn').textContent = '选择';
+  }
+
+  /* ---- selection ---- */
+  let selecting = false;
+  const selected = new Set();
+
+  function toggleSelect(){
+    selecting = !selecting;
+    if (!selecting) selected.clear();
+    document.getElementById('selBtn').textContent = selecting ? '取消' : '选择';
+    document.getElementById('tbl').classList.toggle('selmode', selecting);
+    updateSel();
+  }
+
+  function pick(row){
+    if (!selecting) { toast('长按预览 · 先点右上「选择」可多选'); return; }
+    row.classList.toggle('sel');
+    const rows = [...document.querySelectorAll('#category .tr')].filter(r => !r.classList.contains('th'));
+    const idx = rows.indexOf(row);
+    if (row.classList.contains('sel')) selected.add(idx); else selected.delete(idx);
+    updateSel();
+  }
+
+  function updateSel(){
+    const n = selected.size;
+    document.getElementById('selCount').textContent = '已选 ' + n + ' 题';
+    document.getElementById('selbar').classList.toggle('show', selecting && n > 0);
+  }
+
+  /* ---- sheet ---- */
+  function openSheet(){ document.getElementById('mask').classList.add('show'); document.getElementById('sheet').classList.add('show'); }
+  function closeSheet(){ document.getElementById('mask').classList.remove('show'); document.getElementById('sheet').classList.remove('show'); }
+
+  /* ---- toast ---- */
+  let toastTimer;
+  function toast(msg){
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  /* ---- overlay ---- */
+  function toggleOverlay(){ document.getElementById('overlay').classList.toggle('show'); }
+
+  /* ---- switch ---- */
+  function toggleSwitch(el){
+    const sw = el.querySelector('.switch');
+    sw.classList.toggle('on');
+    toast(sw.classList.contains('on') ? '已开启 · 请授予悬浮窗权限' : '已关闭悬浮助手');
+  }
+
+  /* segmented controls */
+  document.addEventListener('click', e => {
+    const b = e.target.closest('.seg button');
+    if (b) { b.parentElement.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); }
+  });
+
+  /* deep-link a screen: mockup.html#category */
+  const initial = location.hash.replace('#','');
+  if (initial === 'assistant') { toggleOverlay(); }
+  else if (initial && document.getElementById(initial)) go(initial);
+</script>
+</body>
+</html>
