@@ -79,7 +79,7 @@ object PdfExporter {
                 wrap(cleanMath(q.stem.ifBlank { "（未识别题干）" }), body, CONTENT_W)
             else emptyList()
             val answerText = buildString {
-                if (opts.includeAnswer && q.answer.isNotBlank()) append("答案：").append(q.answer).append("\n")
+                if (opts.includeAnswer && q.answer.isNotBlank()) append("答案：").append(cleanMath(q.answer)).append("\n")
                 if (opts.includeAnalysis && q.analysis.isNotBlank()) append("解析：").append(cleanMath(q.analysis))
             }.trim()
             val answerLines = if (answerText.isBlank()) emptyList() else wrap(answerText, paint(10.5f), CONTENT_W)

@@ -13,3 +13,7 @@ s_*.png
 pdf*.png
 exported*.pdf
 ui.xml
+
+*.pdf
+dl.apk
+final-*.png

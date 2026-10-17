@@ -92,7 +92,8 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     init {
         refresh()
-        checkUpdate(silent = true)
+        val last = db.getSetting("update.lastCheck")?.toLongOrNull() ?: 0L
+        if (System.currentTimeMillis() - last > 6 * 3600_000L) checkUpdate(silent = true)
     }
 
     fun refresh() {
@@ -382,11 +383,11 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 val info = Updater.check(getApplication())
                 if (info != null) updateInfo = info
                 else if (!silent) toast = "已是最新版本（${Updater.currentName()}）"
-                if (silent) db.putSetting("update.lastCheck", System.currentTimeMillis().toString())
             } catch (e: Exception) {
                 if (!silent) toast = "检查更新失败：${e.message}"
             } finally {
                 checkingUpdate = false
+                db.putSetting("update.lastCheck", System.currentTimeMillis().toString())
             }
         }
     }
