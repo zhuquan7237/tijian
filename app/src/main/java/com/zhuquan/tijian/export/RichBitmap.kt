@@ -36,8 +36,7 @@ object RichBitmap {
         if (markdown.isBlank()) return@withContext null
 
         // 固定 CSS 视口宽度，避免受设备 DPR 影响导致字号与排版比例失真
-        val html = RichTextRenderer.html(ctx, Normalize.text(markdown), fontSize)
-            .replace("width=device-width", "width=$widthPx")
+        val html = RichTextRenderer.html(ctx, Normalize.text(markdown), fontSize, widthPx)
         val dialog = Dialog(ctx, android.R.style.Theme_Translucent_NoTitleBar)
         val web = WebView(ctx)
         var lastHeight = 0

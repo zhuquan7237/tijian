@@ -7,14 +7,9 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -70,6 +66,22 @@ fun AppRoot(vm: AppVm = viewModel()) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var showImport by remember { mutableStateOf(false) }
+    // 单层转场：先换内容，再用极短的淡入+上浮。避免两层同时渲染造成残影/测量错乱
+    var displayed by remember { mutableStateOf(vm.route) }
+    val alpha = remember { Animatable(1f) }
+    val rise = remember { Animatable(0f) }
+    val risePx = with(androidx.compose.ui.platform.LocalDensity.current) { 7.dp.toPx() }
+
+    LaunchedEffect(vm.route) {
+        if (vm.route == displayed) return@LaunchedEffect
+        displayed = vm.route
+        alpha.snapTo(0.88f)
+        rise.snapTo(5f)
+        kotlinx.coroutines.coroutineScope {
+            launch { alpha.animateTo(1f, tween(130, easing = FastOutSlowInEasing)) }
+            rise.animateTo(0f, tween(170, easing = FastOutSlowInEasing))
+        }
+    }
 
     val pickImages = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(9)
@@ -83,19 +95,14 @@ fun AppRoot(vm: AppVm = viewModel()) {
 
     Box(Modifier.fillMaxSize().background(Bg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f)) {
-                AnimatedContent(
-                    targetState = vm.route,
-                    transitionSpec = {
-                        val dir = if (vm.navForward) 1 else -1
-                        (slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { dir * it / 6 } +
-                            fadeIn(tween(200))) togetherWith
-                            (slideOutHorizontally(tween(260, easing = FastOutSlowInEasing)) { -dir * it / 6 } +
-                                fadeOut(tween(160)))
-                    },
-                    label = "route"
-                ) { r ->
-                    when (r) {
+            Box(
+                Modifier.weight(1f).graphicsLayer {
+                    this.alpha = alpha.value
+                    translationY = rise.value * risePx
+                }
+            ) {
+                run {
+                    when (displayed) {
                         is Route.Home -> HomeScreen(vm) { showImport = true }
                         is Route.Category -> CategoryScreen(vm)
                         is Route.Detail -> QuestionDetailScreen(vm)
@@ -109,9 +116,9 @@ fun AppRoot(vm: AppVm = viewModel()) {
                     }
                 }
             }
-            if (vm.route is Route.Home || vm.route is Route.Library || vm.route is Route.Settings) {
+            if (displayed is Route.Home || displayed is Route.Library || displayed is Route.Settings) {
                 BottomBar(
-                    route = vm.route,
+                    route = displayed,
                     onHome = { vm.home() },
                     onLibrary = { vm.replace(Route.Library); vm.refresh() },
                     onSettings = { vm.replace(Route.Settings); vm.refresh() }
@@ -119,7 +126,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
             }
         }
 
-        if (vm.route is Route.Home) {
+        if (displayed is Route.Home) {
             Box(
                 Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 104.dp)
                     .size(54.dp).clip(CircleShape).background(Ink)

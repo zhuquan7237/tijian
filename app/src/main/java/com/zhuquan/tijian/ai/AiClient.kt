@@ -125,7 +125,7 @@ class AiClient {
                             }))
                     }))
                     put("temperature", 0.1)
-                    put("max_output_tokens", 4000)
+                    put("max_output_tokens", 8000)
                 }
             } else {
                 JSONObject().apply {
@@ -142,7 +142,7 @@ class AiClient {
                                 }))
                         }))
                     put("temperature", 0.1)
-                    put("max_tokens", 4000)
+                    put("max_tokens", 8000)
                 }
             }
             val raw = call(cfg, body)
@@ -229,7 +229,7 @@ ${material.take(9000)}
         val body = if (cfg.protocol == "responses") {
             JSONObject().apply {
                 put("model", cfg.model); put("input", prompt)
-                put("temperature", 0.3); put("max_output_tokens", 4000)
+                put("temperature", 0.3); put("max_output_tokens", 8000)
             }
         } else {
             JSONObject().apply {
@@ -237,7 +237,7 @@ ${material.take(9000)}
                 put("messages", JSONArray()
                     .put(JSONObject().apply { put("role", "system"); put("content", SYSTEM) })
                     .put(JSONObject().apply { put("role", "user"); put("content", prompt) }))
-                put("temperature", 0.3); put("max_tokens", 4000)
+                put("temperature", 0.3); put("max_tokens", 8000)
             }
         }
         val raw = call(cfg, body)

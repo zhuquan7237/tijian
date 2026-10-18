@@ -28,11 +28,12 @@ object RichTextRenderer {
     @Volatile
     private var template: String? = null
 
-    fun html(context: Context, markdown: String, fontSize: Int): String {
+    fun html(context: Context, markdown: String, fontSize: Int, widthDp: Int = 360): String {
         val tpl = template ?: context.assets.open("richtext/renderer.html")
             .bufferedReader().use { it.readText() }.also { template = it }
         return tpl
             .replace("__FONTSIZE__", fontSize.toString())
+            .replace("__WIDTH__", widthDp.toString())
             .replace("__CONTENT__", JSONObject.quote(markdown))
     }
 }
@@ -48,8 +49,11 @@ fun RichText(
     val context = LocalContext.current
     val density = LocalDensity.current
     val height = remember(markdown) { mutableIntStateOf(0) }
-    val html = remember(markdown, fontSize) {
-        RichTextRenderer.html(context, Normalize.text(markdown), fontSize)
+    // 固定 CSS 视口宽度，避免部分 OEM WebView 按 980px 宽屏排版导致右侧被裁
+    val widthDp = (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp - 36)
+        .coerceAtLeast(240)
+    val html = remember(markdown, fontSize, widthDp) {
+        RichTextRenderer.html(context, Normalize.text(markdown), fontSize, widthDp)
     }
 
     val heightModifier = if (height.intValue > 0) {
@@ -68,6 +72,9 @@ fun RichText(
                     }
                 }
                 settings.javaScriptEnabled = true
+                settings.useWideViewPort = true
+                settings.loadWithOverviewMode = false
+                settings.textZoom = 100
                 settings.allowFileAccess = true
                 settings.allowContentAccess = false
                 settings.domStorageEnabled = false
@@ -96,6 +103,13 @@ fun RichText(
                         }
                     }
                 }, "AndroidRichText")
+                addOnLayoutChangeListener { v, l, t, r, b, ol, ot, or_, ob ->
+                    if (r - l != or_ - ol || b - t != ob - ot) {
+                        (v as? WebView)?.evaluateJavascript(
+                            "window.__report && window.__report()", null
+                        )
+                    }
+                }
                 tag = html
                 loadDataWithBaseURL(
                     "file:///android_asset/richtext/", html, "text/html", "utf-8", null

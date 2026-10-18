@@ -26,3 +26,5 @@ dbg*.db
 fix_*.py
 rt-*.png
 exp-p*.png
+frames/
+trans.mp4

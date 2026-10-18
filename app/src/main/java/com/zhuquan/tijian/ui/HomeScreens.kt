@@ -459,28 +459,42 @@ fun QuestionDetailScreen(vm: AppVm) {
                 ZoomableImage(File(question.imagePath))
                 Spacer(Modifier.height(14.dp))
             }
-            if (question.stem.isNotBlank()) {
-                val richStem = buildString {
+            // 题干 / 答案 / 解析合并为一个 WebView：只创建一次渲染器，切换和滚动都更稳
+            val body = buildString {
+                if (question.stem.isNotBlank()) {
                     append(question.stem)
-                    parseOptions(question.options).forEach { append(10.toChar()); append(10.toChar()); append(it) }
+                    parseOptions(question.options).forEach {
+                        append(10.toChar()); append(10.toChar()); append(it)
+                    }
                 }
-                RichText(richStem, fontSize = 15)
-            } else {
-                Text("（未识别题干，点右上角编辑补录）", fontSize = 12.sp, color = Muted)
+                if (question.answer.isNotBlank()) {
+                    append(10.toChar()); append(10.toChar())
+                    append("#### 答案"); append(10.toChar()); append(10.toChar())
+                    append(question.answer)
+                }
+                if (question.analysis.isNotBlank()) {
+                    append(10.toChar()); append(10.toChar())
+                    append("#### 解析"); append(10.toChar()); append(10.toChar())
+                    append(question.analysis)
+                }
             }
-            if (question.answer.isNotBlank()) {
-                Spacer(Modifier.height(16.dp))
-                Text("答案", fontSize = 10.sp, letterSpacing = 1.sp, color = Muted)
-                RichText(question.answer, modifier = Modifier.padding(top = 4.dp), fontSize = 14)
+            if (body.isBlank()) {
+                Text("（未识别题干，点右上角编辑补录）", fontSize = 12.sp, color = Muted)
+            } else {
+                RichText(body, fontSize = 16)
             }
             if (question.analysis.isNotBlank()) {
-                Spacer(Modifier.height(12.dp))
-                Text("解析", fontSize = 10.sp, letterSpacing = 1.sp, color = Muted)
-                RichText(question.analysis, modifier = Modifier.padding(top = 4.dp), fontSize = 13)
+                if (looksTruncated(question.analysis)) {
+                    Text(
+                        "这段解析可能被模型截断（公式或括号未闭合），可在右上角编辑补全，或重新识别。",
+                        fontSize = 11.sp, color = Color(0xFFA8453A),
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
             }
             Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("掌握度", fontSize = 10.sp, letterSpacing = 1.sp, color = Muted)
+                Text("掌握度", fontSize = 11.sp, letterSpacing = 1.sp, color = Ink2)
                 Spacer(Modifier.width(10.dp))
                 MasteryDots(question.mastery, 7)
                 Spacer(Modifier.weight(1f))
@@ -772,4 +786,16 @@ private fun OverviewCell(value: String, label: String, modifier: Modifier = Modi
         Text(value, fontSize = 19.sp, fontWeight = FontWeight.Medium, color = Ink)
         Text(label, fontSize = 10.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
     }
+}
+
+
+/** 粗判 AI 输出是否被截断：未闭合的 $ 或 \begin 环境、以冒号逗号结尾。 */
+private fun looksTruncated(text: String): Boolean {
+    val t = text.trim()
+    if (t.length < 8) return false
+    if (t.count { it == '$' } % 2 != 0) return true
+    val bs = 0x5C.toChar().toString()
+    if (t.contains(bs + "begin{") && !t.contains(bs + "end{")) return true
+    if (t.endsWith("：") || t.endsWith(":") || t.endsWith("，") || t.endsWith(",")) return true
+    return false
 }
