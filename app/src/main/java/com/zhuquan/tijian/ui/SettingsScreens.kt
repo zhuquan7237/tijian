@@ -8,6 +8,11 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -198,65 +203,163 @@ fun ProviderScreen(vm: AppVm) {
     var apiKey by remember { mutableStateOf(vm.provider.apiKey) }
     var model by remember { mutableStateOf(vm.provider.model) }
     var protocol by remember { mutableStateOf(vm.provider.protocol) }
+    var models by remember { mutableStateOf(vm.provider.models) }
+    var showPicker by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(false) }
+    var fetchError by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
     var testError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
+    fun cfg() = ProviderConfig(baseUrl, apiKey, model, protocol, models)
+
+    fun pull() {
+        if (baseUrl.isBlank()) { fetchError = "先填 Base URL"; return }
+        loading = true
+        fetchError = null
+        scope.launch {
+            try {
+                val list = vm.ai.listModels(cfg())
+                models = list
+                if (model.isBlank()) model = list.firstOrNull().orEmpty()
+            } catch (e: Exception) {
+                fetchError = e.message ?: "拉取失败"
+            } finally {
+                loading = false
+            }
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             title = "AI 接入",
+            subtitle = if (vm.provider.ready()) "当前 ${vm.provider.model}" else "填一个 OpenAI 兼容接口即可开始",
             onBack = { vm.back() },
             actions = {
-                Text("保存", fontSize = 12.5.sp, color = Accent, modifier = Modifier.clickableNoRipple {
-                    vm.saveProvider(ProviderConfig(baseUrl, apiKey, model, protocol))
-                    vm.back()
-                }.padding(8.dp))
+                Text(
+                    "保存", fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clickableNoRipple {
+                        vm.saveProvider(ProviderConfig(baseUrl, apiKey, model, protocol, models))
+                        vm.back()
+                    }.padding(8.dp)
+                )
             }
         )
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
+
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)
+        ) {
             Text(
-                "任何 OpenAI 兼容接口都可以。识别需要模型支持图片输入（vision）。",
-                fontSize = 11.sp, lineHeight = 18.sp, color = Muted
+                "接入任意 OpenAI 兼容服务。识别需要模型支持图片输入；分类、知识点整理会复用同一个模型。",
+                fontSize = 12.sp, lineHeight = 19.sp, color = Muted
             )
-            Spacer(Modifier.height(12.dp))
 
-            OutlinedTextField(
-                value = baseUrl, onValueChange = { baseUrl = it },
-                label = { Text("Base URL", fontSize = 11.sp) },
-                placeholder = { Text("https://api.example.com/v1", fontSize = 12.sp, color = Muted) },
-                singleLine = true, modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(9.dp))
-            OutlinedTextField(
-                value = apiKey, onValueChange = { apiKey = it },
-                label = { Text("API Key", fontSize = 11.sp) },
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true, modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(9.dp))
-            OutlinedTextField(
-                value = model, onValueChange = { model = it },
-                label = { Text("模型", fontSize = 11.sp) },
-                placeholder = { Text("例如 gpt-5.6-luna / gemini-3-flash", fontSize = 12.sp, color = Muted) },
-                singleLine = true, modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(12.dp))
-            Text("协议", fontSize = 10.sp, color = Muted)
-            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TjChip("chat/completions", protocol == "chat") { protocol = "chat" }
-                TjChip("responses", protocol == "responses") { protocol = "responses" }
+            SectionLabel("服务商")
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                PRESETS.forEach { (name, url) ->
+                    TjChip(name, selected = baseUrl.trim() == url) {
+                        baseUrl = url
+                        if (protocol.isBlank()) protocol = "chat"
+                    }
+                }
             }
-            Spacer(Modifier.height(16.dp))
 
+            Spacer(Modifier.height(16.dp))
+            CardBox(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    FieldLabel("BASE URL")
+                    OutlinedTextField(
+                        value = baseUrl, onValueChange = { baseUrl = it },
+                        placeholder = { Text("https://api.example.com/v1", fontSize = 12.5.sp, color = Muted) },
+                        singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    FieldLabel("API KEY")
+                    OutlinedTextField(
+                        value = apiKey, onValueChange = { apiKey = it },
+                        placeholder = { Text("sk-…", fontSize = 12.5.sp, color = Muted) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    FieldLabel("模型")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = model, onValueChange = { model = it },
+                            placeholder = { Text("点右侧拉取，或手动输入", fontSize = 12.sp, color = Muted) },
+                            singleLine = true, modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Box(
+                            Modifier.height(56.dp).clip(RoundedCornerShape(12.dp)).background(Accent)
+                                .clickableNoRipple {
+                                    if (models.isEmpty()) { showPicker = true; pull() }
+                                    else showPicker = true
+                                }
+                                .padding(horizontal = 14.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (loading) CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                            else Text("拉取", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth().padding(top = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            when {
+                                loading -> "正在请求 /models…"
+                                models.isEmpty() -> "还没有拉取过模型"
+                                else -> "已拉取 ${models.size} 个模型"
+                            },
+                            fontSize = 10.5.sp, color = Muted
+                        )
+                        Spacer(Modifier.weight(1f))
+                        if (models.isNotEmpty()) {
+                            Text(
+                                "浏览", fontSize = 10.5.sp, color = Accent,
+                                modifier = Modifier.clickableNoRipple { showPicker = true }.padding(4.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+                    FieldLabel("协议")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TjChip("chat/completions", protocol == "chat") { protocol = "chat" }
+                        TjChip("responses", protocol == "responses") { protocol = "responses" }
+                    }
+                }
+            }
+
+            fetchError?.let {
+                Spacer(Modifier.height(12.dp))
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFFFBEDE9))
+                        .padding(12.dp)
+                ) {
+                    Text(it, fontSize = 11.sp, lineHeight = 17.sp, color = Color(0xFF8E3B26))
+                    Text(
+                        "重试", fontSize = 11.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickableNoRipple { pull() }.padding(top = 6.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
             Box(
-                Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(11.dp))
-                    .background(Color(0xFFF4F4EF)).clickableNoRipple {
+                Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp)).background(SurfaceAlt)
+                    .clickableNoRipple {
                         if (!testing) {
                             testing = true; testError = null; testResult = null
                             scope.launch {
                                 try {
-                                    testResult = vm.testProvider(ProviderConfig(baseUrl, apiKey, model, protocol))
+                                    testResult = vm.testProvider(cfg())
                                 } catch (e: Exception) {
                                     testError = e.message ?: "连接失败"
                                 } finally { testing = false }
@@ -267,30 +370,124 @@ fun ProviderScreen(vm: AppVm) {
             ) {
                 if (testing) Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(15.dp), color = Accent, strokeWidth = 2.dp)
-                    Text("测试中…", fontSize = 11.5.sp, color = Ink2, modifier = Modifier.padding(start = 8.dp))
-                } else Text("测试连接", fontSize = 12.sp, color = Ink2)
+                    Text("测试中…", fontSize = 12.sp, color = Ink2, modifier = Modifier.padding(start = 8.dp))
+                } else Text("测试连接（用当前模型发一句话）", fontSize = 12.sp, color = Ink2)
             }
             testResult?.let {
                 Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.CheckCircle, null, tint = Green, modifier = Modifier.size(14.dp))
-                    Text(it, fontSize = 10.5.sp, color = Green, modifier = Modifier.padding(start = 5.dp))
+                    Text(it, fontSize = 11.sp, color = Green, modifier = Modifier.padding(start = 5.dp))
                 }
             }
             testError?.let {
-                Text(it, fontSize = 10.5.sp, color = Red, lineHeight = 16.sp, modifier = Modifier.padding(top = 10.dp))
+                Text(it, fontSize = 11.sp, lineHeight = 17.sp, color = Red, modifier = Modifier.padding(top = 10.dp))
             }
 
-            Spacer(Modifier.height(22.dp))
-            Text("说明", fontSize = 10.sp, letterSpacing = 1.sp, color = Muted)
-            Spacer(Modifier.height(6.dp))
+            SectionLabel("说明")
             Text(
-                "· Base URL 一般以 /v1 结尾，App 会自动补 /chat/completions 或 /responses。\n" +
-                    "· 分类与知识点整理会走同一个模型；想省钱可以在以后拆成两个角色。\n" +
-                    "· API Key 保存在本机数据库，仅用于你配置的接口。\n" +
-                    "· 识别失败时原图会保留，可稍后手动补录或换模型重试。",
-                fontSize = 10.5.sp, lineHeight = 18.sp, color = Muted
+                "· 拉取模型走 GET {Base URL}/models，和你填的地址保持同源。\n" +
+                    "· 拉取失败通常是 Key 无效、地址少了 /v1，或中转没开放 /models。\n" +
+                    "· API Key 只保存在本机数据库，不上传。",
+                fontSize = 11.sp, lineHeight = 18.sp, color = Muted
             )
-            Spacer(Modifier.height(60.dp))
+            Spacer(Modifier.height(50.dp))
+        }
+    }
+
+    if (showPicker) {
+        ModelPickerSheet(
+            models = models, current = model, loading = loading, error = fetchError,
+            onRefresh = { pull() },
+            onDismiss = { showPicker = false },
+            onPick = { model = it; showPicker = false }
+        )
+    }
+}
+
+private val PRESETS = listOf(
+    "自定义" to "",
+    "OpenAI" to "https://api.openai.com/v1",
+    "DeepSeek" to "https://api.deepseek.com/v1",
+    "OpenRouter" to "https://openrouter.ai/api/v1",
+    "硅基流动" to "https://api.siliconflow.cn/v1",
+    "阿里百炼" to "https://dashscope.aliyuncs.com/compatible-mode/v1",
+)
+
+@Composable
+private fun FieldLabel(text: String) {
+    Text(
+        text, fontSize = 9.5.sp, letterSpacing = 1.2.sp, color = Muted, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(bottom = 6.dp)
+    )
+}
+
+@Composable
+private fun ModelPickerSheet(
+    models: List<String>,
+    current: String,
+    loading: Boolean,
+    error: String?,
+    onRefresh: () -> Unit,
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    val filtered = models.filter { it.contains(query.trim(), ignoreCase = true) }
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = CardBg) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("选择模型", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                    Text(
+                        if (models.isEmpty()) "从 /models 拉取" else "共 ${models.size} 个 · 点击选用",
+                        fontSize = 11.sp, color = Muted, modifier = Modifier.padding(top = 3.dp)
+                    )
+                }
+                Text(
+                    if (loading) "拉取中…" else "刷新", fontSize = 12.sp, color = Accent,
+                    modifier = Modifier.clickableNoRipple { if (!loading) onRefresh() }.padding(8.dp)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = query, onValueChange = { query = it },
+                placeholder = { Text("搜索模型", fontSize = 12.sp, color = Muted) },
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            when {
+                loading && models.isEmpty() -> Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(Modifier.size(26.dp), color = Accent, strokeWidth = 2.dp)
+                }
+                error != null && models.isEmpty() -> Column(Modifier.fillMaxWidth().padding(vertical = 28.dp)) {
+                    Text(error, fontSize = 11.5.sp, lineHeight = 18.sp, color = Red)
+                    Text(
+                        "重试", fontSize = 12.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickableNoRipple(onRefresh).padding(top = 10.dp)
+                    )
+                }
+                filtered.isEmpty() -> Text(
+                    if (models.isEmpty()) "还没有拉取到模型" else "没有匹配的模型",
+                    fontSize = 12.sp, color = Muted, modifier = Modifier.padding(vertical = 28.dp)
+                )
+                else -> LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                    items(filtered, key = { it }) { m ->
+                        Row(
+                            Modifier.fillMaxWidth().clickableNoRipple { onPick(m) }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(m, fontSize = 12.5.sp, color = Ink, maxLines = 1)
+                                if (m == current) Text("当前使用", fontSize = 9.5.sp, color = Accent, modifier = Modifier.padding(top = 2.dp))
+                            }
+                            if (m == current) Icon(Icons.Rounded.CheckCircle, null, tint = Accent, modifier = Modifier.size(17.dp))
+                        }
+                        HorizontalDivider(color = Color(0xFFF2EDE3), thickness = 1.dp)
+                    }
+                }
+            }
         }
     }
 }

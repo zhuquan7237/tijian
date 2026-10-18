@@ -60,6 +60,7 @@ data class ProviderConfig(
     val apiKey: String = "",
     val model: String = "",
     val protocol: String = "chat", // chat | responses
+    val models: List<String> = emptyList(), // 上次从 /models 拉到的列表
 ) {
     fun ready() = baseUrl.isNotBlank() && model.isNotBlank()
 }

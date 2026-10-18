@@ -214,6 +214,12 @@ class Db(context: Context) : SQLiteOpenHelper(context, "tijian.db", null, 1) {
             "q.next_review_at ASC LIMIT $limit"
         )
 
+    fun hasStem(stem: String): Boolean {
+        val key = stem.trim().take(80)
+        if (key.isBlank()) return false
+        return scalar("SELECT COUNT(*) FROM question WHERE deleted_at IS NULL AND substr(stem,1,80)='${key.replace("'", "''")}'") > 0
+    }
+
     fun question(id: String): QuestionRow? =
         queryQuestions("q.id=?", arrayOf(id), "q.created_at DESC").firstOrNull()
 
@@ -400,6 +406,10 @@ class Db(context: Context) : SQLiteOpenHelper(context, "tijian.db", null, 1) {
         apiKey = getSetting("ai.apiKey") ?: "",
         model = getSetting("ai.model") ?: "",
         protocol = getSetting("ai.protocol") ?: "chat",
+        models = runCatching {
+            val arr = org.json.JSONArray(getSetting("ai.models") ?: "[]")
+            (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() }
+        }.getOrElse { emptyList() },
     )
 
     fun saveProvider(cfg: ProviderConfig) {
@@ -407,6 +417,7 @@ class Db(context: Context) : SQLiteOpenHelper(context, "tijian.db", null, 1) {
         putSetting("ai.apiKey", cfg.apiKey.trim())
         putSetting("ai.model", cfg.model.trim())
         putSetting("ai.protocol", cfg.protocol)
+        putSetting("ai.models", org.json.JSONArray(cfg.models).toString())
     }
 
     // ---------- helpers ----------

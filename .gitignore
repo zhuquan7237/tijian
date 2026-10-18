@@ -17,3 +17,7 @@ ui.xml
 *.pdf
 dl.apk
 final-*.png
+
+/*.png
+/*.jpg
+/*.pdf

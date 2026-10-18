@@ -41,6 +41,51 @@ class AiClient {
 
     // ---------------- public API ----------------
 
+    suspend fun listModels(cfg: ProviderConfig): List<String> = withContext(Dispatchers.IO) {
+        if (cfg.baseUrl.isBlank()) throw AiException("先填 Base URL")
+        val url = normalizeBase(cfg.baseUrl) + "/models"
+        val builder = Request.Builder().url(url).get()
+        if (cfg.apiKey.isNotBlank()) builder.header("Authorization", "Bearer ${cfg.apiKey}")
+        val resp = try {
+            client.newCall(builder.build()).execute()
+        } catch (e: Exception) {
+            throw AiException("网络错误：${e.message ?: e.javaClass.simpleName}")
+        }
+        resp.use {
+            val text = it.body?.string().orEmpty()
+            if (!it.isSuccessful) {
+                val msg = runCatching {
+                    JSONObject(text).optJSONObject("error")?.optString("message")
+                }.getOrNull()
+                throw AiException("HTTP ${it.code}：${msg ?: text.take(200)}")
+            }
+            val obj = runCatching { JSONObject(text) }.getOrElse { throw AiException("返回不是 JSON") }
+            val arr = obj.optJSONArray("data") ?: obj.optJSONArray("models")
+            val out = ArrayList<String>()
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    val item = arr.optJSONObject(i)
+                    val id = item?.optString("id")?.takeIf { it.isNotBlank() }
+                        ?: item?.optString("name")?.takeIf { it.isNotBlank() }
+                        ?: arr.optString(i).takeIf { it.isNotBlank() }
+                    if (id != null) out.add(id)
+                }
+            } else {
+                obj.optJSONArray("models")?.let { a ->
+                    for (i in 0 until a.length()) a.optString(i).takeIf { it.isNotBlank() }?.let(out::add)
+                }
+            }
+            out.distinct().sorted()
+        }
+    }
+
+    private fun normalizeBase(raw: String): String {
+        var b = raw.trim().trimEnd('/')
+        if (b.endsWith("/chat/completions")) b = b.removeSuffix("/chat/completions")
+        if (b.endsWith("/responses")) b = b.removeSuffix("/responses")
+        return b
+    }
+
     suspend fun test(cfg: ProviderConfig): String = withContext(Dispatchers.IO) {
         val body = if (cfg.protocol == "responses") {
             JSONObject().apply {
@@ -228,7 +273,7 @@ ${material.take(9000)}
 
     private fun call(cfg: ProviderConfig, body: JSONObject): String {
         if (cfg.baseUrl.isBlank()) throw AiException("未配置 AI 接口")
-        val base = cfg.baseUrl.trimEnd('/')
+        val base = normalizeBase(cfg.baseUrl)
         val url = when {
             base.endsWith("/chat/completions") || base.endsWith("/responses") -> base
             cfg.protocol == "responses" -> "$base/responses"

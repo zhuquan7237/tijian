@@ -123,6 +123,18 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
+        if self.path.rstrip('/').endswith('/models'):
+            data = json.dumps({"object": "list", "data": [
+                {"id": "mock-vision", "object": "model"},
+                {"id": "mock-fast", "object": "model"},
+                {"id": "mock-reasoning", "object": "model"},
+            ]}, ensure_ascii=False).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b'{"ok":true}')

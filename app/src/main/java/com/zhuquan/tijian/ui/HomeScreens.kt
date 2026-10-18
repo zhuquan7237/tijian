@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -53,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -117,7 +119,7 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
         }
 
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 96.dp)
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 150.dp)
         ) {
             ReviewHero(vm.stats.due, vm.stats.total, vm.stats.mastered) { vm.startReview() }
 
@@ -135,16 +137,35 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
             } else {
                 val list = vm.categories.filter { it.id != "uncat" || it.count > 0 }
                 list.chunked(2).forEach { pair ->
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         pair.forEach { cat ->
                             CategoryCard(cat, Modifier.weight(1f)) { vm.go(Route.Category(cat.id)) }
                         }
                         if (pair.size == 1) Spacer(Modifier.weight(1f))
                     }
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(12.dp))
                 }
                 if (list.isEmpty()) {
                     EmptyState("还没有分类", "导入错题后会自动生成")
+                }
+
+                val recent by produceState<List<QuestionRow>>(emptyList(), vm.stats.total, vm.stats.due) {
+                    value = withContext(Dispatchers.IO) { vm.db.questions().take(8) }
+                }
+                if (recent.isNotEmpty()) {
+                    SectionLabel("最近导入", Modifier.padding(horizontal = 18.dp)) {
+                        Text("共 ${vm.stats.total} 道", fontSize = 11.sp, color = Muted)
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                            .padding(start = 18.dp, end = 96.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        recent.forEach { q ->
+                            RecentCard(q) { vm.go(Route.Detail(q.id)) }
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
                 }
             }
         }
@@ -155,9 +176,9 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
 private fun ReviewHero(due: Int, total: Int, mastered: Int, onClick: () -> Unit) {
     Box(
         Modifier.padding(horizontal = 18.dp).fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp)).background(Ink)
+            .clip(RoundedCornerShape(22.dp)).background(Ink)
     ) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
                     Text("今日复习", fontSize = 10.sp, letterSpacing = 1.2.sp, color = Color(0x8CFFFFFF))
@@ -167,12 +188,12 @@ private fun ReviewHero(due: Int, total: Int, mastered: Int, onClick: () -> Unit)
                     )
                 }
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text("$due", fontSize = 38.sp, fontWeight = FontWeight.Light, color = Color.White)
-                    Text("题", fontSize = 12.sp, color = Color(0x80FFFFFF), modifier = Modifier.padding(bottom = 6.dp, start = 4.dp))
+                    Text("$due", fontSize = 44.sp, fontWeight = FontWeight.Light, color = Color.White, letterSpacing = (-1).sp)
+                    Text("题", fontSize = 12.sp, color = Color(0x80FFFFFF), modifier = Modifier.padding(bottom = 8.dp, start = 5.dp))
                 }
             }
             Spacer(Modifier.height(14.dp))
-            Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF2C2C36))) {
+            Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF3A3833))) {
                 Box(
                     Modifier.fillMaxWidth(if (total == 0) 0f else (1f - due.toFloat() / total).coerceIn(0f, 1f))
                         .height(3.dp).background(Color(0xFF8E9BFF))
@@ -183,9 +204,9 @@ private fun ReviewHero(due: Int, total: Int, mastered: Int, onClick: () -> Unit)
                 Text("共 $total 道 · 已掌握 $mastered", fontSize = 11.sp, color = Color(0x99FFFFFF))
                 Spacer(Modifier.weight(1f))
                 Box(
-                    Modifier.clip(RoundedCornerShape(999.dp)).background(Color.White)
-                        .clickableNoRipple(onClick).padding(horizontal = 14.dp, vertical = 7.dp)
-                ) { Text(if (due > 0) "开始复习" else "随便看看", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Ink) }
+                    Modifier.clip(RoundedCornerShape(999.dp)).background(Accent)
+                        .clickableNoRipple(onClick).padding(horizontal = 16.dp, vertical = 8.dp)
+                ) { Text(if (due > 0) "开始复习" else "随便看看", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White) }
             }
         }
     }
@@ -201,27 +222,27 @@ private fun CategoryCard(cat: CategoryRow, modifier: Modifier = Modifier, onClic
             .clickableNoRipple(onClick)
     ) {
         Box(
-            Modifier.fillMaxWidth().height(58.dp)
+            Modifier.fillMaxWidth().height(76.dp)
                 .background(Brush.linearGradient(listOf(base, base.copy(alpha = 0.45f))))
         ) {
-            Text(glyph, fontSize = 36.sp, color = Color(0x33141418), modifier = Modifier.align(Alignment.CenterStart).padding(start = 14.dp))
+            Text(glyph, fontSize = 42.sp, color = Color(0x2E141418), modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
             Text("${cat.count}", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0x73141418),
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 11.dp, bottom = 8.dp))
             if (cat.status == "pending") {
                 Box(
-                    Modifier.align(Alignment.TopStart).padding(start = 9.dp, top = 8.dp)
+                    Modifier.align(Alignment.TopStart).padding(start = 10.dp, top = 10.dp)
                         .clip(RoundedCornerShape(4.dp)).background(AccentSoft)
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) { Text("AI 新建", fontSize = 9.sp, color = Accent, fontWeight = FontWeight.SemiBold) }
             }
         }
-        Column(Modifier.padding(start = 11.dp, end = 11.dp, top = 8.dp, bottom = 10.dp)) {
-            Text(cat.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("已掌握 ${cat.mastered} / ${cat.count}", fontSize = 10.5.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
-            Box(Modifier.fillMaxWidth().padding(top = 6.dp).height(2.dp).clip(RoundedCornerShape(1.dp)).background(Color(0xFFEEEEE9))) {
+        Column(Modifier.padding(start = 13.dp, end = 13.dp, top = 10.dp, bottom = 13.dp)) {
+            Text(cat.name, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("已掌握 ${cat.mastered} / ${cat.count}", fontSize = 11.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
+            Box(Modifier.fillMaxWidth().padding(top = 8.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFF0EBE0))) {
                 Box(
                     Modifier.fillMaxWidth(if (cat.count == 0) 0f else cat.mastered.toFloat() / cat.count)
-                        .height(2.dp).background(Green.copy(alpha = 0.75f))
+                        .height(3.dp).background(Green.copy(alpha = 0.8f))
                 )
             }
         }
@@ -299,11 +320,12 @@ fun CategoryScreen(vm: AppVm) {
                     Text("知识点", fontSize = 9.5.sp, letterSpacing = 1.sp, color = Muted, modifier = Modifier.weight(1f))
                     Text("掌握", fontSize = 9.5.sp, letterSpacing = 1.sp, color = Muted, modifier = Modifier.width(44.dp))
                 }
-                LazyColumn(Modifier.heightIn(max = 460.dp)) {
+                val tableHeight = ((rows.size * 68 + 40).coerceIn(96, 460)).dp
+                LazyColumn(Modifier.height(tableHeight)) {
                     items(rows, key = { it.id }) { q ->
                         val isSel = selected.value.contains(q.id)
                         Row(
-                            Modifier.fillMaxWidth().clickableNoRipple {
+                            Modifier.fillMaxWidth().height(68.dp).clickableNoRipple {
                                 if (selecting) {
                                     selected.value = if (isSel) selected.value - q.id else selected.value + q.id
                                 } else vm.go(Route.Detail(q.id))
@@ -314,7 +336,7 @@ fun CategoryScreen(vm: AppVm) {
                                 if (selecting) {
                                     Checkbox(checked = isSel, onCheckedChange = null, modifier = Modifier.size(20.dp))
                                 } else {
-                                    Thumb(q.imagePath, Modifier.width(38.dp).height(46.dp))
+                                    Thumb(q.imagePath, Modifier.width(44.dp).height(54.dp))
                                 }
                             }
                             Text(q.type.ifBlank { "—" }, fontSize = 11.5.sp, color = Ink2, modifier = Modifier.width(70.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -331,6 +353,36 @@ fun CategoryScreen(vm: AppVm) {
                     }
                 }
             }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        CardBox(Modifier.padding(horizontal = 18.dp).fillMaxWidth()) {
+            Row(Modifier.padding(vertical = 15.dp)) {
+                OverviewCell("${rows.size}", "本类题目", Modifier.weight(1f))
+                OverviewCell("${rows.count { it.mastery >= 4 }}", "已掌握", Modifier.weight(1f))
+                OverviewCell("${rows.count { it.nextReviewAt in 1..System.currentTimeMillis() }}", "待复习", Modifier.weight(1f))
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Row(
+            Modifier.padding(horizontal = 18.dp).fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp)).background(Ink)
+                .clickableNoRipple { vm.startReviewFor(id) }
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("复习这组", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                Text(
+                    "${rows.count { it.mastery < 4 }} 道未掌握 · 约 ${maxOf(1, rows.size / 3)} 分钟",
+                    fontSize = 11.sp, color = Color(0x8CFFFFFF), modifier = Modifier.padding(top = 3.dp)
+                )
+            }
+            Box(
+                Modifier.clip(RoundedCornerShape(999.dp)).background(Color.White)
+                    .padding(horizontal = 14.dp, vertical = 7.dp)
+            ) { Text("开始", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Ink) }
         }
 
         Spacer(Modifier.weight(1f))
@@ -680,3 +732,40 @@ fun parseColor(hex: String): Color = try {
 } catch (e: Exception) { Color(0xFFE7EAF8) }
 
 fun dateStamp(): String = SimpleDateFormat("yyyyMMdd", Locale.CHINA).format(Date())
+
+
+@Composable
+private fun RecentCard(q: QuestionRow, onClick: () -> Unit) {
+    Column(
+        Modifier.width(122.dp).shadow(8.dp, RoundedCornerShape(16.dp), ambientColor = Color(0x10362A1C), spotColor = Color(0x10362A1C))
+            .clip(RoundedCornerShape(16.dp)).background(CardBg).clickableNoRipple(onClick)
+    ) {
+        Box(Modifier.fillMaxWidth().height(92.dp).background(SurfaceAlt)) {
+            if (q.imagePath != null) {
+                AsyncImage(
+                    model = File(q.imagePath), contentDescription = null,
+                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text("题", fontSize = 22.sp, color = Muted, modifier = Modifier.align(Alignment.Center))
+            }
+        }
+        Column(Modifier.padding(10.dp)) {
+            Text(
+                cleanMath(q.stem).ifBlank { "（无题干）" },
+                fontSize = 11.5.sp, lineHeight = 17.sp, color = Ink,
+                maxLines = 2, overflow = TextOverflow.Ellipsis
+            )
+            Text(q.categoryName, fontSize = 9.5.sp, color = Muted, modifier = Modifier.padding(top = 5.dp), maxLines = 1)
+        }
+    }
+}
+
+
+@Composable
+private fun OverviewCell(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, fontSize = 19.sp, fontWeight = FontWeight.Medium, color = Ink)
+        Text(label, fontSize = 10.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
+    }
+}

@@ -30,6 +30,7 @@ sealed interface Route {
     data class Category(val id: String) : Route
     data class Detail(val id: String) : Route
     data object Import : Route
+    data object Capture : Route
     data object Review : Route
     data class Doc(val id: String) : Route
     data object Provider : Route
@@ -67,6 +68,10 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     var importErrors by androidx.compose.runtime.mutableStateOf<List<String>>(emptyList())
         private set
     var pendingBatch by androidx.compose.runtime.mutableStateOf<String?>(null)
+        private set
+
+    /** 连拍工作台：拍一张回到这里，可继续拍，最后一起识别 */
+    var captureUris by androidx.compose.runtime.mutableStateOf<List<Uri>>(emptyList())
         private set
 
     var reviewQueue by androidx.compose.runtime.mutableStateOf<List<QuestionRow>>(emptyList())
@@ -130,6 +135,19 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     // ---------- import ----------
 
+    fun addCapture(uri: Uri) { captureUris = captureUris + uri }
+
+    fun removeCapture(uri: Uri) { captureUris = captureUris - uri }
+
+    fun clearCapture() { captureUris = emptyList() }
+
+    fun importCapture() {
+        val list = captureUris
+        if (list.isEmpty()) return
+        captureUris = emptyList()
+        importUris(list, "camera")
+    }
+
     fun importUris(uris: List<Uri>, source: String = "share") {
         if (uris.isEmpty() || importing) return
         viewModelScope.launch {
@@ -192,12 +210,21 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         if (list.isEmpty()) return
         viewModelScope.launch {
             busy = true; busyLabel = "正在入库"
+            var saved = 0
+            var skipped = 0
             withContext(Dispatchers.IO) {
+                val seen = HashSet<String>()
                 list.forEach { d ->
+                    val key = d.stem.trim().take(80)
+                    if (key.isNotBlank() && (!seen.add(key) || db.hasStem(key))) {
+                        skipped++
+                        return@forEach
+                    }
                     val cat = if (d.categoryName.isBlank()) "未分类" else d.categoryName
                     val catId = db.ensureCategory(cat)
                     val subject = db.category(catId)?.subject.orEmpty()
                     db.insertQuestion(d, catId, pendingBatch, subject)
+                    saved++
                 }
             }
             pending = emptyList()
@@ -205,7 +232,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             busy = false
             refresh()
             home()
-            toast = "已入库 ${list.size} 题"
+            toast = if (skipped > 0) "已入库 $saved 题 · 跳过 $skipped 道重复" else "已入库 $saved 题"
         }
     }
 
@@ -236,6 +263,19 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     fun startReview() {
         viewModelScope.launch(Dispatchers.IO) {
             val list = db.dueQuestions(40)
+            withContext(Dispatchers.Main) {
+                reviewQueue = list
+                reviewIndex = 0
+                revealAnswer = false
+                route = Route.Review
+            }
+        }
+    }
+
+    fun startReviewFor(categoryId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val all = db.questions(categoryId)
+            val list = all.filter { it.mastery < 4 }.ifEmpty { all }
             withContext(Dispatchers.Main) {
                 reviewQueue = list
                 reviewIndex = 0

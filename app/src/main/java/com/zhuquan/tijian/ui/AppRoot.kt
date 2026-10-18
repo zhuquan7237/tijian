@@ -71,19 +71,6 @@ fun AppRoot(vm: AppVm = viewModel()) {
         ActivityResultContracts.PickVisualMedia()
     ) { uri -> if (uri != null) vm.addManual(uri) }
 
-    var cameraUri by remember { mutableStateOf<Uri?>(null) }
-    val takePicture = rememberLauncherForActivityResult(
-        ActivityResultContracts.TakePicture()
-    ) { ok -> if (ok) cameraUri?.let { vm.importSingle(it, "camera") } }
-
-    fun launchCamera() {
-        val dir = File(ctx.cacheDir, "camera").apply { mkdirs() }
-        val f = File(dir, "camera_${System.currentTimeMillis()}.jpg")
-        val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", f)
-        cameraUri = uri
-        takePicture.launch(uri)
-    }
-
     BackHandler(enabled = vm.route != Route.Home) { if (!vm.back()) vm.home() }
 
     Box(Modifier.fillMaxSize().background(Bg).windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -94,6 +81,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
                     is Route.Category -> CategoryScreen(vm)
                     is Route.Detail -> QuestionDetailScreen(vm)
                     is Route.Import -> ImportScreen(vm)
+                    is Route.Capture -> CaptureScreen(vm)
                     is Route.Review -> ReviewScreen(vm)
                     is Route.Library -> LibraryScreen(vm)
                     is Route.Doc -> DocScreen(vm)
@@ -114,7 +102,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
         if (vm.route is Route.Home) {
             Box(
                 Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 104.dp)
-                    .size(54.dp).clip(CircleShape).background(Accent)
+                    .size(54.dp).clip(CircleShape).background(Ink)
                     .clickableNoRipple { showImport = true },
                 contentAlignment = Alignment.Center
             ) {
@@ -149,8 +137,10 @@ fun AppRoot(vm: AppVm = viewModel()) {
                     ImportOption(Icons.Rounded.PhotoLibrary, "从相册选择", "支持多选，原图会保留") {
                         showImport = false; pickImages.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     }
-                    ImportOption(Icons.Rounded.CameraAlt, "拍照", "系统相机，拍完直接识别") {
-                        showImport = false; launchCamera()
+                    ImportOption(Icons.Rounded.CameraAlt, "连续拍照", "拍一张回到这里，可接着拍多张") {
+                        showImport = false
+                        vm.clearCapture()
+                        vm.go(Route.Capture)
                     }
                     ImportOption(Icons.Rounded.EditNote, "手动录入", "只存图片，题干自己填") {
                         showImport = false

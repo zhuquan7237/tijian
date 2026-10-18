@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -33,17 +34,22 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-val Ink = Color(0xFF141418)
-val Ink2 = Color(0xFF3C3C42)
-val Muted = Color(0xFF8A8A90)
-val Line = Color(0xFFE7E7E1)
-val Bg = Color(0xFFFAFAF7)
-val CardBg = Color(0xFFFFFFFF)
-val Accent = Color(0xFF4457D6)
-val AccentSoft = Color(0xFFEEF0FC)
-val Green = Color(0xFF2E7D5B)
-val Amber = Color(0xFFB0741F)
-val Red = Color(0xFFC0453B)
+// 纸墨体系：暖象牙底 + 墨色字 + 赤陶强调
+val Bg = Color(0xFFF7F4EC)
+val CardBg = Color(0xFFFFFDF8)
+val SurfaceAlt = Color(0xFFF1ECE1)
+val Ink = Color(0xFF232220)
+val Ink2 = Color(0xFF4A463F)
+val Muted = Color(0xFF837C6E)
+val Line = Color(0xFFE6DFD2)
+val Accent = Color(0xFFB4553A)
+val AccentSoft = Color(0xFFF7E5DC)
+val Green = Color(0xFF4F7A5A)
+val Amber = Color(0xFFA9762F)
+val Red = Color(0xFFA8453A)
+
+val CardShape = RoundedCornerShape(20.dp)
+val SmallShape = RoundedCornerShape(12.dp)
 
 @Composable
 fun TijianTheme(content: @Composable () -> Unit) {
@@ -51,17 +57,39 @@ fun TijianTheme(content: @Composable () -> Unit) {
         colorScheme = lightColorScheme(
             primary = Accent,
             onPrimary = Color.White,
+            primaryContainer = AccentSoft,
+            onPrimaryContainer = Color(0xFF6E2E1C),
+            secondary = Green,
+            secondaryContainer = Color(0xFFE3EDE3),
             background = Bg,
+            onBackground = Ink,
             surface = CardBg,
             onSurface = Ink,
+            surfaceVariant = SurfaceAlt,
+            onSurfaceVariant = Muted,
             outline = Line,
-            secondary = Green,
+            outlineVariant = Line,
             error = Red,
         ),
         typography = Typography(
-            bodyLarge = Typography().bodyLarge.copy(fontFamily = FontFamily.SansSerif, color = Ink),
-            bodyMedium = Typography().bodyMedium.copy(fontFamily = FontFamily.SansSerif, color = Ink2),
-            titleLarge = Typography().titleLarge.copy(fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp),
+            displaySmall = Typography().displaySmall.copy(
+                fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.8).sp,
+            ),
+            headlineMedium = Typography().headlineMedium.copy(
+                fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp,
+            ),
+            titleLarge = Typography().titleLarge.copy(
+                fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp,
+            ),
+            bodyLarge = Typography().bodyLarge.copy(
+                fontFamily = FontFamily.SansSerif, fontSize = 15.sp, lineHeight = 25.sp,
+            ),
+            bodyMedium = Typography().bodyMedium.copy(
+                fontFamily = FontFamily.SansSerif, fontSize = 13.sp, lineHeight = 21.sp,
+            ),
+            labelSmall = Typography().labelSmall.copy(
+                fontFamily = FontFamily.SansSerif, fontSize = 10.sp, letterSpacing = 0.8.sp,
+            ),
         ),
         content = content
     )
@@ -75,18 +103,34 @@ fun TjTopBar(
     actions: @Composable () -> Unit = {},
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = if (onBack != null) 6.dp else 18.dp, end = 18.dp, top = 10.dp, bottom = 12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                start = if (onBack != null) 8.dp else 20.dp,
+                end = 20.dp,
+                top = if (onBack != null) 8.dp else 14.dp,
+                bottom = 14.dp
+            ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (onBack != null) {
             Box(
-                modifier = Modifier.size(38.dp).clip(CircleShape).clickableNoRipple(onBack),
+                modifier = Modifier.size(40.dp).clip(CircleShape).clickableNoRipple(onBack),
                 contentAlignment = Alignment.Center
-            ) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回", tint = Ink) }
+            ) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回", tint = Ink, modifier = Modifier.size(21.dp)) }
         }
         Column(Modifier.weight(1f)) {
-            Text(title, fontSize = if (onBack != null) 17.sp else 27.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (subtitle != null) Text(subtitle, fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 4.dp))
+            Text(
+                title,
+                fontSize = if (onBack != null) 18.sp else 31.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = if (onBack != null) (-0.2).sp else (-0.9).sp,
+                color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+            if (subtitle != null) Text(
+                subtitle, fontSize = 12.sp, lineHeight = 18.sp, color = Muted,
+                modifier = Modifier.padding(top = if (onBack != null) 4.dp else 6.dp)
+            )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) { actions() }
     }
@@ -101,19 +145,19 @@ fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier = this.clickable(
 @Composable
 fun IconCircle(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
     Box(
-        modifier = Modifier.size(34.dp).clip(CircleShape).background(CardBg)
+        modifier = Modifier.size(38.dp).clip(CircleShape).background(CardBg)
             .border(1.dp, Line, CircleShape).clickableNoRipple(onClick),
         contentAlignment = Alignment.Center
-    ) { Icon(icon, label, tint = Ink2, modifier = Modifier.size(17.dp)) }
+    ) { Icon(icon, label, tint = Ink2, modifier = Modifier.size(18.dp)) }
 }
 
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier, trailing: (@Composable () -> Unit)? = null) {
     Row(
-        modifier.fillMaxWidth().padding(top = 20.dp, bottom = 10.dp),
+        modifier.fillMaxWidth().padding(top = 24.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text, fontSize = 10.sp, letterSpacing = 1.2.sp, color = Muted, fontWeight = FontWeight.SemiBold)
+        Text(text, fontSize = 10.sp, letterSpacing = 1.6.sp, color = Muted, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.weight(1f))
         trailing?.invoke()
     }
@@ -123,29 +167,32 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, trailing: (@Compos
 fun TjChip(text: String, selected: Boolean = false, onClick: () -> Unit) {
     Box(
         Modifier.clip(RoundedCornerShape(999.dp))
-            .background(if (selected) Ink else Color.White)
-            .border(1.dp, if (selected) Ink else Line, RoundedCornerShape(999.dp))
+            .background(if (selected) AccentSoft else CardBg)
+            .border(1.dp, if (selected) Accent.copy(alpha = 0.35f) else Line, RoundedCornerShape(999.dp))
             .clickableNoRipple(onClick)
-            .padding(horizontal = 11.dp, vertical = 6.dp)
+            .padding(horizontal = 13.dp, vertical = 7.dp)
     ) {
-        Text(text, fontSize = 11.sp, color = if (selected) Color.White else Ink2, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal)
+        Text(text, fontSize = 11.5.sp, color = if (selected) Accent else Ink2, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
     }
 }
 
 @Composable
 fun CardBox(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Box(
-        modifier.clip(RoundedCornerShape(15.dp)).background(CardBg).border(1.dp, Line, RoundedCornerShape(15.dp))
+        modifier
+            .shadow(10.dp, CardShape, ambientColor = Color(0x14362A1C), spotColor = Color(0x14362A1C))
+            .clip(CardShape)
+            .background(CardBg)
     ) { content() }
 }
 
 @Composable
-fun MasteryDots(mastery: Int, size: Int = 5) {
-    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+fun MasteryDots(mastery: Int, size: Int = 6) {
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         repeat(5) { i ->
             Box(
                 Modifier.size(size.dp).clip(CircleShape)
-                    .background(if (i < mastery) Green else Color(0xFFDEDED8))
+                    .background(if (i < mastery) Green else Color(0xFFE2DCCE))
             )
         }
     }
@@ -154,12 +201,12 @@ fun MasteryDots(mastery: Int, size: Int = 5) {
 @Composable
 fun EmptyState(title: String, hint: String, action: (@Composable () -> Unit)? = null) {
     Column(
-        Modifier.fillMaxWidth().padding(vertical = 60.dp, horizontal = 24.dp),
+        Modifier.fillMaxWidth().padding(vertical = 56.dp, horizontal = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-        Text(hint, fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 6.dp))
-        if (action != null) { Spacer(Modifier.height(14.dp)); action() }
+        Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+        Text(hint, fontSize = 12.sp, lineHeight = 19.sp, color = Muted, modifier = Modifier.padding(top = 8.dp))
+        if (action != null) { Spacer(Modifier.height(18.dp)); action() }
     }
 }
 
@@ -183,5 +230,5 @@ fun parseOptions(json: String): List<String> = try {
 
 @Composable
 fun DividerSoft() {
-    Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF1F1EB)))
+    Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF0EBE0)))
 }
