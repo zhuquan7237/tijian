@@ -123,6 +123,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     }
 
     fun replace(next: Route) {
+        if (route == next) return
         navForward = true
         stack.clear()
         route = next
@@ -134,7 +135,12 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             route = stack.removeAt(stack.size - 1)
             return true
         }
-        return route != Route.Home
+        if (route != Route.Home) {
+            navForward = false
+            route = Route.Home
+            return true
+        }
+        return false
     }
 
     fun home() { navForward = false; stack.clear(); route = Route.Home }

@@ -9,6 +9,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -69,6 +71,11 @@ fun AppRoot(vm: AppVm = viewModel()) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var showImport by remember { mutableStateOf(false) }
+    val reducedMotion = android.provider.Settings.Global.getFloat(
+        ctx.contentResolver,
+        android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+        1f
+    ) == 0f
 
     val pickImages = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(9)
@@ -86,8 +93,9 @@ fun AppRoot(vm: AppVm = viewModel()) {
                 AnimatedContent(
                     targetState = vm.route,
                     transitionSpec = {
-                        pageTurnTransform(vm.navForward)
+                        pageTransition(initialState, targetState, vm.navForward, reducedMotion)
                     },
+                    contentKey = { it },
                     label = "page-turn"
                 ) { route ->
                     when (route) {
@@ -179,16 +187,53 @@ fun AppRoot(vm: AppVm = viewModel()) {
     }
 }
 
-private fun pageTurnTransform(forward: Boolean): ContentTransform {
-    val incoming = if (forward) {
-        slideInHorizontally(animationSpec = tween(260, easing = FastOutSlowInEasing), initialOffsetX = { it })
+private fun pageTransition(
+    from: Route,
+    to: Route,
+    isForward: Boolean,
+    reducedMotion: Boolean,
+): ContentTransform {
+    if (reducedMotion) return EnterTransition.None togetherWith ExitTransition.None
+    if (isPeerRoute(from) && isPeerRoute(to)) return peerFadeTransform()
+    return hierarchySlideTransform(isForward)
+}
+
+private fun isPeerRoute(route: Route): Boolean = route is Route.Home ||
+    route is Route.Library || route is Route.Settings
+
+private fun peerFadeTransform(): ContentTransform {
+    val incoming = androidx.compose.animation.fadeIn(
+        animationSpec = tween(140, easing = FastOutSlowInEasing),
+        initialAlpha = 0.96f
+    )
+    val outgoing = androidx.compose.animation.fadeOut(
+        animationSpec = tween(80, easing = FastOutSlowInEasing)
+    )
+    return incoming togetherWith outgoing
+}
+
+private fun hierarchySlideTransform(isForward: Boolean): ContentTransform {
+    val incoming = if (isForward) {
+        slideInHorizontally(
+            animationSpec = tween(250, easing = FastOutSlowInEasing),
+            initialOffsetX = { it }
+        )
     } else {
-        slideInHorizontally(animationSpec = tween(260, easing = FastOutSlowInEasing), initialOffsetX = { -it })
+        slideInHorizontally(
+            animationSpec = tween(230, easing = FastOutSlowInEasing),
+            initialOffsetX = { -it }
+        )
     }
-    val outgoing = if (forward) {
-        slideOutHorizontally(animationSpec = tween(260, easing = FastOutSlowInEasing), targetOffsetX = { -it / 3 })
+    val outgoing = if (isForward) {
+        slideOutHorizontally(
+            animationSpec = tween(250, easing = FastOutSlowInEasing),
+            targetOffsetX = { -it / 3 }
+        )
     } else {
-        slideOutHorizontally(animationSpec = tween(260, easing = FastOutSlowInEasing), targetOffsetX = { it / 3 })
+        slideOutHorizontally(
+            animationSpec = tween(230, easing = FastOutSlowInEasing),
+            targetOffsetX = { it / 3 }
+        )
     }
     return incoming togetherWith outgoing
 }
