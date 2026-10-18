@@ -87,3 +87,21 @@ fun colorFor(name: String): String {
     val palette = listOf("#E7EAF8", "#EDEAE1", "#E4EFE9", "#F2E7E3", "#E9E6F2", "#E8EEF2", "#F4EDE4")
     return palette[abs(name.hashCode()) % palette.size]
 }
+
+val SUBJECT_ROOTS = listOf("数学", "专业课", "英语", "政治", "其他")
+fun subjectRoot(subject: String): String = when (subject.trim()) {
+    "数学", "高等数学", "线性代数", "概率论" -> "数学"
+    "专业课", "物理", "化学", "生物", "计算机", "数据结构" -> "专业课"
+    "英语", "英文" -> "英语"
+    "政治", "思想政治" -> "政治"
+    else -> "其他"
+}
+fun CategoryRow.subjectGroup(): String = subjectRoot(subject.ifBlank {
+    when {
+        listOf("数学", "函数", "极限", "导数", "积分", "代数", "几何", "概率", "数列", "矩阵").any { name.contains(it) } -> "数学"
+        listOf("英语", "词汇", "语法", "英文").any { name.contains(it) } -> "英语"
+        listOf("政治", "马原", "毛概", "思修").any { name.contains(it) } -> "政治"
+        else -> "其他"
+    }
+})
+fun CategoryRow.fullName(): String = subjectGroup() + "/" + name

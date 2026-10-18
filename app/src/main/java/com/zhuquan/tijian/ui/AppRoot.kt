@@ -7,13 +7,11 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.ContentTransform
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -46,7 +44,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,14 +69,6 @@ import java.io.File
 fun AppRoot(vm: AppVm = viewModel()) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val pageStates = rememberSaveableStateHolder()
-    val savedPages = remember { mutableMapOf<String, Route>() }
-    LaunchedEffect(vm.route) {
-        savedPages.filterValues { !vm.retainsPage(it) }.keys.toList().forEach { key ->
-            pageStates.removeState(key)
-            savedPages.remove(key)
-        }
-    }
     var showImport by remember { mutableStateOf(false) }
     val reducedMotion = android.provider.Settings.Global.getFloat(
         ctx.contentResolver,
@@ -89,7 +78,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
 
     val pickImages = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(9)
-    ) { uris -> if (uris.isNotEmpty()) vm.importUris(uris) }
+    ) { uris -> if (uris.isNotEmpty()) { vm.clearCapture(); uris.forEach { vm.addCapture(it) }; vm.go(Route.Capture) } }
 
     val pickOne = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -98,57 +87,83 @@ fun AppRoot(vm: AppVm = viewModel()) {
     BackHandler(enabled = vm.route != Route.Home) { if (!vm.back()) vm.home() }
 
     Box(Modifier.fillMaxSize().background(Bg).windowInsetsPadding(WindowInsets.safeDrawing)) {
-        Column(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f)) {
-                AnimatedContent(
-                    modifier = Modifier.fillMaxSize(),
-                    targetState = vm.route,
-                    transitionSpec = {
-                        pageTransition(initialState, targetState, vm.navForward, reducedMotion)
-                    },
-                    contentKey = { it },
-                    label = "page-turn"
-                ) { route ->
-                    // Each animated page paints an opaque surface; transparent
-                    // roots otherwise expose the outgoing text underneath it.
-                    val stateKey = route.toString()
-                    DisposableEffect(stateKey) {
-                        savedPages[stateKey] = route
-                        onDispose {
-                            if (!vm.retainsPage(route)) {
-                                pageStates.removeState(stateKey)
-                                savedPages.remove(stateKey)
-                            }
-                        }
-                    }
-                    pageStates.SaveableStateProvider(stateKey) {
-                        Box(Modifier.fillMaxSize().background(Bg)) {
-                            when (route) {
-                                is Route.Home -> HomeScreen(vm) { showImport = true }
-                                is Route.Category -> CategoryScreen(vm, route)
-                                is Route.Detail -> QuestionDetailScreen(vm, route)
-                                is Route.Import -> ImportScreen(vm)
-                                is Route.Capture -> CaptureScreen(vm)
-                                is Route.Review -> ReviewScreen(vm)
-                                is Route.Library -> LibraryScreen(vm)
-                                is Route.Doc -> DocScreen(vm, route)
-                                is Route.Settings -> SettingsScreen(vm)
-                                is Route.Provider -> ProviderScreen(vm)
-                            }
-                        }
-                    }
-                }
+        // Keep live page compositions: returning must not recreate WebViews or
+        // briefly show their empty initial layout. Pages outside the stack are
+        // removed only after their exit animation completes.
+        val pages = remember { androidx.compose.runtime.mutableStateMapOf<Route, Int>() }
+        if (!pages.containsKey(vm.route)) pages[vm.route] = vm.navigationDepth()
+        var visualRoute by remember { mutableStateOf(vm.route) }
+        if (vm.canDisplay(vm.route)) visualRoute = vm.route
+        val transition = updateTransition(visualRoute, label = "navigation")
+        LaunchedEffect(vm.route, transition.currentState, transition.targetState, transition.isRunning) {
+            if (!transition.isRunning && transition.currentState == transition.targetState) {
+                pages.keys.toList().filter { !vm.retainsPage(it) }.forEach { pages.remove(it); vm.forgetPage(it) }
             }
-            if (vm.route is Route.Home || vm.route is Route.Library || vm.route is Route.Settings) {
-                BottomBar(
-                    route = vm.route,
-                    onHome = { vm.home() },
-                    onLibrary = { vm.replace(Route.Library); vm.refresh() },
-                    onSettings = { vm.replace(Route.Settings); vm.refresh() }
-                )
+        }
+        LaunchedEffect(vm.route, visualRoute, transition.isRunning, transition.currentState) {
+            vm.navigating = vm.route != visualRoute || transition.isRunning || transition.currentState != visualRoute
+        }
+        val peerChange = isPeerRoute(transition.currentState) && isPeerRoute(transition.targetState)
+        Box(Modifier.fillMaxSize()) {
+        pages.toMap().forEach { (route, depth) ->
+        androidx.compose.runtime.key(route) {
+            val offset by transition.animateFloat(
+                transitionSpec = { tween(if (reducedMotion || peerChange) 0 else if (vm.navForward) 250 else 230, easing = FastOutSlowInEasing) },
+                label = "page-position"
+            ) { target -> if (target == route || peerChange) 0f else if (depth < (pages[target] ?: 0)) -0.3f else 1f }
+            val alpha by transition.animateFloat(
+                transitionSpec = { tween(if (reducedMotion) 0 else if (peerChange) 140 else 0) }, label = "peer-opacity"
+            ) { target -> if (target == route || !peerChange) 1f else 0.96f }
+            val active = route == transition.currentState || route == transition.targetState
+            val front = if (peerChange || vm.navForward) route == transition.targetState else route == transition.currentState
+            Box(Modifier.fillMaxSize().zIndex(if (!active) -2f else if (front) 1f else 0f)
+                .graphicsLayer {
+                    translationX = if (active) size.width * offset else size.width * 2
+                    this.alpha = if (active) 1f else 0f
+                    clip = true
+                }.then(if (!active) Modifier.clearAndSetSemantics {} else Modifier).background(Bg)) {
+                Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1f).graphicsLayer { this.alpha = if (peerChange) alpha else 1f }) {
+                        when (route) {
+                            is Route.Home -> HomeScreen(vm) { showImport = true }
+                            is Route.Subject -> SubjectScreen(vm, route)
+                            is Route.Category -> CategoryScreen(vm, route)
+                            is Route.Detail -> QuestionDetailScreen(vm, route)
+                            is Route.Import -> ImportScreen(vm)
+                            is Route.Capture -> CaptureScreen(vm)
+                            is Route.Review -> ReviewScreen(vm)
+                            is Route.Library -> LibraryScreen(vm)
+                            is Route.Doc -> DocScreen(vm, route)
+                            is Route.Settings -> SettingsScreen(vm)
+                            is Route.Provider -> ProviderScreen(vm)
+                        }
+                    }
+                    if (isPeerRoute(route) && peerChange) Spacer(Modifier.height(86.dp))
+                    else if (isPeerRoute(route)) BottomBar(route,
+                        onHome = { vm.home() },
+                        onLibrary = { vm.replace(Route.Library); vm.refresh() },
+                        onSettings = { vm.replace(Route.Settings); vm.refresh() })
+                }
             }
         }
 
+        }
+        }
+        // A single stationary bar for peer changes; the page surface stays opaque
+        // while only incoming content fades, so outgoing text cannot bleed through.
+        if (peerChange) Box(Modifier.align(Alignment.BottomCenter)) {
+            BottomBar(visualRoute, onHome = { vm.home() },
+                onLibrary = { vm.replace(Route.Library); vm.refresh() },
+                onSettings = { vm.replace(Route.Settings); vm.refresh() })
+        }
+        if (visualRoute != vm.route) {
+            Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp)
+                .clip(RoundedCornerShape(12.dp)).background(CardBg).padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Text("正在排版题目…", color = Ink2, fontSize = 12.sp)
+            }
+        }
         if (vm.route is Route.Home) {
             Box(
                 Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 104.dp)
@@ -214,58 +229,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
     }
 }
 
-private fun pageTransition(
-    from: Route,
-    to: Route,
-    isForward: Boolean,
-    reducedMotion: Boolean,
-): ContentTransform {
-    if (reducedMotion) return EnterTransition.None togetherWith ExitTransition.None
-    if (isPeerRoute(from) && isPeerRoute(to)) return peerFadeTransform()
-    return hierarchySlideTransform(isForward)
-}
-
-private fun isPeerRoute(route: Route): Boolean = route is Route.Home ||
-    route is Route.Library || route is Route.Settings
-
-private fun peerFadeTransform(): ContentTransform {
-    val incoming = androidx.compose.animation.fadeIn(
-        animationSpec = tween(140, easing = FastOutSlowInEasing),
-        initialAlpha = 0.96f
-    )
-    val outgoing = androidx.compose.animation.fadeOut(
-        animationSpec = tween(80, easing = FastOutSlowInEasing)
-    )
-    return incoming togetherWith outgoing
-}
-
-private fun hierarchySlideTransform(isForward: Boolean): ContentTransform {
-    val incoming = if (isForward) {
-        slideInHorizontally(
-            animationSpec = tween(250, easing = FastOutSlowInEasing),
-            initialOffsetX = { it }
-        )
-    } else {
-        slideInHorizontally(
-            animationSpec = tween(230, easing = FastOutSlowInEasing),
-            initialOffsetX = { -it / 3 }
-        )
-    }
-    val outgoing = if (isForward) {
-        slideOutHorizontally(
-            animationSpec = tween(250, easing = FastOutSlowInEasing),
-            targetOffsetX = { -it / 3 }
-        )
-    } else {
-        slideOutHorizontally(
-            animationSpec = tween(230, easing = FastOutSlowInEasing),
-            targetOffsetX = { it }
-        )
-    }
-    return (incoming togetherWith outgoing).apply {
-        targetContentZIndex = if (isForward) 1f else -1f
-    }
-}
+private fun isPeerRoute(route: Route): Boolean = route is Route.Home || route is Route.Library || route is Route.Settings
 
 @Composable
 private fun ImportOption(
@@ -314,7 +278,7 @@ private fun TabItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(icon, label, tint = if (selected) Ink else Color(0xFFA2A2A8), modifier = Modifier.size(21.dp))
-        Text(label, fontSize = 10.sp, color = if (selected) Ink else Color(0xFFA2A2A8), modifier = Modifier.padding(top = 4.dp))
+        Icon(icon, label, tint = if (selected) Ink else Muted, modifier = Modifier.size(21.dp))
+        Text(label, fontSize = 10.sp, color = if (selected) Ink else Muted, modifier = Modifier.padding(top = 4.dp))
     }
 }

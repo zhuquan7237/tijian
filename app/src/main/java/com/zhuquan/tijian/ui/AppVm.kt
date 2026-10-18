@@ -27,6 +27,7 @@ sealed interface Route {
     data object Home : Route
     data object Library : Route
     data object Settings : Route
+    data class Subject(val name: String) : Route
     data class Category(val id: String) : Route
     data class Detail(val id: String) : Route
     data object Import : Route
@@ -104,6 +105,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         if (System.currentTimeMillis() - last > 6 * 3600_000L) checkUpdate(silent = true)
     }
 
+    var dataRevision by androidx.compose.runtime.mutableIntStateOf(0)
+        private set
+
     fun refresh() {
         viewModelScope.launch(Dispatchers.IO) {
             val cats = db.categories()
@@ -111,17 +115,26 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             val ds = db.docs()
             val p = db.provider()
             withContext(Dispatchers.Main) {
-                categories = cats; stats = st; docs = ds; provider = p
+                categories = cats; stats = st; docs = ds; provider = p; dataRevision++
             }
         }
     }
 
     // ---------- navigation ----------
 
+    private val readyPages = androidx.compose.runtime.mutableStateMapOf<Route, Boolean>()
+    fun pageReady(page: Route) { readyPages[page] = true }
+    fun canDisplay(page: Route): Boolean = page !is Route.Detail || readyPages[page] == true
+    fun forgetPage(page: Route) { readyPages.remove(page) }
+
+    fun navigationDepth(): Int = stack.size
+
     fun retainsPage(page: Route): Boolean = page == route || page in stack ||
         page is Route.Home || page is Route.Library || page is Route.Settings
 
+    var navigating = false
     fun go(next: Route) {
+        if (navigating) return
         if (next != route) { navForward = true; stack.add(route); route = next }
     }
 
@@ -149,6 +162,21 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     fun home() { navForward = false; stack.clear(); route = Route.Home }
 
     // ---------- import ----------
+
+    suspend fun saveQuestionImage(questionId: String, sourceId: String?, uri: Uri): QuestionRow = withContext(Dispatchers.IO) {
+        val image = importer.ingestOnly(uri)
+        if (sourceId != null) db.linkOriginal(image.id, sourceId)
+        db.updateQuestionImage(questionId, image.id)
+        db.question(questionId) ?: error("题目不存在")
+    }
+
+    suspend fun replaceCapture(source: Uri, edited: Uri) {
+        val copy = withContext(Dispatchers.IO) {
+            val original = importer.ingestOnly(source)
+            importer.ingestOnly(edited).also { db.linkOriginal(it.id, original.id) }
+        }
+        captureUris = captureUris.map { if (it == source) Uri.fromFile(File(copy.path)) else it }
+    }
 
     fun addCapture(uri: Uri) { captureUris = captureUris + uri }
 

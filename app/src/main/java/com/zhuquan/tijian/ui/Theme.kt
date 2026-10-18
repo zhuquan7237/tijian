@@ -46,7 +46,7 @@ val CardBg = Color(0xFFFFFFFF)
 val SurfaceAlt = Color(0xFFF0F2F7)
 val Ink = Color(0xFF151A2A)
 val Ink2 = Color(0xFF3E465A)
-val Muted = Color(0xFF737B8F)
+val Muted = Color(0xFF535D72)
 val Line = Color(0xFFE3E7F0)
 val Accent = Color(0xFF4D5CEB)
 val AccentSoft = Color(0xFFEEF0FF)
@@ -72,8 +72,8 @@ fun TijianTheme(content: @Composable () -> Unit) {
             surface = CardBg,
             onSurface = Ink,
             surfaceVariant = SurfaceAlt,
-            onSurfaceVariant = Muted,
-            outline = Line,
+            onSurfaceVariant = Ink2,
+            outline = Color(0xFF7D879B),
             outlineVariant = Line,
             error = Red,
         ),

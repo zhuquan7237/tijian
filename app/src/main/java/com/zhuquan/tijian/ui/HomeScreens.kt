@@ -65,6 +65,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.zhuquan.tijian.data.SUBJECT_ROOTS
+import com.zhuquan.tijian.data.fullName
+import com.zhuquan.tijian.data.subjectGroup
 import com.zhuquan.tijian.data.CategoryRow
 import com.zhuquan.tijian.data.QuestionRow
 import com.zhuquan.tijian.export.PdfExporter
@@ -128,30 +131,21 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
                 Text("${vm.categories.count { it.count > 0 }} 个", fontSize = 11.sp, color = Muted)
             }
 
-            if (vm.categories.all { it.count == 0 } && vm.stats.total == 0) {
-                EmptyState(
-                    "还没有错题",
-                    "拍一张试卷，AI 会自动切题、分类",
-                ) {
-                    BigButton("识别导入") { onImport() }
-                }
-            } else {
-                val list = vm.categories.filter { it.id != "uncat" || it.count > 0 }
-                list.chunked(2).forEach { pair ->
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        pair.forEach { cat ->
-                            CategoryCard(cat, Modifier.weight(1f)) { vm.go(Route.Category(cat.id)) }
+            SUBJECT_ROOTS.chunked(2).forEach { subjects ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    subjects.forEach { subject ->
+                        val children = vm.categories.filter { it.subjectGroup() == subject }
+                        CategoryCard(CategoryRow(subject, subject, subject, false, "confirmed", "#6977DD", children.sumOf { it.count }, children.sumOf { it.mastered }), Modifier.weight(1f)) {
+                            vm.go(Route.Subject(subject))
                         }
-                        if (pair.size == 1) Spacer(Modifier.weight(1f))
                     }
-                    Spacer(Modifier.height(12.dp))
+                    if (subjects.size == 1) Spacer(Modifier.weight(1f))
                 }
-                if (list.isEmpty()) {
-                    EmptyState("还没有分类", "导入错题后会自动生成")
-                }
-
+                Spacer(Modifier.height(12.dp))
+            }
+            run {
                 var recent by remember { mutableStateOf<List<QuestionRow>>(emptyList()) }
-                LaunchedEffect(vm.stats.total, vm.stats.due) {
+                LaunchedEffect(vm.stats.total, vm.stats.due, vm.dataRevision) {
                     recent = withContext(Dispatchers.IO) { vm.db.questions().take(8) }
                 }
                 if (recent.isNotEmpty()) {
@@ -183,15 +177,15 @@ private fun ReviewHero(due: Int, total: Int, mastered: Int, onClick: () -> Unit)
         Column(Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
-                    Text("今日复习", fontSize = 10.sp, letterSpacing = 1.2.sp, color = Color(0x8CFFFFFF))
+                    Text("今日复习", fontSize = 10.sp, letterSpacing = 1.2.sp, color = Color(0xD9FFFFFF))
                     Text(
                         if (due > 0) "到期的错题在等你" else "今天没有到期任务",
-                        fontSize = 12.sp, color = Color(0x9EFFFFFF), modifier = Modifier.padding(top = 8.dp)
+                        fontSize = 12.sp, color = Color(0xD9FFFFFF), modifier = Modifier.padding(top = 8.dp)
                     )
                 }
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text("$due", fontSize = 44.sp, fontWeight = FontWeight.Light, color = Color.White, letterSpacing = (-1).sp)
-                    Text("题", fontSize = 12.sp, color = Color(0x80FFFFFF), modifier = Modifier.padding(bottom = 8.dp, start = 5.dp))
+                    Text("题", fontSize = 12.sp, color = Color(0xCCFFFFFF), modifier = Modifier.padding(bottom = 8.dp, start = 5.dp))
                 }
             }
             Spacer(Modifier.height(14.dp))
@@ -269,7 +263,7 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
         onDispose { vm.categoryScroll[id] = listState.firstVisibleItemIndex }
     }
     var rows by remember(id, filter) { mutableStateOf<List<QuestionRow>>(emptyList()) }
-    LaunchedEffect(id, filter) {
+    LaunchedEffect(id, filter, vm.dataRevision) {
         rows = withContext(Dispatchers.IO) { vm.db.questions(id, filter) }
     }
 
@@ -387,7 +381,7 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                 Text("复习这组", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                 Text(
                     "${rows.count { it.mastery < 4 }} 道未掌握 · 约 ${maxOf(1, rows.size / 3)} 分钟",
-                    fontSize = 11.sp, color = Color(0x8CFFFFFF), modifier = Modifier.padding(top = 3.dp)
+                    fontSize = 11.sp, color = Color(0xD9FFFFFF), modifier = Modifier.padding(top = 3.dp)
                 )
             }
             Box(
@@ -462,18 +456,31 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
         }
     }
     var q by remember(id) { mutableStateOf<QuestionRow?>(null) }
+    var loadError by remember(id) { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var viewingImage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val readySections = remember(id) { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
 
-    LaunchedEffect(id) { q = withContext(Dispatchers.IO) { vm.db.question(id) } }
+    LaunchedEffect(id) {
+        runCatching { withContext(Dispatchers.IO) { vm.db.question(id) ?: error("题目不存在或已删除") } }
+            .onSuccess { q = it }.onFailure { loadError = it.message ?: "题目读取失败"; vm.pageReady(Route.Detail(id)) }
+    }
 
     val question = q ?: run {
         Column(Modifier.fillMaxSize()) {
-            TjTopBar(title = "题目", subtitle = "正在加载", onBack = { vm.back() })
-            Text("正在读取题目…", color = Muted, modifier = Modifier.padding(18.dp))
+            TjTopBar(title = "题目", subtitle = if (loadError == null) "正在加载" else "读取失败", onBack = { vm.back() })
+            Text(loadError ?: "正在读取题目…", color = Muted, modifier = Modifier.padding(18.dp))
         }
         return
     }
+    val expectedSections = listOf("stem" to (question.stem.isNotBlank() || parseOptions(question.options).isNotEmpty()),
+        "answer" to question.answer.isNotBlank(), "analysis" to question.analysis.isNotBlank()).filter { it.second }.map { it.first }
+    LaunchedEffect(id, readySections.toMap(), expectedSections) {
+        if (expectedSections.all { readySections[it] == true }) vm.pageReady(Route.Detail(id))
+    }
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             title = question.type.ifBlank { "题目" },
@@ -490,7 +497,12 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                     Column(Modifier.padding(12.dp)) {
                         Text("题目原图", fontSize = 12.sp, color = Muted)
                         Spacer(Modifier.height(12.dp))
-                        ZoomableImage(File(question.imagePath))
+                        ZoomableImage(File(question.imagePath)) { viewingImage = question.imagePath }
+                        Text("点击查看原画质 / 裁剪", color = Ink2, modifier = Modifier.padding(top = 12.dp))
+                        question.imageId?.let { imageId ->
+                            val original = remember(imageId) { vm.db.originalImagePath(imageId) }
+                            if (original != null && original != question.imagePath) TextButton(onClick = { viewingImage = original }) { Text("查看未裁剪原图") }
+                        }
                     }
                 }
                 Spacer(Modifier.height(24.dp))
@@ -502,28 +514,28 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                 }
             }
             if (stem.isBlank()) {
-                Text("（未识别题干，点右上角编辑补录）", fontSize = 12.sp, color = Muted)
+                Text("（未识别题干，点下方编辑按钮补录）", fontSize = 12.sp, color = Muted)
             } else {
                 RichSection("题目", "题干与选项", Accent) {
-                    RichText(stem, fontSize = 16)
+                    RichText(stem, fontSize = 16, onReady = { readySections["stem"] = true })
                 }
             }
             if (question.answer.isNotBlank()) {
                 Spacer(Modifier.height(16.dp))
                 RichSection("答案", "先看结论，再对照解析", Green) {
-                    RichText(question.answer, fontSize = 15)
+                    RichText(question.answer, fontSize = 15, onReady = { readySections["answer"] = true })
                 }
             }
             if (question.analysis.isNotBlank()) {
                 Spacer(Modifier.height(16.dp))
                 RichSection("解析", "按步骤展开推理", Accent) {
-                    RichText(question.analysis, fontSize = 15)
+                    RichText(question.analysis, fontSize = 15, onReady = { readySections["analysis"] = true })
                 }
             }
             if (question.analysis.isNotBlank()) {
                 if (looksTruncated(question.analysis)) {
                     Text(
-                        "这段解析可能被模型截断（公式或括号未闭合），可在右上角编辑补全，或重新识别。",
+                        "这段解析可能被模型截断（公式或括号未闭合），可点下方编辑按钮补全，或重新识别。",
                         fontSize = 11.sp, color = Red,
                         modifier = Modifier.padding(top = 6.dp)
                     )
@@ -561,6 +573,19 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
             }
             Spacer(Modifier.height(80.dp))
         }
+    }
+
+        androidx.compose.material3.ExtendedFloatingActionButton(
+            onClick = { editing = true }, containerColor = Ink, contentColor = Color.White,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp)
+        ) { Icon(Icons.Rounded.Edit, null); Spacer(Modifier.width(8.dp)); Text("编辑 / 备注") }
+    }
+    viewingImage?.let { path ->
+        ImageEditorDialog(Uri.fromFile(File(path)), onDismiss = { viewingImage = null }, onSaved = { uri ->
+            q = vm.saveQuestionImage(question.id, question.imageId, uri)
+            vm.refresh()
+            viewingImage = null
+        })
     }
 
     if (editing) {
@@ -637,7 +662,7 @@ fun EditQuestionDialog(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
                     cats.forEach { c ->
                         Row(Modifier.fillMaxWidth().clickableNoRipple { catId = c.id }.padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                             RadioDot(catId == c.id)
-                            Text(c.name, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
+                            Text(c.fullName(), fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
                         }
                     }
                 }
@@ -701,37 +726,11 @@ fun Thumb(path: String?, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ZoomableImage(file: File) {
-    var ratio by remember(file.absolutePath) { mutableStateOf(1.6f) }
-    LaunchedEffect(file.absolutePath) {
-        ratio = withContext(Dispatchers.IO) {
-            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            android.graphics.BitmapFactory.decodeFile(file.absolutePath, bounds)
-            if (bounds.outWidth > 0 && bounds.outHeight > 0) bounds.outWidth.toFloat() / bounds.outHeight else 1.6f
-        }
-    }
-    var scale by remember { mutableStateOf(1f) }
-    var dx by remember { mutableStateOf(0f) }
-    var dy by remember { mutableStateOf(0f) }
-    Box(
-        Modifier.fillMaxWidth().aspectRatio(ratio).clip(RoundedCornerShape(14.dp)).background(Color.White)
-            .border(1.dp, Line, RoundedCornerShape(14.dp))
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    scale = (scale * zoom).coerceIn(1f, 5f)
-                    if (scale > 1f) { dx += pan.x; dy += pan.y }
-                    else { dx = 0f; dy = 0f }
-                }
-            }
-    ) {
-        AsyncImage(
-            model = file, contentDescription = "题目原图", contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = scale, scaleY = scale, translationX = dx, translationY = dy)
-        )
-        if (scale > 1.01f) {
-            Text("双指缩放 · 拖动查看", fontSize = 9.sp, color = Muted, modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
-                .background(Color(0xCCFFFFFF), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 3.dp))
-        }
+fun ZoomableImage(file: File, onClick: () -> Unit = {}) {
+    Box(Modifier.fillMaxWidth().heightIn(max = 440.dp).clip(RoundedCornerShape(14.dp))
+        .background(Color.White).border(1.dp, Line, RoundedCornerShape(14.dp)).clickableNoRipple(onClick)) {
+        AsyncImage(model = file, contentDescription = "查看题目原图", contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 320.dp))
     }
 }
 

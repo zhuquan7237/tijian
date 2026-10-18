@@ -57,6 +57,7 @@ fun RichText(
     markdown: String,
     modifier: Modifier = Modifier,
     fontSize: Int = 15,
+    onReady: () -> Unit = {},
 ) {
     if (markdown.isBlank()) return
     val context = LocalContext.current
@@ -77,6 +78,10 @@ fun RichText(
     // to the current state, and check the generation again on the UI thread.
     val receiveHeight = rememberUpdatedState<(Int, Int) -> Unit> { h, generation ->
         if (generation == renderId && h > 0 && abs(height.intValue - h) >= 1) height.intValue = h
+    }
+    val readyCallback = rememberUpdatedState(onReady)
+    androidx.compose.runtime.LaunchedEffect(renderId, height.intValue) {
+        if (height.intValue > 0) readyCallback.value()
     }
     val webReference = remember { arrayOfNulls<WebView>(1) }
     DisposableEffect(lifecycle) {

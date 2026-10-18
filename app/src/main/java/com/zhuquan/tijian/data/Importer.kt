@@ -49,7 +49,6 @@ class Importer(private val context: Context, private val db: Db, private val ai:
 
                 if (img.duplicate) {
                     duplicates++
-                    return@forEachIndexed
                 }
 
                 onStep(index + 1, uris.size, "识别第 ${index + 1}/${uris.size} 张")
@@ -80,15 +79,9 @@ class Importer(private val context: Context, private val db: Db, private val ai:
     )
 
     private fun toDraft(img: ImportedImage, p: ParsedQuestion, index: Int): DraftQuestion {
-        var imageId = img.id
-        var path = img.path
-        if (p.bbox != null) {
-            val cropped = crop(img, p.bbox, index)
-            if (cropped != null) { imageId = cropped.id; path = cropped.path }
-        }
         return DraftQuestion(
-            imageId = imageId,
-            imagePath = path,
+            imageId = img.id,
+            imagePath = img.path,
             type = p.type,
             stem = p.stem,
             options = JSONArray(p.options).toString(),
@@ -102,32 +95,21 @@ class Importer(private val context: Context, private val db: Db, private val ai:
         )
     }
 
-    private fun crop(img: ImportedImage, bbox: List<Double>, index: Int): ImportedImage? {
-        return try {
-            val bmp = decodeSampled(File(img.path), 2400) ?: return null
-            val pad = 0.012
-            val x1 = ((bbox[0] - pad).coerceIn(0.0, 1.0) * bmp.width).toInt()
-            val y1 = ((bbox[1] - pad).coerceIn(0.0, 1.0) * bmp.height).toInt()
-            val x2 = ((bbox[2] + pad).coerceIn(0.0, 1.0) * bmp.width).toInt()
-            val y2 = ((bbox[3] + pad).coerceIn(0.0, 1.0) * bmp.height).toInt()
-            val w = (x2 - x1).coerceAtLeast(40)
-            val h = (y2 - y1).coerceAtLeast(40)
-            if (x1 >= bmp.width || y1 >= bmp.height) return null
-            val rect = android.graphics.Rect(x1, y1, minOf(x1 + w, bmp.width), minOf(y1 + h, bmp.height))
-            val out = Bitmap.createBitmap(bmp, rect.left, rect.top, rect.width(), rect.height())
-            persist(out, "${img.sha}_$index")
-        } catch (e: Exception) {
-            null
-        }
-    }
-
     private fun ingest(uri: Uri): ImportedImage {
         val raw = File(context.cacheDir, "import_${System.currentTimeMillis()}.bin")
         context.contentResolver.openInputStream(uri)?.use { input ->
             raw.outputStream().use { output -> input.copyTo(output) }
         } ?: throw IllegalStateException("无法打开图片")
-        val bytes = raw.readBytes()
-        val sha = sha256(bytes)
+        val digest = MessageDigest.getInstance("SHA-256")
+        raw.inputStream().buffered().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        val sha = digest.digest().joinToString("") { "%02x".format(it) }
 
         db.imageIdBySha(sha)?.let { existing ->
             val path = db.imagePath(existing)
@@ -138,30 +120,13 @@ class Importer(private val context: Context, private val db: Db, private val ai:
             }
         }
 
-        val degrees = exifDegrees(raw.absolutePath)
-        val decoded = decodeSampled(bytes, maxDim = 2200)
-            ?: throw IllegalStateException("图片解码失败")
-        val bmp = decoded.rotateIfNeeded(degrees)
-        raw.delete()
-        val saved = persist(bmp, sha) ?: throw IllegalStateException("保存失败")
-        return saved.copy(sha = sha)
-    }
-
-    private fun persist(bmp: Bitmap, key: String): ImportedImage? {
-        val file = File(dir, "$key.jpg")
-        if (!file.exists()) {
-            file.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-        }
-        val bytes = file.length()
-        val sha = sha256(file.readBytes())
-        val existing = db.imageIdBySha(sha)
-        if (existing != null) {
-            val p = db.imagePath(existing) ?: file.absolutePath
-            return ImportedImage(existing, p, bmp.width, bmp.height, sha, duplicate = false)
-        }
+        val (w, h) = imageSize(raw.absolutePath)
+        require(w > 0 && h > 0) { "图片格式无法读取" }
+        val file = File(dir, "$sha.original")
+        try { raw.copyTo(file, overwrite = true) } finally { raw.delete() }
         val id = newId()
-        db.insertImage(id, sha, file.absolutePath, bmp.width, bmp.height, bytes)
-        return ImportedImage(id, file.absolutePath, bmp.width, bmp.height, sha, duplicate = false)
+        db.insertImage(id, sha, file.absolutePath, w, h, file.length())
+        return ImportedImage(id, file.absolutePath, w, h, sha, duplicate = false)
     }
 
     private fun imageSize(path: String): Pair<Int, Int> {
@@ -171,15 +136,27 @@ class Importer(private val context: Context, private val db: Db, private val ai:
     }
 
     private fun downscaleJpeg(file: File, maxDim: Int): ByteArray {
-        val bmp = decodeSampled(file, maxDim) ?: throw IllegalStateException("图片解码失败")
+        val raw = decodeSampled(file, maxDim) ?: throw IllegalStateException("图片解码失败")
+        val bmp = orientBitmap(raw, file.path)
+        if (bmp !== raw) raw.recycle()
         val out = ByteArrayOutputStream()
-        bmp.compress(Bitmap.CompressFormat.JPEG, 85, out)
-        return out.toByteArray()
+        try { bmp.compress(Bitmap.CompressFormat.JPEG, 85, out); return out.toByteArray() }
+        finally { bmp.recycle() }
     }
 
     companion object {
-        fun decodeSampled(file: File, maxDim: Int): Bitmap? =
-            decodeSampled(file.readBytes(), maxDim)
+        fun decodeSampled(file: File, maxDim: Int): Bitmap? {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.path, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxDim * 2) sample *= 2
+            val bitmap = BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+            val ratio = maxDim.toFloat() / maxOf(bitmap.width, bitmap.height)
+            if (ratio >= 1f) return bitmap
+            return Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt().coerceAtLeast(1),
+                (bitmap.height * ratio).toInt().coerceAtLeast(1), true).also { if (it !== bitmap) bitmap.recycle() }
+        }
 
         fun decodeSampled(rawBytes: ByteArray, maxDim: Int): Bitmap? {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

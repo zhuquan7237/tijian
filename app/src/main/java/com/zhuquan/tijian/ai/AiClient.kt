@@ -1,5 +1,6 @@
 package com.zhuquan.tijian.ai
 
+import com.zhuquan.tijian.data.fullName
 import com.zhuquan.tijian.data.CategoryRow
 import com.zhuquan.tijian.data.DraftQuestion
 import com.zhuquan.tijian.data.ProviderConfig
@@ -111,7 +112,7 @@ class AiClient {
     suspend fun recognize(cfg: ProviderConfig, jpeg: ByteArray): List<ParsedQuestion> =
         withContext(Dispatchers.IO) {
             val b64 = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP)
-            val prompt = RECOGNIZE_PROMPT
+            val prompt = RECOGNIZE_PROMPT + "\ncategory必须使用学科/小类格式；学科仅数学、专业课、英语、政治、其他。无法识别学科用其他/未分类。"
             val body = if (cfg.protocol == "responses") {
                 JSONObject().apply {
                     put("model", cfg.model)
@@ -165,7 +166,7 @@ class AiClient {
             })
         }
         val catNames = JSONArray()
-        cats.filter { it.id != "uncat" }.forEach { catNames.put(it.name) }
+        cats.filter { it.id != "uncat" }.forEach { catNames.put(it.fullName()) }
         val prompt = """你是错题归档助手。下面是 ${drafts.size} 道题的结构化信息，以及用户现有分类。
 为每题选择最合适的分类；确实没有合适的，才提议新分类。
 
@@ -175,13 +176,13 @@ class AiClient {
 $list
 
 规则：
-1. 优先复用现有分类，category 必须与给定名称完全一致（只写分类名，不要带学科前缀）。
+1. 优先复用现有分类，category 必须与给定名称完全一致（必须带学科前缀，例如数学/函数与导数）。
 2. 同一批中同类题目必须落到同一分类。
 3. 新分类是"可复用的主题"（如"极值点偏移"），不是具体题名；最多提议 2 个新分类。
-4. 单题不成类：若新分类只覆盖 1 道题，改为归入最接近的现有分类；实在没有就填"未分类"。
-5. confidence 低于 0.6 时，也要给出一个最接近的现有分类。
+4. 学科已知但没有合适小类时，填该学科/未分类；无法识别学科才填其他/未分类。不得为了复用分类跨学科归档。
+5. 学科仅可为数学、专业课、英语、政治、其他。先识别学科，再选择该学科的小类；无法识别学科归其他/未分类。不要跨学科归档。
 
-只输出 JSON：{"assignments":[{"id":"q1","category":"函数与导数","confidence":0.88}]}"""
+只输出 JSON：{"assignments":[{"id":"q1","category":"数学/函数与导数","confidence":0.88}]}"""
 
         val body = if (cfg.protocol == "responses") {
             JSONObject().apply {

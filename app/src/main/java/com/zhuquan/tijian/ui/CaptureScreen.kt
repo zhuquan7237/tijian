@@ -51,10 +51,11 @@ import java.io.File
 @Composable
 fun CaptureScreen(vm: AppVm) {
     val ctx = LocalContext.current
+    var editingUri by remember { mutableStateOf<Uri?>(null) }
     var pendingUri by remember { mutableStateOf<Uri?>(null) }
 
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
-        if (ok) pendingUri?.let { vm.addCapture(it) }
+        if (ok) pendingUri?.let { vm.addCapture(it); editingUri = it }
     }
     val pickMore = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(9)) { uris ->
         uris.forEach { vm.addCapture(it) }
@@ -121,7 +122,7 @@ fun CaptureScreen(vm: AppVm) {
                     ) {
                         AsyncImage(
                             model = uri, contentDescription = null,
-                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                            contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().clickableNoRipple { editingUri = uri }
                         )
                         Box(
                             Modifier.align(Alignment.TopEnd).padding(7.dp).size(26.dp)
@@ -185,4 +186,8 @@ fun CaptureScreen(vm: AppVm) {
             }
         }
     }
+    editingUri?.let { source -> ImageEditorDialog(source, onDismiss = { editingUri = null }, onSaved = { edited ->
+        vm.replaceCapture(source, edited); editingUri = null
+    }) }
+
 }

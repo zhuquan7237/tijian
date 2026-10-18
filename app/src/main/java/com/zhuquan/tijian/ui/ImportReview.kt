@@ -2,6 +2,8 @@
 
 package com.zhuquan.tijian.ui
 
+import com.zhuquan.tijian.data.fullName
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -144,7 +146,7 @@ fun ImportScreen(vm: AppVm) {
     pickerFor?.let { d ->
         CategoryPicker(
             current = d.categoryName,
-            categories = vm.categories.map { it.name },
+            categories = vm.categories.map { it.fullName() },
             onDismiss = { pickerFor = null },
             onPick = { name ->
                 vm.updateDraft(d.copy(categoryName = name))
@@ -293,7 +295,7 @@ fun CategoryPicker(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = newName, onValueChange = { newName = it },
-                    placeholder = { Text("新建分类", fontSize = 12.sp, color = Muted) },
+                    placeholder = { Text("学科/子分类，如数学/积分", fontSize = 12.sp, color = Muted) },
                     singleLine = true, modifier = Modifier.weight(1f)
                 )
                 Spacer(Modifier.width(8.dp))

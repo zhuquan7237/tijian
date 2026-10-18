@@ -1,0 +1,4 @@
+D:\Users\zhuquan\Documents\ChatGPT\题筏\build\validation\home-five-subjects-042.png
+D:\Users\zhuquan\Documents\ChatGPT\题筏\build\validation\detail-final-042.png
+D:\Users\zhuquan\Documents\ChatGPT\题筏\build\validation\image-scroll-final-042.png
+PASS: 12 rapid peer switches, populated detail, image-origin scroll, background resume, Back during forward, 30 additional peer switches

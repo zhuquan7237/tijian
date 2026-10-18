@@ -1,0 +1,85 @@
+Applications Graphics Acceleration Info:
+Uptime: 84777473 Realtime: 84777473
+
+** Graphics info for pid 18077 [com.zhuquan.tijian] **
+
+Stats since: 84770970623278ns
+Total frames rendered: 209
+Janky frames: 71 (33.97%)
+Janky frames (legacy): 149 (71.29%)
+50th percentile: 25ms
+90th percentile: 38ms
+95th percentile: 44ms
+99th percentile: 53ms
+Number Missed Vsync: 0
+Number High input latency: 220
+Number Slow UI thread: 19
+Number Slow bitmap uploads: 0
+Number Slow issue draw commands: 65
+Number Frame deadline missed: 71
+Number Frame deadline missed (legacy): 66
+HISTOGRAM: 5ms=0 6ms=0 7ms=0 8ms=0 9ms=0 10ms=0 11ms=0 12ms=1 13ms=3 14ms=11 15ms=9 16ms=5 17ms=8 18ms=25 19ms=9 20ms=9 21ms=10 22ms=6 23ms=3 24ms=4 25ms=9 26ms=5 27ms=7 28ms=5 29ms=4 30ms=7 31ms=8 32ms=8 34ms=20 36ms=8 38ms=5 40ms=6 42ms=3 44ms=1 46ms=2 48ms=4 53ms=3 57ms=0 61ms=1 65ms=0 69ms=0 73ms=0 77ms=0 81ms=0 85ms=0 89ms=0 93ms=0 97ms=0 101ms=0 105ms=0 109ms=0 113ms=0 117ms=0 121ms=0 125ms=0 129ms=0 133ms=0 150ms=0 200ms=0 250ms=0 300ms=0 350ms=0 400ms=0 450ms=0 500ms=0 550ms=0 600ms=0 650ms=0 700ms=0 750ms=0 800ms=0 850ms=0 900ms=0 950ms=0 1000ms=0 1050ms=0 1100ms=0 1150ms=0 1200ms=0 1250ms=0 1300ms=0 1350ms=0 1400ms=0 1450ms=0 1500ms=0 1550ms=0 1600ms=0 1650ms=0 1700ms=0 1750ms=0 1800ms=0 1850ms=0 1900ms=0 1950ms=0 2000ms=0 2050ms=0 2100ms=0 2150ms=0 2200ms=0 2250ms=0 2300ms=0 2350ms=0 2400ms=0 2450ms=0 2500ms=0 2550ms=0 2600ms=0 2650ms=0 2700ms=0 2750ms=0 2800ms=0 2850ms=0 2900ms=0 2950ms=0 3000ms=0 3050ms=0 3100ms=0 3150ms=0 3200ms=0 3250ms=0 3300ms=0 3350ms=0 3400ms=0 3450ms=0 3500ms=0 3550ms=0 3600ms=0 3650ms=0 3700ms=0 3750ms=0 3800ms=0 3850ms=0 3900ms=0 3950ms=0 4000ms=0 4050ms=0 4100ms=0 4150ms=0 4200ms=0 4250ms=0 4300ms=0 4350ms=0 4400ms=0 4450ms=0 4500ms=0 4550ms=0 4600ms=0 4650ms=0 4700ms=0 4750ms=0 4800ms=0 4850ms=0 4900ms=0 4950ms=0
+50th gpu percentile: 14ms
+90th gpu percentile: 4950ms
+95th gpu percentile: 4950ms
+99th gpu percentile: 4950ms
+GPU HISTOGRAM: 1ms=0 2ms=0 3ms=0 4ms=0 5ms=2 6ms=6 7ms=10 8ms=3 9ms=19 10ms=16 11ms=17 12ms=15 13ms=16 14ms=15 15ms=11 16ms=9 17ms=7 18ms=3 19ms=4 20ms=8 21ms=5 22ms=5 23ms=3 24ms=7 25ms=2 4950ms=26
+
+Pipeline=Skia (OpenGL)
+Memory policy:
+  Max surface area: 2592000
+  Max resource usage: 124.42MB (x48)
+  Background retention: 50% (altUiHidden = true)
+  GPU Context timeout: 10
+Contexts: 1 (stopped = 0)
+CPU Caches:
+  Glyph Cache: 316.99 KB (1 entry)
+  Glyph Count: 90 
+Total CPU memory usage:
+  324602 bytes, 316.99 KB (0.00 bytes is purgeable)
+GPU Caches:
+  Other:
+    Other: 62.81 KB (1 entry)
+    Buffer Object: 2.05 KB (2 entries)
+  Image:
+    Texture: 218.95 KB (107 entries)
+  Scratch:
+    RenderTarget: 25.50 MB (3 entries)
+    Buffer Object: 142.00 KB (4 entries)
+    Texture: 2.00 MB (2 entries)
+Total GPU memory usage:
+  29271940 bytes, 27.92 MB (8.74 MB is purgeable)
+Pipeline Cache: inactive
+GraphicBufferAllocator buffers:
+            Handle |         Size |     W (Stride) x H | Layers |   Format |      Usage | Requestor
+    0x713329242fc0 |      unknown | 1080 (   0) x 2400 |      1 |        1 | 0x     b00 | VRI[MainActivity]#0(BLAST Consumer)0
+    0x71332924b3e0 |      unknown | 1080 (   0) x 2400 |      1 |        1 | 0x     b00 | VRI[MainActivity]#0(BLAST Consumer)0
+    0x71332924fcf0 |      unknown | 1145 (   0) x  240 |      1 |        1 | 0x     100 | AHardwareBuffer pid [18077]
+    0x713329250d20 |      unknown | 1080 (   0) x 2400 |      1 |        1 | 0x     b00 | VRI[MainActivity]#0(BLAST Consumer)0
+    0x71332925a170 |      unknown | 1145 (   0) x  174 |      1 |        1 | 0x     100 | AHardwareBuffer pid [18077]
+    0x71332925a1e0 |      unknown |  962 (   0) x  242 |      1 |        1 | 0x     100 | AHardwareBuffer pid [18077]
+    0x71332925ab10 |      unknown | 1145 (   0) x  159 |      1 |        1 | 0x     100 | AHardwareBuffer pid [18077]
+Total allocated by GraphicBufferAllocator (estimate): 0.00 KB
+Imported gralloc buffers:
++ name:AHardwareBuffer pid [18077], id:3215, size:919.70KiB, w/h:962x242, usage: 0x100, req fmt:1, fourcc/mod:875708993/0, dataspace: 0x0, compressed: false
++ name:AHardwareBuffer pid [18077], id:3214, size:721.46KiB, w/h:1145x159, usage: 0x100, req fmt:1, fourcc/mod:875708993/0, dataspace: 0x0, compressed: false
++ name:AHardwareBuffer pid [18077], id:3212, size:788.55KiB, w/h:1145x174, usage: 0x100, req fmt:1, fourcc/mod:875708993/0, dataspace: 0x0, compressed: false
++ name:VRI[MainActivity]#0(BLAST Consumer)0, id:3210, size:10135.31KiB, w/h:1080x2400, usage: 0xb00, req fmt:1, fourcc/mod:875708993/0, dataspace: 0x8810000, compressed: false
++ name:AHardwareBuffer pid [18077], id:3213, size:1083.75KiB, w/h:1145x240, usage: 0x100, req fmt:1, fourcc/mod:875708993/0, dataspace: 0x0, compressed: false
++ name:VRI[MainActivity]#0(BLAST Consumer)0, id:3211, size:10135.31KiB, w/h:1080x2400, usage: 0xb00, req fmt:1, fourcc/mod:875708993/0, dataspace: 0x8810000, compressed: false
++ name:VRI[MainActivity]#0(BLAST Consumer)0, id:3209, size:10135.31KiB, w/h:1080x2400, usage: 0xb00, req fmt:1, fourcc/mod:875708993/0, dataspace: 0x8810000, compressed: false
+Total imported by gralloc: 33919.41KiB
+
+Profile data in ms:
+
+	com.zhuquan.tijian/com.zhuquan.tijian.MainActivity/android.view.ViewRootImpl@b1035f7 (visibility=0)
+View hierarchy:
+
+  com.zhuquan.tijian/com.zhuquan.tijian.MainActivity/android.view.ViewRootImpl@b1035f7
+  6 views, 11.04 kB of render nodes
+
+
+Total ViewRootImpl   : 1
+Total attached Views : 6
+Total RenderNode     : 11.04 kB (used) / 35.11 kB (capacity)
+

@@ -6,7 +6,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class Db(context: Context) : SQLiteOpenHelper(context, "tijian.db", null, 1) {
+class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelper(context, databaseName, null, 2) {
 
     companion object {
         const val UNCAT = "uncat"
@@ -29,7 +29,7 @@ class Db(context: Context) : SQLiteOpenHelper(context, "tijian.db", null, 1) {
             """CREATE TABLE image(
                 id TEXT PRIMARY KEY, sha256 TEXT NOT NULL UNIQUE, path TEXT NOT NULL,
                 width INTEGER NOT NULL DEFAULT 0, height INTEGER NOT NULL DEFAULT 0,
-                bytes INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)"""
+                bytes INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, original_id TEXT)"""
         )
         db.execSQL(
             """CREATE TABLE batch(
@@ -76,7 +76,22 @@ class Db(context: Context) : SQLiteOpenHelper(context, "tijian.db", null, 1) {
         })
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) db.execSQL("ALTER TABLE image ADD COLUMN original_id TEXT")
+    }
+
+    fun originalImagePath(id: String): String? = read(
+        "SELECT COALESCE(o.path,i.path) FROM image i LEFT JOIN image o ON o.id=i.original_id WHERE i.id=?", arrayOf(id)
+    ) { it.getString(0) }.firstOrNull()
+
+    fun linkOriginal(editedId: String, sourceId: String) {
+        val root = read("SELECT COALESCE(original_id,id) FROM image WHERE id=?", arrayOf(sourceId)) { it.getString(0) }.firstOrNull() ?: sourceId
+        if (editedId != root) writableDatabase.execSQL("UPDATE image SET original_id=? WHERE id=?", arrayOf(root, editedId))
+    }
+
+    fun updateQuestionImage(id: String, imageId: String) = writableDatabase.execSQL(
+        "UPDATE question SET image_id=?, updated_at=? WHERE id=?", arrayOf(imageId, System.currentTimeMillis(), id)
+    )
 
     // ---------- categories ----------
 
@@ -101,18 +116,12 @@ class Db(context: Context) : SQLiteOpenHelper(context, "tijian.db", null, 1) {
 
     fun ensureCategory(rawName: String, auto: Boolean = true): String {
         var name = rawName.trim()
-        if (name.isBlank()) return UNCAT
-        // "数学/函数与导数" -> "函数与导数"；同时把学科记到 subject
-        var subject = ""
+        if (name.isBlank() || name == "未分类") return UNCAT
         val parts = name.split('/', '·', '>').map { it.trim() }.filter { it.isNotBlank() }
-        if (parts.size >= 2) {
-            if (SUBJECTS.split(",").contains(parts[0])) subject = parts[0]
-            name = parts.last()
-        }
-        val existing = read("SELECT id, name FROM category WHERE deleted_at IS NULL") { c ->
-            c.getString(0) to c.getString(1)
-        }.firstOrNull { normalize(it.second) == normalize(name) }
-        if (existing != null) return existing.first
+        val subject = if (parts.size >= 2) subjectRoot(parts.first()) else "其他"
+        name = parts.last()
+        val existing = categories().firstOrNull { normalize(it.name) == normalize(name) && it.subjectGroup() == subject }
+        if (existing != null) return existing.id
         val id = newId()
         val now = System.currentTimeMillis()
         writableDatabase.insert("category", null, ContentValues().apply {
@@ -129,7 +138,7 @@ class Db(context: Context) : SQLiteOpenHelper(context, "tijian.db", null, 1) {
         val id = newId()
         val now = System.currentTimeMillis()
         writableDatabase.insert("category", null, ContentValues().apply {
-            put("id", id); put("name", name.trim()); put("subject", subject)
+            put("id", id); put("name", name.trim()); put("subject", subjectRoot(subject))
             put("auto_created", 0); put("status", "confirmed")
             put("color", colorFor(name)); put("sort", 100)
             put("created_at", now); put("updated_at", now)

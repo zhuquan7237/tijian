@@ -1,0 +1,10 @@
+
+com.zhuquan.tijian.ImageAndCategoryTest:....
+com.zhuquan.tijian.OriginalImageGestureTest:..
+com.zhuquan.tijian.RichTextLayoutTest:....
+
+Time: 22.041
+
+OK (10 tests)
+
+
