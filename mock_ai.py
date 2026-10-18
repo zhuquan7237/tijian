@@ -1,6 +1,24 @@
 import json, re
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+BS = chr(92)
+
+BS = chr(92)
+def CMD(n): return BS + n
+Q2_STEM = ("求 $" + CMD("lim") + "_{x" + CMD("to") + " 1}" + CMD("dfrac") +
+           "{e^{" + CMD("ln") + " x}-e^{x" + CMD("ln") + " x}}{1-x+x" + CMD("ln") + " x}$ 的值。")
+Q2_ANALYSIS = (
+    "原式 $=" + CMD("lim") + "_{x" + CMD("to") + " 1}" + CMD("dfrac") +
+    "{(1-x)" + CMD("ln") + " x}{1-x+x" + CMD("ln") + " x}$，两次使用洛必达法则：\n\n"
+    "$$" + CMD("dfrac") + "{1/x-1-" + CMD("ln") + " x}{" + CMD("ln") + " x}" +
+    CMD("to") + CMD("dfrac") + "{-1/x^2-1/x}{1/x}" + CMD("Big") + "|_{x=1}=-2$$\n\n"
+    "| 步骤 | 操作 | 结果 |\n|---|---|---|\n"
+    "| 1 | 第一次求导 | $" + CMD("dfrac") + "{1/x-1-" + CMD("ln") + " x}{" + CMD("ln") + " x}$ |\n"
+    "| 2 | 第二次求导 | $" + CMD("dfrac") + "{-1/x^2-1/x}{1/x}$ |\n\n"
+    "化学式示例：$" + CMD("ce") + "{2H2 + O2 -> 2H2O}$，矩阵：$" +
+    CMD("begin") + "{vmatrix}a&b" + BS + BS + "c&d" + CMD("end") + "{vmatrix}$"
+)
+
 QUESTIONS = [
     {"no": "1", "type": "选择题",
      "stem": "已知函数 $f(x)=x^3-3x$，则 $f(x)$ 的单调递增区间是（  ）",
@@ -9,10 +27,10 @@ QUESTIONS = [
      "knowledge_tags": ["导数与单调性"], "difficulty": 3,
      "category": "函数与导数", "confidence": 0.93, "bbox": [0.05, 0.115, 0.95, 0.255]},
     {"no": "2", "type": "解答题",
-     "stem": "设 $f(x)=\\ln x-ax$，讨论 $f(x)$ 的零点个数，并证明当 $a>1/e$ 时 $f(x)<0$。",
-     "options": [], "answer": "",
-     "analysis": "定义域 $x>0$，$f'(x)=1/x-a$。按 $a\\le 0$、$0<a<1/e$、$a=1/e$、$a>1/e$ 分类讨论。",
-     "knowledge_tags": ["导数与零点", "分类讨论"], "difficulty": 4,
+     "stem": Q2_STEM,
+     "options": [], "answer": r"$-2$",
+     "analysis": Q2_ANALYSIS,
+     "knowledge_tags": ["极限", "洛必达法则"], "difficulty": 4,
      "category": "函数与导数", "confidence": 0.54, "bbox": [0.05, 0.345, 0.95, 0.505]},
     {"no": "3", "type": "填空题",
      "stem": "曲线 $y=x^3-2x$ 在点 $(1,-1)$ 处的切线方程为 ______。",
@@ -35,6 +53,9 @@ KNOWLEDGE = {
         {"title": "切线方程", "definition": "曲线 y=f(x) 在点 (x0,f(x0)) 处的切线为 y-f(x0)=f'(x0)(x-x0)。",
          "key_points": ["先求导", "代入切点横坐标得斜率", "点斜式写方程"],
          "pitfalls": ["把切点横坐标代错", "在非切点处误用点斜式"]},
+        {"title": "两个重要极限", "definition": r"$\lim_{x\to 0}\dfrac{\sin x}{x}=1$，$\lim_{x\to\infty}(1+1/x)^x=e$",
+         "key_points": [r"等价无穷小替换只适用于乘除", r"$\dfrac{0}{0}$ 型可考虑洛必达"],
+         "pitfalls": ["加减法里直接替换等价无穷小"]},
         {"title": "恒成立问题", "definition": "f(x)≥a 恒成立等价于 f(x) 的最小值 ≥ a。",
          "key_points": ["优先分离参数", "不能分离时求导讨论最值", "注意端点与极限"],
          "pitfalls": ["只验证了充分条件", "忽略定义域端点"]},

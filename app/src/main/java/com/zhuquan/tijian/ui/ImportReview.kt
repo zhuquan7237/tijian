@@ -350,15 +350,11 @@ fun ReviewScreen(vm: AppVm) {
                     )
                     Spacer(Modifier.height(14.dp))
                 }
-                Text(cleanMath(q.stem.ifBlank { "（无题干，见原图）" }), fontSize = 14.sp, lineHeight = 23.sp, color = Ink)
-                val opts = parseOptions(q.options)
-                if (opts.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    opts.forEach { o ->
-                        Text(cleanMath(o), fontSize = 12.5.sp, lineHeight = 21.sp, color = Ink2,
-                            modifier = Modifier.padding(vertical = 2.dp))
-                    }
+                val richStem = buildString {
+                    append(q.stem.ifBlank { "（无题干，见原图）" })
+                    parseOptions(q.options).forEach { append(10.toChar()); append(10.toChar()); append(it) }
                 }
+                RichText(richStem, fontSize = 14)
 
                 if (vm.revealAnswer) {
                     Spacer(Modifier.height(18.dp))
@@ -366,11 +362,11 @@ fun ReviewScreen(vm: AppVm) {
                     Spacer(Modifier.height(14.dp))
                     if (q.answer.isNotBlank()) {
                         Text("答案", fontSize = 10.sp, letterSpacing = 1.sp, color = Muted)
-                        Text(cleanMath(q.answer), fontSize = 13.sp, lineHeight = 21.sp, color = Ink, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
+                        RichText(q.answer, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp), fontSize = 14)
                     }
                     if (q.analysis.isNotBlank()) {
                         Text("解析", fontSize = 10.sp, letterSpacing = 1.sp, color = Muted)
-                        Text(cleanMath(q.analysis), fontSize = 12.5.sp, lineHeight = 21.sp, color = Ink2, modifier = Modifier.padding(top = 4.dp))
+                        RichText(q.analysis, modifier = Modifier.padding(top = 4.dp), fontSize = 13)
                     }
                     if (q.answer.isBlank() && q.analysis.isBlank()) {
                         Text("这道题还没有答案与解析。", fontSize = 12.sp, color = Muted)

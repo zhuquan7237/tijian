@@ -45,6 +45,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     var route by androidx.compose.runtime.mutableStateOf<Route>(Route.Home)
         private set
+    var navForward by androidx.compose.runtime.mutableStateOf(true)
+        private set
+    val categoryScroll = HashMap<String, Int>()
     private val stack = ArrayList<Route>()
 
     var categories by androidx.compose.runtime.mutableStateOf<List<CategoryRow>>(emptyList())
@@ -116,22 +119,24 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     // ---------- navigation ----------
 
     fun go(next: Route) {
-        if (next != route) { stack.add(route); route = next }
+        if (next != route) { navForward = true; stack.add(route); route = next }
     }
 
     fun replace(next: Route) {
+        navForward = true
         route = next
     }
 
     fun back(): Boolean {
         if (stack.isNotEmpty()) {
+            navForward = false
             route = stack.removeAt(stack.size - 1)
             return true
         }
         return route != Route.Home
     }
 
-    fun home() { stack.clear(); route = Route.Home }
+    fun home() { navForward = false; stack.clear(); route = Route.Home }
 
     // ---------- import ----------
 
@@ -345,7 +350,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         withContext(Dispatchers.IO) {
             val f = File(getApplication<Application>().cacheDir, "export/${safe(title)}_${System.currentTimeMillis()}.pdf")
             f.parentFile?.mkdirs()
-            PdfExporter.export(questions, f, title, opts)
+            PdfExporter.export(com.zhuquan.tijian.MainActivity.current?.get() ?: getApplication(), questions, f, title, opts)
             f
         }
 

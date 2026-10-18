@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import java.lang.ref.WeakReference
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -14,10 +15,16 @@ import com.zhuquan.tijian.ui.TijianTheme
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        var current: WeakReference<MainActivity>? = null
+            private set
+    }
+
     private val vm: AppVm by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        current = WeakReference(this)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT

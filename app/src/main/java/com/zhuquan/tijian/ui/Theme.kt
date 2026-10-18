@@ -1,6 +1,10 @@
 package com.zhuquan.tijian.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -141,6 +146,20 @@ fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier = this.clickable(
     indication = null,
     onClick = onClick
 )
+
+@Composable
+fun Modifier.bounceClick(onClick: () -> Unit): Modifier {
+    val src = androidx.compose.foundation.interaction.MutableInteractionSource()
+    val pressed by src.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.972f else 1f,
+        animationSpec = tween(110),
+        label = "press"
+    )
+    return this
+        .graphicsLayer { scaleX = scale; scaleY = scale }
+        .clickable(interactionSource = src, indication = null, onClick = onClick)
+}
 
 @Composable
 fun IconCircle(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {

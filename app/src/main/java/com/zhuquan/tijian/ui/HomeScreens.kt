@@ -219,7 +219,7 @@ private fun CategoryCard(cat: CategoryRow, modifier: Modifier = Modifier, onClic
     val base = parseColor(cat.color)
     Column(
         modifier.clip(RoundedCornerShape(15.dp)).background(CardBg).border(1.dp, Line, RoundedCornerShape(15.dp))
-            .clickableNoRipple(onClick)
+            .bounceClick(onClick)
     ) {
         Box(
             Modifier.fillMaxWidth().height(76.dp)
@@ -260,6 +260,12 @@ fun CategoryScreen(vm: AppVm) {
     var pendingFile by remember { mutableStateOf<File?>(null) }
     val scope = rememberCoroutineScope()
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(
+        initialFirstVisibleItemIndex = vm.categoryScroll[id] ?: 0
+    )
+    androidx.compose.runtime.DisposableEffect(id) {
+        onDispose { vm.categoryScroll[id] = listState.firstVisibleItemIndex }
+    }
     val rows by produceState<List<QuestionRow>>(emptyList(), id, filter) {
         value = withContext(Dispatchers.IO) { vm.db.questions(id, filter) }
     }
@@ -321,7 +327,7 @@ fun CategoryScreen(vm: AppVm) {
                     Text("掌握", fontSize = 9.5.sp, letterSpacing = 1.sp, color = Muted, modifier = Modifier.width(44.dp))
                 }
                 val tableHeight = ((rows.size * 68 + 40).coerceIn(96, 460)).dp
-                LazyColumn(Modifier.height(tableHeight)) {
+                LazyColumn(Modifier.height(tableHeight), state = listState) {
                     items(rows, key = { it.id }) { q ->
                         val isSel = selected.value.contains(q.id)
                         Row(
@@ -454,25 +460,23 @@ fun QuestionDetailScreen(vm: AppVm) {
                 Spacer(Modifier.height(14.dp))
             }
             if (question.stem.isNotBlank()) {
-                Text(cleanMath(question.stem), fontSize = 14.sp, lineHeight = 23.sp, color = Ink)
+                val richStem = buildString {
+                    append(question.stem)
+                    parseOptions(question.options).forEach { append(10.toChar()); append(10.toChar()); append(it) }
+                }
+                RichText(richStem, fontSize = 15)
             } else {
                 Text("（未识别题干，点右上角编辑补录）", fontSize = 12.sp, color = Muted)
             }
-            val opts = parseOptions(question.options)
-            if (opts.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                opts.forEach { o ->
-                    Text(cleanMath(o), fontSize = 13.sp, lineHeight = 22.sp, color = Ink2,
-                        modifier = Modifier.padding(vertical = 2.dp))
-                }
-            }
             if (question.answer.isNotBlank()) {
                 Spacer(Modifier.height(16.dp))
-                LabelValue("答案", cleanMath(question.answer))
+                Text("答案", fontSize = 10.sp, letterSpacing = 1.sp, color = Muted)
+                RichText(question.answer, modifier = Modifier.padding(top = 4.dp), fontSize = 14)
             }
             if (question.analysis.isNotBlank()) {
                 Spacer(Modifier.height(12.dp))
-                LabelValue("解析", cleanMath(question.analysis))
+                Text("解析", fontSize = 10.sp, letterSpacing = 1.sp, color = Muted)
+                RichText(question.analysis, modifier = Modifier.padding(top = 4.dp), fontSize = 13)
             }
             Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -604,7 +608,7 @@ fun SearchRow(q: QuestionRow, onClick: () -> Unit) {
     ) {
         Thumb(q.imagePath, Modifier.width(38.dp).height(46.dp))
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
-            Text(q.stem.ifBlank { "（无题干）" }, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, color = Ink)
+            Text(cleanMathLite(q.stem).ifBlank { "（无题干）" }, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, color = Ink)
             Text("${q.categoryName} · ${q.type}", fontSize = 10.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
         }
     }
@@ -661,7 +665,7 @@ fun LabelValue(label: String, value: String) {
 fun BigButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
         modifier.height(46.dp).clip(RoundedCornerShape(12.dp)).background(Accent)
-            .clickableNoRipple(onClick), contentAlignment = Alignment.Center
+            .bounceClick(onClick), contentAlignment = Alignment.Center
     ) { Text(text, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Color.White) }
 }
 
@@ -738,7 +742,7 @@ fun dateStamp(): String = SimpleDateFormat("yyyyMMdd", Locale.CHINA).format(Date
 private fun RecentCard(q: QuestionRow, onClick: () -> Unit) {
     Column(
         Modifier.width(122.dp).shadow(8.dp, RoundedCornerShape(16.dp), ambientColor = Color(0x10362A1C), spotColor = Color(0x10362A1C))
-            .clip(RoundedCornerShape(16.dp)).background(CardBg).clickableNoRipple(onClick)
+            .clip(RoundedCornerShape(16.dp)).background(CardBg).bounceClick(onClick)
     ) {
         Box(Modifier.fillMaxWidth().height(92.dp).background(SurfaceAlt)) {
             if (q.imagePath != null) {
@@ -752,7 +756,7 @@ private fun RecentCard(q: QuestionRow, onClick: () -> Unit) {
         }
         Column(Modifier.padding(10.dp)) {
             Text(
-                cleanMath(q.stem).ifBlank { "（无题干）" },
+                cleanMathLite(q.stem).ifBlank { "（无题干）" },
                 fontSize = 11.5.sp, lineHeight = 17.sp, color = Ink,
                 maxLines = 2, overflow = TextOverflow.Ellipsis
             )

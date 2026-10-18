@@ -2,6 +2,7 @@ package com.zhuquan.tijian.export
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -49,7 +50,7 @@ object PdfExporter {
         else Typeface.SANS_SERIF
     }
 
-    fun export(questions: List<QuestionRow>, target: File, title: String, opts: Options): Int {
+    suspend fun export(context: Context, questions: List<QuestionRow>, target: File, title: String, opts: Options): Int {
         val doc = PdfDocument()
         val pager = Pager(doc)
         pager.newPage()
@@ -74,23 +75,44 @@ object PdfExporter {
             val small = paint(9f, false, muted)
             val body = paint(11f)
             val bmp0 = q.imagePath?.let { load(it) }
-            // 有原图时以图为准，避免「图 + 文字」重复占版面
-            val stemLines = if (bmp0 == null)
+
+            // 统一走富文本位图：公式、表格、化学式与 App 内完全一致
+            val richMd = buildString {
+                if (bmp0 == null) {
+                    append(q.stem.ifBlank { "（未识别题干）" })
+                    val optsList = optionsOf(q)
+                    if (optsList.isNotEmpty()) {
+                        append("\n\n")
+                        append(optsList.joinToString("\n"))
+                    }
+                }
+                if (opts.includeAnswer && q.answer.isNotBlank()) {
+                    append("\n\n**答案**\n\n").append(q.answer)
+                }
+                if (opts.includeAnalysis && q.analysis.isNotBlank()) {
+                    append("\n\n**解析**\n\n").append(q.analysis)
+                }
+            }
+            val rich = if (richMd.isBlank()) null else RichBitmap.render(context, richMd)
+            val richH = rich?.let { CONTENT_W * it.height / it.width.toFloat() } ?: 0f
+
+            // 位图渲染失败时才退回纯文本
+            val stemLines = if (bmp0 == null && rich == null)
                 wrap(cleanMath(q.stem.ifBlank { "（未识别题干）" }), body, CONTENT_W)
             else emptyList()
-            val answerText = buildString {
+            val answerText = if (rich != null) "" else buildString {
                 if (opts.includeAnswer && q.answer.isNotBlank()) append("答案：").append(cleanMath(q.answer)).append("\n")
                 if (opts.includeAnalysis && q.analysis.isNotBlank()) append("解析：").append(cleanMath(q.analysis))
             }.trim()
             val answerLines = if (answerText.isBlank()) emptyList() else wrap(answerText, paint(10.5f), CONTENT_W)
 
-            // 题块高度预判：标题 + 题干 + 图片 + 答案
+            // 题块高度预判：标题 + 题干 + 图片 + 富文本 + 答案
             val bmp = bmp0
             val imgH = if (bmp != null) minOf(
                 CONTENT_W * bmp.height.toFloat() / bmp.width,
                 BOTTOM - TOP - 80f
             ) else 0f
-            val blockH = 26f + stemLines.size * 17f + imgH + answerLines.size * 16f + 18f
+            val blockH = 26f + stemLines.size * 17f + imgH + richH + answerLines.size * 16f + 18f
 
             if (opts.onePerPage && index > 0) pager.newPage()
             else if (pager.y + minOf(blockH, 120f) > BOTTOM) pager.newPage()
@@ -117,6 +139,12 @@ object PdfExporter {
             pager.y += 6f
 
             if (bmp != null) pager.image(bmp)
+
+            if (rich != null) {
+                if (pager.y > TOP + 1f) pager.y += 8f
+                pager.image(rich)
+                rich.recycle()
+            }
 
             if (answerLines.isNotEmpty()) {
                 pager.y += 8f
@@ -295,6 +323,14 @@ object PdfExporter {
         }
         return out
     }
+
+    private fun optionsOf(q: QuestionRow): List<String> = try {
+        val arr = org.json.JSONArray(q.options)
+        (0 until arr.length()).mapNotNull { i ->
+            val v = arr.optString(i).trim()
+            if (v.isBlank()) null else v
+        }
+    } catch (e: Exception) { emptyList() }
 
     private fun tagsOf(q: QuestionRow): List<String> = try {
         val arr = org.json.JSONArray(q.tags)

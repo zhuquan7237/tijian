@@ -21,3 +21,8 @@ final-*.png
 /*.png
 /*.jpg
 /*.pdf
+__pycache__/
+dbg*.db
+fix_*.py
+rt-*.png
+exp-p*.png

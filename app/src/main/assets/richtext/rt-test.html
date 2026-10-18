@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="stylesheet" href="katex.min.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: transparent;
+    color: #232220;
+    font-family: -apple-system, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+    font-size: 16px;
+    line-height: 1.85;
+    -webkit-text-size-adjust: 100%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  #out { padding: 0; }
+  p { margin: 0 0 10px; }
+  p:last-child { margin-bottom: 0; }
+  h1 { font-size: 1.5em; line-height: 1.35; margin: 6px 0 12px; font-weight: 600; }
+  h2 { font-size: 1.22em; line-height: 1.4; margin: 20px 0 8px; font-weight: 600; }
+  h3 { font-size: 1.06em; line-height: 1.45; margin: 16px 0 6px; font-weight: 600; }
+  h4, h5, h6 { font-size: 1em; margin: 12px 0 6px; font-weight: 600; }
+  ul, ol { margin: 6px 0 10px; padding-left: 22px; }
+  li { margin: 3px 0; }
+  li > p { margin: 0; }
+  strong { font-weight: 600; color: #1B1A17; }
+  em { font-style: italic; }
+  a { color: #B4553A; text-decoration: none; }
+  blockquote {
+    margin: 10px 0; padding: 2px 0 2px 12px;
+    border-left: 3px solid #D9C6B8; color: #6F695D;
+  }
+  hr { border: 0; border-top: 1px solid #E6DFD2; margin: 16px 0; }
+  code {
+    font-family: "JetBrains Mono", "Roboto Mono", monospace;
+    font-size: 0.86em; background: #F1ECE1; color: #6E3A28;
+    padding: 1px 5px; border-radius: 4px;
+  }
+  pre {
+    background: #F5EFE4; border: 1px solid #EBE2D2; border-radius: 10px;
+    padding: 10px 12px; overflow-x: auto; margin: 10px 0;
+    line-height: 1.6;
+  }
+  pre code { background: transparent; color: #332F28; padding: 0; font-size: 0.84em; }
+  .table-wrap { width: 100%; overflow-x: auto; margin: 10px 0; }
+  table {
+    border-collapse: collapse; width: 100%; margin: 0;
+    font-size: 0.88em; table-layout: auto;
+  }
+  table th, table td {
+    border: 1px solid #E6DFD2; padding: 6px 9px; text-align: left;
+    vertical-align: top;
+  }
+  table th { background: #F1ECE1; font-weight: 600; }
+  table tr:nth-child(even) td { background: #FCFAF4; }
+  img { max-width: 100%; height: auto; border-radius: 8px; }
+  .katex { font-size: 1.04em; }
+  .katex-display { margin: 10px 0; }
+  .math-display { display: block; overflow-x: auto; overflow-y: hidden; margin: 10px 0; }
+  .rt-error { color: #A8453A; font-family: monospace; font-size: 0.9em; }
+  /* 任务列表 */
+  input[type="checkbox"] { margin-right: 6px; }
+</style>
+</head>
+<body>
+<div id="out"></div>
+
+<script src="katex.min.js"></script>
+<script src="mhchem.min.js"></script>
+<script src="markdown-it.min.js"></script>
+<script>
+(function () {
+  var RAW = "求 $\\lim_{x\\to 1}\\dfrac{e^{\\ln x}-e^{x\\ln x}}{1-x+x\\ln x}$ 的值。\n\n原式 $=\\lim_{x\\to 1}\\dfrac{(1-x)\\ln x}{1-x+x\\ln x}$，两次使用洛必达法则：\n\n$$\\dfrac{1/x-1-\\ln x}{\\ln x}\\to\\dfrac{-1/x^2-1/x}{1/x}\\Big|_{x=1}=-2$$\n\n| 步骤 | 操作 | 结果 |\n|---|---|---|\n| 1 | 第一次求导 | $\\dfrac{1/x-1-\\ln x}{\\ln x}$ |\n| 2 | 第二次求导 | $\\dfrac{-1/x^2-1/x}{1/x}$ |\n\n化学式示例：$\\ce{2H2 + O2 -> 2H2O}$，矩阵：$\\begin{vmatrix}a&b\\c&d\\end{vmatrix}$";
+  var blocks = [];
+
+  function stash(tex, display) {
+    blocks.push({ tex: tex, display: display });
+    return '@@M' + (blocks.length - 1) + '@@';
+  }
+
+  function isCjk(ch) {
+    var c = ch.charCodeAt(0);
+    return c >= 0x4e00 && c <= 0x9fff;
+  }
+
+  // 1) 没有 $ 定界符的裸 LaTeX：只包裹不含中文的片段
+  function wrapBare(line) {
+    if (line.indexOf('$') !== -1) return line;
+    if (line.indexOf('\\') === -1) return line;
+    return line.replace(/[^\u4e00-\u9fff]+/g, function (seg) {
+      if (!/\\[a-zA-Z]+/.test(seg)) return seg;
+      if (/^\s*$/.test(seg)) return seg;
+      // markdown 结构行不包
+      if (/^\s*(#{1,6}\s|>|\||```)/.test(line)) return seg;
+      return '$' + seg + '$';
+    });
+  }
+
+  var src = RAW.split('\n').map(wrapBare).join('\n');
+
+  // 2) 保护各种定界符，避免 markdown 把 _ ^ 吃掉
+  src = src.replace(/\$\$([\s\S]+?)\$\$/g, function (m, p1) { return stash(p1, true); });
+  src = src.replace(/\\\[([\s\S]+?)\\\]/g, function (m, p1) { return stash(p1, true); });
+  src = src.replace(/\\\(([\s\S]+?)\\\)/g, function (m, p1) { return stash(p1, false); });
+  src = src.replace(/(^|[^\\$])\$(?!\$)([^\n$]+?)\$/g, function (m, pre, p1) {
+    return pre + stash(p1, false);
+  });
+
+  var md = window.markdownit({
+    html: false,
+    linkify: true,
+    breaks: false,
+    typographer: false
+  });
+
+  var html = md.render(src);
+
+  html = html.replace(/@@M(\d+)@@/g, function (m, idx) {
+    var b = blocks[+idx];
+    if (!b) return m;
+    try {
+      return katex.renderToString(b.tex, {
+        displayMode: b.display,
+        throwOnError: false,
+        strict: false,
+        trust: false,
+        output: 'html'
+      });
+    } catch (e) {
+      return '<span class="rt-error">' + escapeHtml(b.tex) + '</span>';
+    }
+  });
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  html = html.replace(/<table>/g, '<div class="table-wrap"><table>')
+             .replace(/<\/table>/g, '</table></div>');
+  document.getElementById('out').innerHTML = html;
+
+  // 3) 把内容高度报给原生端，父级滚动而不是 WebView 自己滚
+  function report() {
+    var h = Math.ceil(document.getElementById('out').getBoundingClientRect().height) + 2;
+    if (window.AndroidRichText && window.AndroidRichText.height) {
+      window.AndroidRichText.height(h);
+    }
+  }
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(report);
+  }
+  if (window.ResizeObserver) {
+    new ResizeObserver(report).observe(document.getElementById('out'));
+  }
+  setTimeout(report, 60);
+  setTimeout(report, 300);
+  report();
+})();
+</script>
+</body>
+</html>

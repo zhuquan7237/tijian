@@ -194,7 +194,7 @@ fun DocScreen(vm: AppVm) {
             }
         )
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
-            MarkdownText(d.contentMd)
+            RichText(d.contentMd, fontSize = 14)
             Spacer(Modifier.height(18.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(

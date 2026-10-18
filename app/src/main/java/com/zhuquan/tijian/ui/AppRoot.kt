@@ -7,6 +7,14 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -76,17 +84,29 @@ fun AppRoot(vm: AppVm = viewModel()) {
     Box(Modifier.fillMaxSize().background(Bg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f)) {
-                when (val r = vm.route) {
-                    is Route.Home -> HomeScreen(vm) { showImport = true }
-                    is Route.Category -> CategoryScreen(vm)
-                    is Route.Detail -> QuestionDetailScreen(vm)
-                    is Route.Import -> ImportScreen(vm)
-                    is Route.Capture -> CaptureScreen(vm)
-                    is Route.Review -> ReviewScreen(vm)
-                    is Route.Library -> LibraryScreen(vm)
-                    is Route.Doc -> DocScreen(vm)
-                    is Route.Settings -> SettingsScreen(vm)
-                    is Route.Provider -> ProviderScreen(vm)
+                AnimatedContent(
+                    targetState = vm.route,
+                    transitionSpec = {
+                        val dir = if (vm.navForward) 1 else -1
+                        (slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { dir * it / 6 } +
+                            fadeIn(tween(200))) togetherWith
+                            (slideOutHorizontally(tween(260, easing = FastOutSlowInEasing)) { -dir * it / 6 } +
+                                fadeOut(tween(160)))
+                    },
+                    label = "route"
+                ) { r ->
+                    when (r) {
+                        is Route.Home -> HomeScreen(vm) { showImport = true }
+                        is Route.Category -> CategoryScreen(vm)
+                        is Route.Detail -> QuestionDetailScreen(vm)
+                        is Route.Import -> ImportScreen(vm)
+                        is Route.Capture -> CaptureScreen(vm)
+                        is Route.Review -> ReviewScreen(vm)
+                        is Route.Library -> LibraryScreen(vm)
+                        is Route.Doc -> DocScreen(vm)
+                        is Route.Settings -> SettingsScreen(vm)
+                        is Route.Provider -> ProviderScreen(vm)
+                    }
                 }
             }
             if (vm.route is Route.Home || vm.route is Route.Library || vm.route is Route.Settings) {
@@ -103,7 +123,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
             Box(
                 Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 104.dp)
                     .size(54.dp).clip(CircleShape).background(Ink)
-                    .clickableNoRipple { showImport = true },
+                    .bounceClick { showImport = true },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Rounded.Add, "导入", tint = Color.White, modifier = Modifier.size(26.dp))
