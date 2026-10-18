@@ -42,6 +42,6 @@
 
 模拟器上一版 0.4.2 的 release 采样仍为 71/209 超时帧（33.97%），P95 44ms；本版未重新做长时性能基准，不能据此宣称转场已经达到稳定 60fps。物理手机、线上 AI 服务、全部相册供应商/图片格式未验证；旧版已经压缩或裁剪的图片无法恢复丢失像素，需要重新导入。
 
-截图和仪器 XML 位于 `docs/validation/0.4.3/`。`subject-cards-043.png` 为整卡点击后的子分类页；`editor-layout-043.png` 展示工具行完整可见；`editor-brush-043.png` 为真实画笔笔迹；`editor-crop-043.png` 为自由裁剪框；`pdf-single-page-043.png` 与 PDF 文件是实际长图导出的逐页渲染。
+截图和仪器 XML 位于 `docs/validation/0.4.3/`。`home-043-release.png`、`subject-cards-043.png`、`editor-layout-043.png` 来自最终 release 包的模拟器安装；`editor-brush-043.png` 和 `editor-crop-043.png` 来自同版 debug 包（画笔/拖框截图），不是最终 release 证据；`pdf-single-page-043.png` 与 PDF 文件是实际长图导出的逐页渲染。
 
 材料小类在已有数据库上通过升级写入一次；用户删除后不会在重启时重新创建。若旧库的分类表缺失，则跳过种子写入，避免首启崩溃。
