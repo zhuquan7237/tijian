@@ -55,7 +55,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -223,10 +222,10 @@ private fun CategoryCard(cat: CategoryRow, modifier: Modifier = Modifier, onClic
     ) {
         Box(
             Modifier.fillMaxWidth().height(76.dp)
-                .background(Brush.linearGradient(listOf(base, base.copy(alpha = 0.45f))))
+                .background(base.copy(alpha = 0.14f))
         ) {
-            Text(glyph, fontSize = 42.sp, color = Color(0x2E141418), modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
-            Text("${cat.count}", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0x73141418),
+            Text(glyph, fontSize = 42.sp, color = base.copy(alpha = 0.62f), modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
+            Text("${cat.count}", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = Ink2,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 11.dp, bottom = 8.dp))
             if (cat.status == "pending") {
                 Box(
@@ -239,7 +238,7 @@ private fun CategoryCard(cat: CategoryRow, modifier: Modifier = Modifier, onClic
         Column(Modifier.padding(start = 13.dp, end = 13.dp, top = 10.dp, bottom = 13.dp)) {
             Text(cat.name, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("已掌握 ${cat.mastered} / ${cat.count}", fontSize = 11.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
-            Box(Modifier.fillMaxWidth().padding(top = 8.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFF0EBE0))) {
+            Box(Modifier.fillMaxWidth().padding(top = 8.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(SurfaceAlt)) {
                 Box(
                     Modifier.fillMaxWidth(if (cat.count == 0) 0f else cat.mastered.toFloat() / cat.count)
                         .height(3.dp).background(Green.copy(alpha = 0.8f))
@@ -250,8 +249,8 @@ private fun CategoryCard(cat: CategoryRow, modifier: Modifier = Modifier, onClic
 }
 
 @Composable
-fun CategoryScreen(vm: AppVm) {
-    val id = (vm.route as? Route.Category)?.id ?: return
+fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Category) {
+    val id = route?.id ?: return
     val cat = vm.categories.firstOrNull { it.id == id }
     var filter by remember { mutableStateOf("all") }
     var selecting by remember { mutableStateOf(false) }
@@ -435,8 +434,8 @@ fun CategoryScreen(vm: AppVm) {
 }
 
 @Composable
-fun QuestionDetailScreen(vm: AppVm) {
-    val id = (vm.route as? Route.Detail)?.id ?: return
+fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.Detail) {
+    val id = route?.id ?: return
     var q by remember { mutableStateOf<QuestionRow?>(null) }
     var editing by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -459,35 +458,36 @@ fun QuestionDetailScreen(vm: AppVm) {
                 ZoomableImage(File(question.imagePath))
                 Spacer(Modifier.height(14.dp))
             }
-            // 题干 / 答案 / 解析合并为一个 WebView：只创建一次渲染器，切换和滚动都更稳
-            val body = buildString {
-                if (question.stem.isNotBlank()) {
-                    append(question.stem)
-                    parseOptions(question.options).forEach {
-                        append(10.toChar()); append(10.toChar()); append(it)
-                    }
-                }
-                if (question.answer.isNotBlank()) {
-                    append(10.toChar()); append(10.toChar())
-                    append("#### 答案"); append(10.toChar()); append(10.toChar())
-                    append(question.answer)
-                }
-                if (question.analysis.isNotBlank()) {
-                    append(10.toChar()); append(10.toChar())
-                    append("#### 解析"); append(10.toChar()); append(10.toChar())
-                    append(question.analysis)
+            val stem = buildString {
+                append(question.stem)
+                parseOptions(question.options).forEach {
+                    append(10.toChar()); append(10.toChar()); append(it)
                 }
             }
-            if (body.isBlank()) {
+            if (stem.isBlank()) {
                 Text("（未识别题干，点右上角编辑补录）", fontSize = 12.sp, color = Muted)
             } else {
-                RichText(body, fontSize = 16)
+                RichSection("题目", "题干与选项", Accent) {
+                    RichText(stem, fontSize = 16)
+                }
+            }
+            if (question.answer.isNotBlank()) {
+                Spacer(Modifier.height(12.dp))
+                RichSection("答案", "先看结论，再对照解析", Green) {
+                    RichText(question.answer, fontSize = 15)
+                }
+            }
+            if (question.analysis.isNotBlank()) {
+                Spacer(Modifier.height(12.dp))
+                RichSection("解析", "按步骤展开推理", Accent) {
+                    RichText(question.analysis, fontSize = 15)
+                }
             }
             if (question.analysis.isNotBlank()) {
                 if (looksTruncated(question.analysis)) {
                     Text(
                         "这段解析可能被模型截断（公式或括号未闭合），可在右上角编辑补全，或重新识别。",
-                        fontSize = 11.sp, color = Color(0xFFA8453A),
+                        fontSize = 11.sp, color = Red,
                         modifier = Modifier.padding(top = 6.dp)
                     )
                 }
@@ -546,6 +546,29 @@ fun QuestionDetailScreen(vm: AppVm) {
             }) { Text("删除", color = Red) } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } }
         )
+    }
+}
+
+@Composable
+fun RichSection(
+    title: String,
+    subtitle: String,
+    color: Color,
+    content: @Composable () -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth().clip(CardShape).background(CardBg)
+            .border(1.dp, Line, CardShape).padding(horizontal = 14.dp, vertical = 13.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+            Column(Modifier.padding(start = 8.dp)) {
+                Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                Text(subtitle, fontSize = 10.5.sp, color = Muted, modifier = Modifier.padding(top = 1.dp))
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        content()
     }
 }
 
@@ -678,7 +701,7 @@ fun LabelValue(label: String, value: String) {
 @Composable
 fun BigButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        modifier.height(46.dp).clip(RoundedCornerShape(12.dp)).background(Accent)
+        modifier.height(50.dp).clip(RoundedCornerShape(14.dp)).background(Accent)
             .bounceClick(onClick), contentAlignment = Alignment.Center
     ) { Text(text, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Color.White) }
 }

@@ -326,7 +326,7 @@ fun ReviewScreen(vm: AppVm) {
         }
 
         Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
-            Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFEDEDE7))) {
+            Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(SurfaceAlt)) {
                 Box(
                     Modifier.fillMaxWidth((vm.reviewIndex + 1).toFloat() / vm.reviewQueue.size)
                         .height(3.dp).background(Ink)
@@ -354,19 +354,22 @@ fun ReviewScreen(vm: AppVm) {
                     append(q.stem.ifBlank { "（无题干，见原图）" })
                     parseOptions(q.options).forEach { append(10.toChar()); append(10.toChar()); append(it) }
                 }
-                RichText(richStem, fontSize = 14)
+                RichSection("题目", "先独立作答，再查看答案", Accent) {
+                    RichText(richStem, fontSize = 14)
+                }
 
                 if (vm.revealAnswer) {
                     Spacer(Modifier.height(18.dp))
-                    Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
-                    Spacer(Modifier.height(14.dp))
                     if (q.answer.isNotBlank()) {
-                        Text("答案", fontSize = 10.sp, letterSpacing = 1.sp, color = Muted)
-                        RichText(q.answer, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp), fontSize = 14)
+                        RichSection("答案", "核对最终结论", Green) {
+                            RichText(q.answer, fontSize = 14)
+                        }
+                        Spacer(Modifier.height(12.dp))
                     }
                     if (q.analysis.isNotBlank()) {
-                        Text("解析", fontSize = 10.sp, letterSpacing = 1.sp, color = Muted)
-                        RichText(q.analysis, modifier = Modifier.padding(top = 4.dp), fontSize = 13)
+                        RichSection("解析", "按步骤复盘思路", Accent) {
+                            RichText(q.analysis, fontSize = 14)
+                        }
                     }
                     if (q.answer.isBlank() && q.analysis.isBlank()) {
                         Text("这道题还没有答案与解析。", fontSize = 12.sp, color = Muted)
@@ -379,7 +382,7 @@ fun ReviewScreen(vm: AppVm) {
                 BigButton("显示答案", Modifier.fillMaxWidth()) { vm.reveal() }
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RateButton("忘了", Color(0xFFC0453B), Modifier.weight(1f)) { vm.rate(0) }
+                    RateButton("忘了", Red, Modifier.weight(1f)) { vm.rate(0) }
                     RateButton("模糊", Amber, Modifier.weight(1f)) { vm.rate(1) }
                     RateButton("记得", Green, Modifier.weight(1f)) { vm.rate(2) }
                 }
@@ -392,8 +395,8 @@ fun ReviewScreen(vm: AppVm) {
 @Composable
 private fun RateButton(text: String, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        modifier.height(46.dp).clip(RoundedCornerShape(12.dp)).background(Color.White)
-            .border(1.dp, color.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+        modifier.height(50.dp).clip(RoundedCornerShape(14.dp)).background(Color.White)
+            .border(1.dp, color.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
             .clickableNoRipple(onClick),
         contentAlignment = Alignment.Center
     ) { Text(text, fontSize = 12.5.sp, color = color, fontWeight = FontWeight.SemiBold) }

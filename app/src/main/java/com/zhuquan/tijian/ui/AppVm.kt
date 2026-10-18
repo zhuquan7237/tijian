@@ -124,6 +124,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     fun replace(next: Route) {
         navForward = true
+        stack.clear()
         route = next
     }
 

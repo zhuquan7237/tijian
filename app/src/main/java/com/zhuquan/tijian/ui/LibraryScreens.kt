@@ -39,7 +39,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -125,7 +124,7 @@ fun LibraryScreen(vm: AppVm) {
 private fun GenerateCard(categoryCount: Int, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF17171C), Color(0xFF26263A))))
+            .background(Ink)
             .clickableNoRipple(onClick).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -162,8 +161,8 @@ private fun DocRowItem(doc: DocRow, onOpen: () -> Unit, onPdf: () -> Unit) {
 }
 
 @Composable
-fun DocScreen(vm: AppVm) {
-    val id = (vm.route as? Route.Doc)?.id ?: return
+fun DocScreen(vm: AppVm, route: Route.Doc? = vm.route as? Route.Doc) {
+    val id = route?.id ?: return
     var doc by remember { mutableStateOf<DocRow?>(null) }
     var pendingFile by remember { mutableStateOf<File?>(null) }
     val scope = rememberCoroutineScope()

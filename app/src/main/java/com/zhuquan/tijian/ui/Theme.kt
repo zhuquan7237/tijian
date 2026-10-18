@@ -39,21 +39,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// 纸墨体系：暖象牙底 + 墨色字 + 赤陶强调
-val Bg = Color(0xFFF7F4EC)
-val CardBg = Color(0xFFFFFDF8)
-val SurfaceAlt = Color(0xFFF1ECE1)
-val Ink = Color(0xFF232220)
-val Ink2 = Color(0xFF4A463F)
-val Muted = Color(0xFF6B6355)
-val Line = Color(0xFFE6DFD2)
-val Accent = Color(0xFFB4553A)
-val AccentSoft = Color(0xFFF7E5DC)
-val Green = Color(0xFF4F7A5A)
-val Amber = Color(0xFFA9762F)
-val Red = Color(0xFFA8453A)
+// 清晰的蓝紫强调色 + 冷白底，保证题目正文、答案和解析有足够对比度。
+val Bg = Color(0xFFF6F7FB)
+val CardBg = Color(0xFFFFFFFF)
+val SurfaceAlt = Color(0xFFF0F2F7)
+val Ink = Color(0xFF151A2A)
+val Ink2 = Color(0xFF3E465A)
+val Muted = Color(0xFF737B8F)
+val Line = Color(0xFFE3E7F0)
+val Accent = Color(0xFF4D5CEB)
+val AccentSoft = Color(0xFFEEF0FF)
+val Green = Color(0xFF2E866B)
+val Amber = Color(0xFFB47A2C)
+val Red = Color(0xFFC34D55)
 
-val CardShape = RoundedCornerShape(20.dp)
+val CardShape = RoundedCornerShape(18.dp)
 val SmallShape = RoundedCornerShape(12.dp)
 
 @Composable
@@ -87,10 +87,10 @@ fun TijianTheme(content: @Composable () -> Unit) {
                 fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp,
             ),
             bodyLarge = Typography().bodyLarge.copy(
-                fontFamily = FontFamily.SansSerif, fontSize = 15.sp, lineHeight = 25.sp,
+                fontFamily = FontFamily.SansSerif, fontSize = 15.sp, lineHeight = 26.sp,
             ),
             bodyMedium = Typography().bodyMedium.copy(
-                fontFamily = FontFamily.SansSerif, fontSize = 13.sp, lineHeight = 21.sp,
+                fontFamily = FontFamily.SansSerif, fontSize = 13.sp, lineHeight = 22.sp,
             ),
             labelSmall = Typography().labelSmall.copy(
                 fontFamily = FontFamily.SansSerif, fontSize = 10.sp, letterSpacing = 0.8.sp,
@@ -111,10 +111,10 @@ fun TjTopBar(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                start = if (onBack != null) 8.dp else 20.dp,
+                start = if (onBack != null) 6.dp else 18.dp,
                 end = 20.dp,
-                top = if (onBack != null) 8.dp else 14.dp,
-                bottom = 14.dp
+                top = if (onBack != null) 6.dp else 12.dp,
+                bottom = 12.dp
             ),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -127,7 +127,7 @@ fun TjTopBar(
         Column(Modifier.weight(1f)) {
             Text(
                 title,
-                fontSize = if (onBack != null) 18.sp else 31.sp,
+                fontSize = if (onBack != null) 18.sp else 28.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = if (onBack != null) (-0.2).sp else (-0.9).sp,
                 color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis
@@ -199,7 +199,7 @@ fun TjChip(text: String, selected: Boolean = false, onClick: () -> Unit) {
 fun CardBox(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Box(
         modifier
-            .shadow(10.dp, CardShape, ambientColor = Color(0x14362A1C), spotColor = Color(0x14362A1C))
+            .shadow(5.dp, CardShape, ambientColor = Color(0x120F1B3D), spotColor = Color(0x120F1B3D))
             .clip(CardShape)
             .background(CardBg)
     ) { content() }
@@ -249,5 +249,5 @@ fun parseOptions(json: String): List<String> = try {
 
 @Composable
 fun DividerSoft() {
-    Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF0EBE0)))
+    Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
 }

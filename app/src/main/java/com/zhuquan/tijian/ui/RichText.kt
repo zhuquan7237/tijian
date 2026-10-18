@@ -50,7 +50,9 @@ fun RichText(
     val density = LocalDensity.current
     val height = remember(markdown) { mutableIntStateOf(0) }
     // 固定 CSS 视口宽度，避免部分 OEM WebView 按 980px 宽屏排版导致右侧被裁
-    val widthDp = (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp - 36)
+    // RichText 可能嵌在带内边距的内容卡片里，视口必须比整屏窄，才能触发正确换行。
+    // 过宽会让 WebView 认为内容可以横向铺开，Compose 外层再把右侧直接裁掉。
+    val widthDp = (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp - 64)
         .coerceAtLeast(240)
     val html = remember(markdown, fontSize, widthDp) {
         RichTextRenderer.html(context, Normalize.text(markdown), fontSize, widthDp)

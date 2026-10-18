@@ -359,7 +359,7 @@ ${material.take(9000)}
             out.add(
                 ParsedQuestion(
                     no = o.optString("no"),
-                    type = o.optString("type"),
+                    type = normalizeType(o.optString("type"), opts, stem),
                     stem = stem,
                     options = opts,
                     answer = o.optString("answer"),
@@ -376,6 +376,23 @@ ${material.take(9000)}
         return out
     }
 
+    private fun normalizeType(raw: String, options: List<String>, stem: String): String {
+        val t = raw.trim().replace(" ", "")
+        return when {
+            t.contains("选择") || t.contains("单选") || t.contains("多选") -> "选择题"
+            t.contains("判断") -> "判断题"
+            t.contains("填空") -> "填空题"
+            t.contains("证明") -> "证明题"
+            t.contains("实验") -> "实验题"
+            t.contains("材料") -> "材料题"
+            t.contains("计算") -> "计算题"
+            t.contains("解答") || t.contains("大题") -> "解答题"
+            options.size >= 2 -> "选择题"
+            stem.contains("证明") -> "证明题"
+            else -> t.ifBlank { "题目" }
+        }
+    }
+
     companion object {
         private const val SYSTEM = "你是严谨的题目结构化助手。只输出 JSON，不输出解释或 markdown 代码块。"
 
@@ -389,6 +406,8 @@ ${material.take(9000)}
 4. 手写内容无法辨认时，用 ⟨?⟩ 标记该片段，不要猜。
 5. bbox 为 0~1 归一化坐标 [x1,y1,x2,y2]，粗略即可；若整张图只有一题可省略。
 6. 跨页/跨栏的同一题，合并为一道。
+7. type 只使用：选择题、判断题、填空题、计算题、证明题、解答题、实验题、材料题；无法判断时填“题目”。
+8. answer 只写最终答案，analysis 写清楚推理步骤；不要把答案重复粘进解析，也不要把解析塞进 answer。
 
 模板：
 {"questions":[{"no":"12","type":"选择题","stem":"...","options":["A. ...","B. ..."],"answer":"","analysis":"","knowledge_tags":["..."],"difficulty":3,"category":"数学/函数与导数","confidence":0.9,"bbox":[0.06,0.31,0.94,0.52]}]}"""
