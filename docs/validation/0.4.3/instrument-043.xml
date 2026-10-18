@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="com.zhuquan.tijian.ImageAndCategoryTest" tests="13" failures="0" errors="0" skipped="0" time="29.342" timestamp="2026-10-18T18:41:10" hostname="localhost">
+  <properties>
+    <property name="device" value="AtlasRefactorQA(AVD) - 17" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="originalBytesAndDimensionsSurviveImportAndCropKeepsPixels" classname="com.zhuquan.tijian.ImageAndCategoryTest" time="0.507" />
+  <testcase name="versionOneUpgradeKeepsExistingImageRows" classname="com.zhuquan.tijian.ImageAndCategoryTest" time="0.133" />
+  <testcase name="rotatedAndMirroredImagesCropInDisplayedCoordinates" classname="com.zhuquan.tijian.ImageAndCategoryTest" time="0.076" />
+  <testcase name="sameNamedSubcategoriesStayInTheirSubjectAndDeletionKeepsQuestions" classname="com.zhuquan.tijian.ImageAndCategoryTest" time="0.201" />
+  <testcase name="longImageSlicesContinueOnCurrentPageAndEndAtContent" classname="com.zhuquan.tijian.ImageEditorLayoutTest" time="1.071" />
+  <testcase name="portraitImageKeepsFullHeightInsideStage" classname="com.zhuquan.tijian.ImageEditorLayoutTest" time="1.779" />
+  <testcase name="brushStrokeIsFlattenedIntoExportedCopy" classname="com.zhuquan.tijian.ImageEditorLayoutTest" time="1.41" />
+  <testcase name="freeformCornerDragAndReset" classname="com.zhuquan.tijian.OriginalImageGestureTest" time="1.523" />
+  <testcase name="pinchZoomChangesActualRenderedPixels" classname="com.zhuquan.tijian.OriginalImageGestureTest" time="1.37" />
+  <testcase name="testTextAndFormulaCorpus" classname="com.zhuquan.tijian.RichTextLayoutTest" time="3.311" />
+  <testcase name="testWidthFontScaleAndResume" classname="com.zhuquan.tijian.RichTextLayoutTest" time="2.201" />
+  <testcase name="testEmptyContentThenLongAnalysis" classname="com.zhuquan.tijian.RichTextLayoutTest" time="1.526" />
+  <testcase name="testAsyncReplacementShrinkAndStableHeight" classname="com.zhuquan.tijian.RichTextLayoutTest" time="2.587" />
+</testsuite>

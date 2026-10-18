@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
@@ -41,14 +42,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 // 清晰的蓝紫强调色 + 冷白底，保证题目正文、答案和解析有足够对比度。
-val Bg = Color(0xFFF6F7FB)
+// 2026-10-19: 正文和输入框对比度再次提高，正文使用近黑色，输入边框使用可辨识的灰蓝色。
+val Bg = Color(0xFFF5F7FB)
 val CardBg = Color(0xFFFFFFFF)
-val SurfaceAlt = Color(0xFFF0F2F7)
-val Ink = Color(0xFF151A2A)
-val Ink2 = Color(0xFF3E465A)
-val Muted = Color(0xFF535D72)
-val Line = Color(0xFFE3E7F0)
-val Accent = Color(0xFF4D5CEB)
+val SurfaceAlt = Color(0xFFEEF1F7)
+val Ink = Color(0xFF111827)
+val Ink2 = Color(0xFF303B4F)
+val Muted = Color(0xFF4E5A70)
+val Line = Color(0xFFD5DCE8)
+/** Input borders need to be visible at a glance, including in bright rooms. */
+val FieldBorder = Color(0xFF66738A)
+val Accent = Color(0xFF4354D8)
 val AccentSoft = Color(0xFFEEF0FF)
 val Green = Color(0xFF2E866B)
 val Amber = Color(0xFFB47A2C)
@@ -73,7 +77,7 @@ fun TijianTheme(content: @Composable () -> Unit) {
             onSurface = Ink,
             surfaceVariant = SurfaceAlt,
             onSurfaceVariant = Ink2,
-            outline = Color(0xFF7D879B),
+            outline = FieldBorder,
             outlineVariant = Line,
             error = Red,
         ),
@@ -100,6 +104,23 @@ fun TijianTheme(content: @Composable () -> Unit) {
         content = content
     )
 }
+
+/** Shared text-field colors: readable labels, an actual visible border and dark input text. */
+@Composable
+fun tjFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Ink,
+    unfocusedTextColor = Ink,
+    focusedContainerColor = CardBg,
+    unfocusedContainerColor = CardBg,
+    cursorColor = Accent,
+    focusedBorderColor = Accent,
+    unfocusedBorderColor = FieldBorder,
+    disabledBorderColor = Line,
+    focusedLabelColor = Accent,
+    unfocusedLabelColor = Ink2,
+    focusedPlaceholderColor = Muted,
+    unfocusedPlaceholderColor = Muted,
+)
 
 @Composable
 fun TjTopBar(
@@ -143,6 +164,13 @@ fun TjTopBar(
 }
 
 fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier = this.clickable(
+    interactionSource = androidx.compose.foundation.interaction.MutableInteractionSource(),
+    indication = null,
+    onClick = onClick
+)
+
+fun Modifier.clickableNoRipple(enabled: Boolean, onClick: () -> Unit): Modifier = this.clickable(
+    enabled = enabled,
     interactionSource = androidx.compose.foundation.interaction.MutableInteractionSource(),
     indication = null,
     onClick = onClick
@@ -200,7 +228,7 @@ fun TjChip(text: String, selected: Boolean = false, onClick: () -> Unit) {
 fun CardBox(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Box(
         modifier
-            .shadow(5.dp, CardShape, ambientColor = Color(0x120F1B3D), spotColor = Color(0x120F1B3D))
+            .shadow(3.dp, CardShape, ambientColor = Color(0x140F1B3D), spotColor = Color(0x140F1B3D))
             .clip(CardShape)
             .background(CardBg)
     ) { content() }

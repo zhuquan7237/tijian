@@ -6,15 +6,28 @@ import android.net.Uri
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -49,6 +62,15 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
     private var lastY = 0f
     private var edge = 0
     private var gestureMoved = false
+    /** Strokes are normalized to the displayed image, so zoom and crop share one coordinate space. */
+    val strokes = ArrayList<Stroke>()
+    var brushColor = android.graphics.Color.rgb(231, 76, 60)
+    var brushWidth = .006f
+    private var activeStroke: Stroke? = null
+    var brushMode = false
+        set(value) { field = value; gestureMoved = false; invalidate() }
+
+    data class Stroke(val points: MutableList<Offset>, val color: Int, val width: Float)
     private val scale = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
             if (cropMode) return false
@@ -87,12 +109,26 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
     override fun onDraw(canvas: Canvas) {
         if (closed) return
         canvas.clipRect(0, 0, width, height)
-        canvas.drawColor(android.graphics.Color.rgb(20, 24, 33))
+        canvas.drawColor(android.graphics.Color.rgb(245, 246, 250))
         val r = updateMatrix()
         canvas.save(); canvas.concat(matrix)
         canvas.drawBitmap(preview, null, RectF(0f, 0f, decoder.width.toFloat(), decoder.height.toFloat()), paint)
         tile?.let { bitmap -> tileRect?.let { canvas.drawBitmap(bitmap, null, RectF(it), paint) } }
         canvas.restore()
+        strokes.forEach { stroke ->
+            val path = Path()
+            stroke.points.forEachIndexed { index, point ->
+                val x = r.left + point.x * r.width(); val y = r.top + point.y * r.height()
+                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            paint.color = stroke.color
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = (stroke.width * r.width()).coerceAtLeast(2f)
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeJoin = Paint.Join.ROUND
+            canvas.drawPath(path, paint)
+        }
+        paint.style = Paint.Style.FILL
         if (cropMode) {
             val c = RectF(r.left + crop.left * r.width(), r.top + crop.top * r.height(), r.left + crop.right * r.width(), r.top + crop.bottom * r.height())
             paint.color = 0x99000000.toInt(); paint.style = Paint.Style.FILL
@@ -126,6 +162,27 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
     }
     override fun onTouchEvent(event: MotionEvent): Boolean {
         scale.onTouchEvent(event)
+        if (brushMode && event.pointerCount == 1) {
+            val p = imageRect()
+            val nx = ((event.x - p.left) / p.width()).coerceIn(0f, 1f)
+            val ny = ((event.y - p.top) / p.height()).coerceIn(0f, 1f)
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    gestureMoved = false
+                    activeStroke = Stroke(mutableListOf(Offset(nx, ny)), brushColor, brushWidth).also { strokes.add(it) }
+                    invalidate(); return true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (activeStroke == null) return true
+                    activeStroke!!.points.add(Offset(nx, ny))
+                    invalidate(); return true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    activeStroke = null; invalidate(); return true
+                }
+            }
+            return true
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 lastX = event.x; lastY = event.y; gestureMoved = false; edge = 0
@@ -165,6 +222,42 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
     }
     override fun performClick(): Boolean { super.performClick(); return true }
     fun resetCrop() { crop.set(0f, 0f, 1f, 1f); updateGestureExclusion(); invalidate() }
+    fun undoStroke() { if (strokes.isNotEmpty()) { strokes.removeAt(strokes.size - 1); invalidate() } }
+    fun clearStrokes() { strokes.clear(); invalidate() }
+
+    /** Flatten the current view (oriented source + annotations) into a clean PNG at up to 2200px. */
+    fun exportWithStrokes(output: File): File {
+        val maxDim = 2200f
+        val scale = min(1f, maxDim / max(imageWidth, imageHeight))
+        val w = (imageWidth * scale).toInt().coerceAtLeast(1)
+        val h = (imageHeight * scale).toInt().coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(android.graphics.Color.WHITE)
+        val image = RectF(0f, 0f, w.toFloat(), h.toFloat())
+        val m = Matrix()
+        m.set(orientation); m.postTranslate(-oriented.left, -oriented.top)
+        m.postScale(scale, scale)
+        val base = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        canvas.save(); canvas.concat(m)
+        canvas.drawBitmap(preview, null, RectF(0f, 0f, decoder.width.toFloat(), decoder.height.toFloat()), base)
+        canvas.restore()
+        strokes.forEach { stroke ->
+            val path = Path()
+            stroke.points.forEachIndexed { index, point ->
+                val x = point.x * w; val y = point.y * h
+                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            base.color = stroke.color
+            base.style = Paint.Style.STROKE
+            base.strokeWidth = (stroke.width * w).coerceAtLeast(2f)
+            base.strokeCap = Paint.Cap.ROUND; base.strokeJoin = Paint.Join.ROUND
+            canvas.drawPath(path, base)
+        }
+        try { output.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+        finally { bitmap.recycle() }
+        return output
+    }
     fun close() {
         if (closed) return
         closed = true; generation++
@@ -180,8 +273,12 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
     var file by remember(uri) { mutableStateOf<File?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var cropping by remember { mutableStateOf(false) }
+    var brushing by remember { mutableStateOf(false) }
+    var brushColor by remember { mutableStateOf<Int>(0xFFE74C3C.toInt()) }
+    var brushWidth by remember { mutableStateOf(0.006f) }
     var saving by remember { mutableStateOf(false) }
     var view by remember { mutableStateOf<OriginalImageView?>(null) }
+    var editRevision by remember { mutableIntStateOf(0) }
     LaunchedEffect(uri) {
         runCatching { withContext(Dispatchers.IO) {
             if (uri.scheme == "file") File(requireNotNull(uri.path)) else File.createTempFile("original_", ".image", context.cacheDir).also { dest ->
@@ -202,35 +299,100 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
             dialogWindow?.setGravity(android.view.Gravity.TOP or android.view.Gravity.START)
         }
         Column(Modifier.fillMaxSize().background(Bg).padding(WindowInsets.safeDrawing.asPaddingValues())) {
-            TjTopBar("原图查看与编辑", "双指缩放 · 拖动查看；裁剪另存无损副本", onBack = { if (!saving) onDismiss() })
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                file?.let { imageFile -> AndroidView(factory = { OriginalImageView(it, imageFile).also { v -> view = v } },
-                    modifier = Modifier.fillMaxSize(), update = { if (it.cropMode != cropping) it.cropMode = cropping }, onRelease = { it.close() }) }
-                if (file == null && error == null) CircularProgressIndicator()
+            TjTopBar("原图查看与编辑", "双指缩放 · 拖动查看 · 裁剪或标注后另存副本", onBack = { if (!saving) onDismiss() })
+            // Compact toolbar first: the image gets the largest stage while every
+            // action remains reachable above the navigation bar. Horizontal insets
+            // keep corner handles away from the system Back gesture edge.
+            Box(
+                Modifier.weight(1f).fillMaxWidth().padding(horizontal = 22.dp)
+                    .clip(RoundedCornerShape(14.dp)).background(ComposeColor(0xFFF5F6FA))
+            ) {
+                file?.let { imageFile ->
+                    AndroidView(factory = { OriginalImageView(it, imageFile).also { v -> view = v } },
+                        modifier = Modifier.fillMaxSize(), update = { v ->
+                            if (v.cropMode != cropping) v.cropMode = cropping
+                            if (v.brushMode != brushing) v.brushMode = brushing
+                            v.brushColor = brushColor; v.brushWidth = brushWidth
+                        }, onRelease = { it.close() })
+                }
+                if (file == null && error == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
             }
-            error?.let { Text(it, color = Red, modifier = Modifier.padding(16.dp)) }
-            Text(if (cropping) "拖动四角或边框自由裁剪；拖动框内移动选区" else "原图完整显示，放大时按可见区域读取原始像素", color = Ink2, modifier = Modifier.padding(16.dp))
-            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(modifier = Modifier.weight(1f), enabled = !saving, onClick = { cropping = !cropping }) { Text(if (cropping) "退出裁剪" else "自定义裁剪") }
-                if (cropping) TextButton(enabled = !saving, onClick = { view?.resetCrop() }) { Text("重置") }
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    when {
+                        cropping -> "拖动四角或边框自由裁剪；拖动框内移动选区"
+                        brushing -> "在图上书写标注；可撤销或清空"
+                        else -> "原图完整显示，放大时按可见区域读取原始像素"
+                    },
+                    fontSize = 11.sp, color = Ink2
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    ToolChip("裁剪", cropping, enabled = !saving && !brushing) { cropping = !cropping }
+                    ToolChip("画笔", brushing, enabled = !saving && !cropping) { brushing = !brushing }
+                    ToolChip("撤销", false, enabled = !saving && brushing) { view?.undoStroke() }
+                    ToolChip("清空", false, enabled = !saving && brushing && (view?.strokes?.isNotEmpty() == true)) { view?.clearStrokes() }
                 }
-                if (cropping) {
-                    Button(modifier = Modifier.fillMaxWidth(), enabled = !saving && file != null, onClick = {
-                        val source = file ?: return@Button; val rect = RectF(view?.crop ?: return@Button)
-                        saving = true; error = null
-                        scope.launch {
-                            var output: File? = null
-                            try {
-                                output = withContext(Dispatchers.IO) { cropOriginal(source, rect, File.createTempFile("crop_", ".png", context.cacheDir)) }
-                                onSaved(Uri.fromFile(output))
-                            } catch (cancelled: CancellationException) { throw cancelled }
-                            catch (failure: Exception) { error = failure.message ?: "保存失败，请重试" }
-                            finally { output?.delete(); saving = false }
+                if (brushing) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf(0xFFE74C3C, 0xFF2D7FF9, 0xFF16A34A, 0xFF111827).map { it.toInt() }.forEach { c ->
+                            Box(
+                                Modifier.size(25.dp).clip(CircleShape).background(ComposeColor(c))
+                                    .border(if (brushColor == c) 2.5.dp else 1.dp, if (brushColor == c) Accent else Line, CircleShape)
+                                    .clickableNoRipple { brushColor = c; view?.brushColor = c }
+                            )
                         }
-                    }) { Text(if (saving) "保存中" else "保存副本") }
+                        Spacer(Modifier.weight(1f))
+                        listOf(0.003f, 0.006f, 0.011f).zip(listOf("细", "中", "粗")).forEach { (w, label) ->
+                            Box(
+                                Modifier.height(30.dp).clip(RoundedCornerShape(9.dp))
+                                    .background(if (brushWidth == w) AccentSoft else SurfaceAlt)
+                                    .clickableNoRipple { brushWidth = w; view?.brushWidth = w }
+                                    .padding(horizontal = 11.dp), contentAlignment = Alignment.Center
+                            ) { Text(label, fontSize = 11.sp, color = if (brushWidth == w) Accent else Ink2) }
+                        }
+                    }
                 }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(
+                        enabled = !saving && !brushing, onClick = { view?.resetCrop() }, modifier = Modifier.height(46.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Line)
+                    ) { Text("重置", color = Ink2) }
+                    Button(
+                        enabled = !saving && file != null, onClick = {
+                            val source = file ?: return@Button
+                            saving = true; error = null
+                            val annotated = view?.strokes?.isNotEmpty() == true
+                            if (cropping || annotated) scope.launch {
+                                var output: File? = null
+                                try {
+                                    output = withContext(Dispatchers.IO) {
+                                        val v = view
+                                        val raw = if (cropping && v != null) {
+                                            cropOriginal(source, RectF(v.crop), File.createTempFile("crop_", ".png", context.cacheDir))
+                                        } else source
+                                        if (annotated && v != null) v.exportWithStrokes(raw) else raw
+                                    }
+                                    onSaved(Uri.fromFile(output))
+                                } catch (cancelled: CancellationException) { throw cancelled }
+                                catch (failure: Exception) { error = failure.message ?: "保存失败，请重试" }
+                                finally { output?.delete(); saving = false; editRevision++ }
+                            } else scope.launch { saving = true; try { onSaved(Uri.fromFile(source)) } finally { saving = false } }
+                        }, modifier = Modifier.weight(1f).height(46.dp)
+                    ) { Text(if (saving) "保存中" else "保存副本", fontWeight = FontWeight.SemiBold) }
+                }
+                error?.let { Text(it, color = Red, fontSize = 11.5.sp) }
             }
         }
     }
+}
+
+@Composable
+private fun ToolChip(label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.height(38.dp).clip(RoundedCornerShape(10.dp))
+            .background(if (selected) Accent else SurfaceAlt)
+            .border(1.dp, if (selected) Accent else Line, RoundedCornerShape(10.dp))
+            .clickableNoRipple(enabled, onClick).padding(horizontal = 13.dp),
+        contentAlignment = Alignment.Center
+    ) { Text(label, fontSize = 12.sp, color = if (!enabled) Muted.copy(alpha = .45f) else if (selected) androidx.compose.ui.graphics.Color.White else Ink, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) }
 }

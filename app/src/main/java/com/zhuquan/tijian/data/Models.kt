@@ -89,9 +89,16 @@ fun colorFor(name: String): String {
 }
 
 val SUBJECT_ROOTS = listOf("数学", "专业课", "英语", "政治", "其他")
+
+/** 材料类专业课题库常用小类；AI 也会持续补充。 */
+val MATERIAL_SUBCATEGORIES = listOf(
+    "晶体结构", "晶体缺陷", "固体扩散", "相图与相变", "金属材料",
+    "高分子材料", "陶瓷材料", "复合材料", "材料力学性能", "材料化学"
+)
+
 fun subjectRoot(subject: String): String = when (subject.trim()) {
     "数学", "高等数学", "线性代数", "概率论" -> "数学"
-    "专业课", "物理", "化学", "生物", "计算机", "数据结构" -> "专业课"
+    "专业课", "材料", "材料科学", "材料科学与工程", "物理", "化学", "生物", "计算机", "数据结构" -> "专业课"
     "英语", "英文" -> "英语"
     "政治", "思想政治" -> "政治"
     else -> "其他"
@@ -101,6 +108,7 @@ fun CategoryRow.subjectGroup(): String = subjectRoot(subject.ifBlank {
         listOf("数学", "函数", "极限", "导数", "积分", "代数", "几何", "概率", "数列", "矩阵").any { name.contains(it) } -> "数学"
         listOf("英语", "词汇", "语法", "英文").any { name.contains(it) } -> "英语"
         listOf("政治", "马原", "毛概", "思修").any { name.contains(it) } -> "政治"
+        listOf("材料", "晶体", "扩散", "相图", "相变", "位错", "陶瓷", "高分子", "复合材料").any { name.contains(it) } -> "专业课"
         else -> "其他"
     }
 })

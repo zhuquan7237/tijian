@@ -6,11 +6,10 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelper(context, databaseName, null, 2) {
+class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelper(context, databaseName, null, 3) {
 
     companion object {
         const val UNCAT = "uncat"
-        private const val SUBJECTS = "语文,数学,英语,物理,化学,生物,政治,历史,地理"
     }
 
     override fun onConfigure(db: SQLiteDatabase) {
@@ -74,10 +73,40 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             put("auto_created", 0); put("status", "confirmed"); put("color", "#F0F0EA")
             put("sort", 999); put("created_at", now); put("updated_at", now)
         })
+        MATERIAL_SUBCATEGORIES.forEachIndexed { i, name ->
+            db.insert("category", null, ContentValues().apply {
+                put("id", newId()); put("name", name); put("subject", "专业课")
+                put("auto_created", 0); put("status", "confirmed"); put("color", colorFor(name))
+                put("sort", 200 + i); put("created_at", now); put("updated_at", now)
+            })
+        }
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) db.execSQL("ALTER TABLE image ADD COLUMN original_id TEXT")
+        if (oldVersion < 3) {
+            val hasCategory = db.rawQuery(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='category'", null
+            ).use { if (it.moveToFirst()) it.getInt(0) > 0 else false }
+            if (hasCategory) seedMaterialCategories(db)
+        }
+    }
+
+    /** Add once on upgrade; deletion must stay deleted on later launches. */
+    private fun seedMaterialCategories(db: SQLiteDatabase) {
+        val now = System.currentTimeMillis()
+        val existing = HashSet<String>()
+        db.rawQuery("SELECT name FROM category WHERE deleted_at IS NULL", null).use { c ->
+            while (c.moveToNext()) existing.add(c.getString(0))
+        }
+        MATERIAL_SUBCATEGORIES.forEachIndexed { i, name ->
+            if (name in existing) return@forEachIndexed
+            db.insert("category", null, ContentValues().apply {
+                put("id", newId()); put("name", name); put("subject", "专业课")
+                put("auto_created", 0); put("status", "confirmed"); put("color", colorFor(name))
+                put("sort", 200 + i); put("created_at", now); put("updated_at", now)
+            })
+        }
     }
 
     fun originalImagePath(id: String): String? = read(
@@ -441,4 +470,4 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
 }
 
 private val INTERVALS = intArrayOf(0, 1, 3, 7, 16, 35)
-private fun normalize(s: String) = s.trim().lowercase().replace(Regex("[\\s·•\\-_/（）()【】\\[\\]]"), "")
+    private fun normalize(s: String) = s.trim().lowercase().replace(Regex("[\\s·•\\-_/（）()【】\\[\\]]"), "")

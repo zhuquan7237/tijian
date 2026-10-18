@@ -112,7 +112,7 @@ class AiClient {
     suspend fun recognize(cfg: ProviderConfig, jpeg: ByteArray): List<ParsedQuestion> =
         withContext(Dispatchers.IO) {
             val b64 = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP)
-            val prompt = RECOGNIZE_PROMPT + "\ncategory必须使用学科/小类格式；学科仅数学、专业课、英语、政治、其他。无法识别学科用其他/未分类。"
+            val prompt = RECOGNIZE_PROMPT + "\ncategory必须使用学科/小类格式；学科仅数学、专业课、英语、政治、其他。专业课指材料类，参考书目为材料科学基础（上海交通大学出版社第三版），小类示例：晶体结构、晶体缺陷、固体扩散、相图与相变、金属材料、高分子材料、陶瓷材料、复合材料。无法识别学科用其他/未分类。"
             val body = if (cfg.protocol == "responses") {
                 JSONObject().apply {
                     put("model", cfg.model)
@@ -181,6 +181,7 @@ $list
 3. 新分类是"可复用的主题"（如"极值点偏移"），不是具体题名；最多提议 2 个新分类。
 4. 学科已知但没有合适小类时，填该学科/未分类；无法识别学科才填其他/未分类。不得为了复用分类跨学科归档。
 5. 学科仅可为数学、专业课、英语、政治、其他。先识别学科，再选择该学科的小类；无法识别学科归其他/未分类。不要跨学科归档。
+6. 专业课只指材料类专业内容，参考书目为《材料科学基础》（上海交通大学出版社，第三版）。材料题应归专业课，小类优先使用晶体结构、晶体缺陷、固体扩散、相图与相变、金属材料、高分子材料、陶瓷材料、复合材料等。
 
 只输出 JSON：{"assignments":[{"id":"q1","category":"数学/函数与导数","confidence":0.88}]}"""
 
