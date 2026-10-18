@@ -10,23 +10,33 @@ import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.zhuquan.tijian.BuildConfig
 import org.json.JSONObject
 import kotlin.math.abs
+import kotlin.math.roundToInt
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 统一富文本渲染：Markdown + KaTeX + mhchem + GFM 表格 + 代码块。
  * 内容在本地 WebView 中渲染，高度回传给 Compose，父级滚动。
  */
 object RichTextRenderer {
+    private val generations = AtomicInteger()
+    fun nextGeneration(): Int = generations.incrementAndGet()
     @Volatile
     private var template: String? = null
 
@@ -50,32 +60,52 @@ fun RichText(
 ) {
     if (markdown.isBlank()) return
     val context = LocalContext.current
-    val density = LocalDensity.current
-    val widthDp = widthDpForKey(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp)
-    val normalized = Normalize.text(markdown)
-    val renderId = normalized.hashCode() * 31 + fontSize * 7 + widthDp
+    val fontScale = LocalDensity.current.fontScale
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+    val widthDp = maxWidth.value.roundToInt().coerceAtLeast(1)
+    val scaledFontSize = (fontSize * fontScale).roundToInt().coerceAtLeast(1)
+    val normalized = remember(markdown) { Normalize.text(markdown) }
+    val renderId = remember(normalized, scaledFontSize, widthDp) { RichTextRenderer.nextGeneration() }
     val height = remember(renderId) {
         mutableIntStateOf(0)
     }
-    // 固定 CSS 视口宽度，避免部分 OEM WebView 按 980px 宽屏排版导致右侧被裁
-    // RichText 可能嵌在带内边距的内容卡片里，视口必须比整屏窄，才能触发正确换行。
-    // 过宽会让 WebView 认为内容可以横向铺开，Compose 外层再把右侧直接裁掉。
-    val html = remember(normalized, fontSize, widthDp, renderId) {
-        RichTextRenderer.html(context, normalized, fontSize, widthDp, renderId)
+    val html = remember(normalized, scaledFontSize, widthDp, renderId) {
+        RichTextRenderer.html(context, normalized, scaledFontSize, widthDp, renderId)
+    }
+    // AndroidView factory lives longer than this document: always route callbacks
+    // to the current state, and check the generation again on the UI thread.
+    val receiveHeight = rememberUpdatedState<(Int, Int) -> Unit> { h, generation ->
+        if (generation == renderId && h > 0 && abs(height.intValue - h) >= 1) height.intValue = h
+    }
+    val webReference = remember { arrayOfNulls<WebView>(1) }
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            webReference[0]?.let { web ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    web.onResume()
+                    web.evaluateJavascript("window.__report && window.__report()", null)
+                } else if (event == Lifecycle.Event.ON_PAUSE) web.onPause()
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
 
-    // 内容、宽度或字号变化时，旧 WebView 高度不能继续参与本次布局。
-    LaunchedEffect(html) { height.intValue = 0 }
-
     val heightModifier = if (height.intValue > 0) {
-        Modifier.height(with(density) { height.intValue.toDp() })
+        // JS reports CSS px from the WebView viewport. CSS px already maps to
+        // the Android dp-sized viewport, so converting it as physical px with
+        // toDp() would divide by density a second time and clip the content.
+        Modifier.height(height.intValue.dp)
     } else {
-        Modifier.heightIn(min = 44.dp)
+        Modifier.heightIn(min = 1.dp)
     }
 
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
+                webReference[0] = this
+                if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, url: String?) {
                         view.scrollTo(0, 0)
@@ -110,18 +140,11 @@ fun RichText(
                 addJavascriptInterface(object {
                     @JavascriptInterface
                     fun height(h: Int, callbackRenderId: Int) {
-                        if (callbackRenderId == renderId && h > 0) {
-                            val cur = height.intValue
-                            if (abs(cur - h) > 1) {
-                                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                    height.intValue = h
-                                }
-                            }
-                        }
+                        post { receiveHeight.value(h, callbackRenderId) }
                     }
                 }, "AndroidRichText")
                 addOnLayoutChangeListener { v, l, t, r, b, ol, ot, or_, ob ->
-                    if (r - l != or_ - ol || b - t != ob - ot) {
+                    if (r - l != or_ - ol) {
                         (v as? WebView)?.evaluateJavascript(
                             "window.__report && window.__report()", null
                         )
@@ -136,7 +159,6 @@ fun RichText(
         },
         update = { wv ->
             if (wv.tag != html) {
-                height.intValue = 0
                 wv.stopLoading()
                 wv.scrollTo(0, 0)
                 wv.tag = html
@@ -145,11 +167,16 @@ fun RichText(
                 )
             }
         },
-        modifier = modifier.fillMaxWidth().then(heightModifier)
+        onRelease = { web ->
+            if (webReference[0] === web) webReference[0] = null
+            web.stopLoading()
+            web.removeJavascriptInterface("AndroidRichText")
+            web.destroy()
+        },
+        modifier = Modifier.fillMaxWidth().then(heightModifier)
     )
+    }
 }
-
-private fun widthDpForKey(screenWidthDp: Int): Int = (screenWidthDp - 64).coerceAtLeast(240)
 
 /** 列表/卡片用的轻量文本：不做完整排版，只把常见命令转成可读符号 */
 fun cleanMathLite(input: String): String {

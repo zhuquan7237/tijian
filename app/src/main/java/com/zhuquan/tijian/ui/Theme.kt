@@ -28,6 +28,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -149,7 +150,7 @@ fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier = this.clickable(
 
 @Composable
 fun Modifier.bounceClick(onClick: () -> Unit): Modifier {
-    val src = androidx.compose.foundation.interaction.MutableInteractionSource()
+    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.972f else 1f,

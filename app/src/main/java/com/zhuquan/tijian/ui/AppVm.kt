@@ -118,6 +118,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     // ---------- navigation ----------
 
+    fun retainsPage(page: Route): Boolean = page == route || page in stack ||
+        page is Route.Home || page is Route.Library || page is Route.Settings
+
     fun go(next: Route) {
         if (next != route) { navForward = true; stack.add(route); route = next }
     }

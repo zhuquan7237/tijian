@@ -15,10 +15,11 @@
     -webkit-text-size-adjust: 100%;
     word-wrap: break-word;
     overflow-wrap: break-word;
-    overflow: visible;
   }
-  #out { padding: 0; max-width: 100%; overflow: visible; }
-  p { margin: 0 0 12px; line-height: 1.9; }
+  /* Measure this intrinsic content box only, never the WebView viewport. */
+  #out { display: flow-root; width: 100%; padding: 0; }
+  #out > :first-child { margin-top: 0; }
+  p { margin: 0 0 12px; line-height: 1.85; }
   p:last-child { margin-bottom: 0; }
   p, li, td, th { word-break: break-word; overflow-wrap: anywhere; }
   h1 { font-size: 1.5em; line-height: 1.35; margin: 6px 0 14px; font-weight: 700; }
@@ -60,9 +61,15 @@
   table th { background: #F0F2F7; font-weight: 700; color: #3E465A; }
   table tr:nth-child(even) td { background: #FAFBFD; }
   img { max-width: 100%; height: auto; border-radius: 8px; }
-  .katex { font-size: 1.04em; line-height: 1.2; vertical-align: -0.12em; word-break: normal; overflow-wrap: normal; }
-  .katex-display { margin: 14px 0; max-width: 100%; overflow-x: auto; overflow-y: visible; padding: 4px 0; line-height: 1.25; }
-  .math-display { display: block; overflow-x: auto; overflow-y: visible; margin: 14px 0; padding: 4px 0; line-height: 1.25; }
+  .katex { font-size: 1.04em; word-break: normal; overflow-wrap: normal; }
+  /* An inline-block contributes tall fractions/roots to the paragraph line box.
+     Scrolling belongs to these formula boxes, not to the whole document. */
+  .math-inline { display: inline-block; vertical-align: middle; max-width: 100%; overflow-x: auto; }
+  .math-inline > .katex { display: inline-block; padding: .2em 0; }
+  .math-display { display: block; max-width: 100%; overflow-x: auto; margin: 12px 0; }
+  .math-display .katex-display { margin: 0; padding: .2em 0; }
+  .math-display .katex-display > .katex { text-align: left; }
+  .math-display .katex-display > .katex > .katex-html { min-width: min-content; }
   .rt-error { color: #C34D55; font-family: monospace; font-size: 0.9em; background: #FFF1F2; border-radius: 6px; padding: 2px 5px; }
   /* 任务列表 */
   input[type="checkbox"] { margin-right: 6px; }
@@ -81,8 +88,6 @@
   var blocks = [];
 
   function stash(tex, display) {
-    // 过长的行内公式改成独立公式，避免撑破一行被裁掉
-    if (!display && tex.length > 60) display = true;
     blocks.push({ tex: tex, display: display });
     return '@@M' + (blocks.length - 1) + '@@';
   }
@@ -128,13 +133,14 @@
     var b = blocks[+idx];
     if (!b) return m;
     try {
-      return katex.renderToString(b.tex, {
+      var rendered = katex.renderToString(b.tex, {
         displayMode: b.display,
         throwOnError: false,
         strict: false,
         trust: false,
         output: 'html'
       });
+      return '<span class="' + (b.display ? 'math-display' : 'math-inline') + '">' + rendered + '</span>';
     } catch (e) {
       return '<span class="rt-error">' + escapeHtml(b.tex) + '</span>';
     }
@@ -148,30 +154,33 @@
              .replace(/<\/table>/g, '</table></div>');
   document.getElementById('out').innerHTML = html;
 
-  // 3) 把内容高度报给原生端，父级滚动而不是 WebView 自己滚
-  function report() {
+  // CSS px are dp at the measured viewport width. Neither body nor document
+  // scrollHeight may be used here: they are at least the current viewport height,
+  // creating an unbounded feedback loop when the native view grows.
+  function measure() {
     var el = document.getElementById('out');
-    var root = el.getBoundingClientRect();
-    var bottom = root.top;
-    var nodes = el.querySelectorAll('*');
-    for (var i = 0; i < nodes.length; i++) {
-      var rect = nodes[i].getBoundingClientRect();
-      if (rect.bottom > bottom) bottom = rect.bottom;
-    }
-    var h = Math.ceil(Math.max(
-      root.height,
-      el.scrollHeight,
-      document.body.scrollHeight,
-      document.documentElement.scrollHeight,
-      bottom - root.top
-    )) + 4;
+    return Math.ceil(Math.max(el.getBoundingClientRect().height, el.scrollHeight));
+  }
+  window.__measureRichText = measure;
+  var scheduled = false;
+  var lastHeight = -1;
+  function report() {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(function () {
+    scheduled = false;
+    var h = measure();
+    if (h === lastHeight) return;
+    lastHeight = h;
     if (window.AndroidRichText && window.AndroidRichText.height) {
       window.AndroidRichText.height(h, RENDER_ID);
     }
+    });
   }
   window.__report = report;
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(report);
+    document.fonts.addEventListener('loadingdone', report);
   }
   if (window.ResizeObserver) {
     new ResizeObserver(report).observe(document.getElementById('out'));
@@ -185,28 +194,9 @@
   window.addEventListener('pageshow', report);
   window.addEventListener('resize', report);
   document.addEventListener('visibilitychange', report);
-  setTimeout(report, 60);
-  setTimeout(report, 300);
-  setTimeout(report, 800);
-  setTimeout(report, 1500);
-  requestAnimationFrame(report);
+  document.getElementById('out').addEventListener('load', report, true);
+  document.title = 'richtext-' + RENDER_ID;
   report();
-  setTimeout(function () {
-    var el = document.getElementById('out');
-    console.log('STATS ' + JSON.stringify({
-      math: document.querySelectorAll('.katex').length,
-      err: document.querySelectorAll('.rt-error,.katex-error').length,
-      tbl: document.querySelectorAll('table').length,
-      h: el.scrollHeight,
-      oh: Math.round(el.getBoundingClientRect().height),
-      bh: document.body.scrollHeight,
-      cw: document.body.clientWidth,
-      sw: document.body.scrollWidth,
-      iw: window.innerWidth,
-      len: document.body.innerText.length,
-      tail: document.body.innerText.slice(-30)
-    }));
-  }, 120);
 })();
 </script>
 </body>

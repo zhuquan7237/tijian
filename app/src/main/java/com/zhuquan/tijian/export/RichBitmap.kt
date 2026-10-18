@@ -50,7 +50,7 @@ object RichBitmap {
             web.isVerticalScrollBarEnabled = false
             web.addJavascriptInterface(object {
                 @JavascriptInterface
-                fun height(h: Int) {
+                fun height(h: Int, renderId: Int) {
                     if (h > 0) {
                         lastHeight = h
                         if (!first.isCompleted) first.complete(h)
@@ -102,7 +102,7 @@ object RichBitmap {
     private suspend fun queryHeight(web: WebView): Int = suspendCancellableCoroutine { cont ->
         web.evaluateJavascript(
             "(function(){var e=document.getElementById('out');" +
-                "return JSON.stringify({h:Math.max(e.scrollHeight,document.body.scrollHeight,document.documentElement.scrollHeight)," +
+                "return JSON.stringify({h:window.__measureRichText ? window.__measureRichText() : e.scrollHeight," +
                 "o:e.scrollHeight,b:document.body.scrollHeight,w:document.body.clientWidth," +
                 "fs:getComputedStyle(document.body).fontSize,len:document.body.innerText.length});})()"
         ) { v ->

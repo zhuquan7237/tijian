@@ -45,6 +45,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -70,6 +72,14 @@ import java.io.File
 fun AppRoot(vm: AppVm = viewModel()) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    val pageStates = rememberSaveableStateHolder()
+    val savedPages = remember { mutableMapOf<String, Route>() }
+    LaunchedEffect(vm.route) {
+        savedPages.filterValues { !vm.retainsPage(it) }.keys.toList().forEach { key ->
+            pageStates.removeState(key)
+            savedPages.remove(key)
+        }
+    }
     var showImport by remember { mutableStateOf(false) }
     val reducedMotion = android.provider.Settings.Global.getFloat(
         ctx.contentResolver,
@@ -91,6 +101,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f)) {
                 AnimatedContent(
+                    modifier = Modifier.fillMaxSize(),
                     targetState = vm.route,
                     transitionSpec = {
                         pageTransition(initialState, targetState, vm.navForward, reducedMotion)
@@ -98,17 +109,33 @@ fun AppRoot(vm: AppVm = viewModel()) {
                     contentKey = { it },
                     label = "page-turn"
                 ) { route ->
-                    when (route) {
-                        is Route.Home -> HomeScreen(vm) { showImport = true }
-                        is Route.Category -> CategoryScreen(vm, route)
-                        is Route.Detail -> QuestionDetailScreen(vm, route)
-                        is Route.Import -> ImportScreen(vm)
-                        is Route.Capture -> CaptureScreen(vm)
-                        is Route.Review -> ReviewScreen(vm)
-                        is Route.Library -> LibraryScreen(vm)
-                        is Route.Doc -> DocScreen(vm, route)
-                        is Route.Settings -> SettingsScreen(vm)
-                        is Route.Provider -> ProviderScreen(vm)
+                    // Each animated page paints an opaque surface; transparent
+                    // roots otherwise expose the outgoing text underneath it.
+                    val stateKey = route.toString()
+                    DisposableEffect(stateKey) {
+                        savedPages[stateKey] = route
+                        onDispose {
+                            if (!vm.retainsPage(route)) {
+                                pageStates.removeState(stateKey)
+                                savedPages.remove(stateKey)
+                            }
+                        }
+                    }
+                    pageStates.SaveableStateProvider(stateKey) {
+                        Box(Modifier.fillMaxSize().background(Bg)) {
+                            when (route) {
+                                is Route.Home -> HomeScreen(vm) { showImport = true }
+                                is Route.Category -> CategoryScreen(vm, route)
+                                is Route.Detail -> QuestionDetailScreen(vm, route)
+                                is Route.Import -> ImportScreen(vm)
+                                is Route.Capture -> CaptureScreen(vm)
+                                is Route.Review -> ReviewScreen(vm)
+                                is Route.Library -> LibraryScreen(vm)
+                                is Route.Doc -> DocScreen(vm, route)
+                                is Route.Settings -> SettingsScreen(vm)
+                                is Route.Provider -> ProviderScreen(vm)
+                            }
+                        }
                     }
                 }
             }
@@ -221,7 +248,7 @@ private fun hierarchySlideTransform(isForward: Boolean): ContentTransform {
     } else {
         slideInHorizontally(
             animationSpec = tween(230, easing = FastOutSlowInEasing),
-            initialOffsetX = { -it }
+            initialOffsetX = { -it / 3 }
         )
     }
     val outgoing = if (isForward) {
@@ -232,10 +259,12 @@ private fun hierarchySlideTransform(isForward: Boolean): ContentTransform {
     } else {
         slideOutHorizontally(
             animationSpec = tween(230, easing = FastOutSlowInEasing),
-            targetOffsetX = { it / 3 }
+            targetOffsetX = { it }
         )
     }
-    return incoming togetherWith outgoing
+    return (incoming togetherWith outgoing).apply {
+        targetContentZIndex = if (isForward) 1f else -1f
+    }
 }
 
 @Composable

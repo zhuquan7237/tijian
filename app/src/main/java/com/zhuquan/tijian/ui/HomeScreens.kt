@@ -47,10 +47,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,10 +80,11 @@ private val GLYPHS = listOf("∫", "△", "∑", "∿", "∂", "√", "π", "⚗
 
 @Composable
 fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
-    var searchOpen by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
-    val results by produceState<List<QuestionRow>?>(null, query) {
-        value = if (query.isBlank()) null else withContext(Dispatchers.IO) { vm.db.questions(query = query) }
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var results by remember(query) { mutableStateOf<List<QuestionRow>?>(null) }
+    LaunchedEffect(query) {
+        results = if (query.isBlank()) null else withContext(Dispatchers.IO) { vm.db.questions(query = query) }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -148,8 +150,9 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
                     EmptyState("还没有分类", "导入错题后会自动生成")
                 }
 
-                val recent by produceState<List<QuestionRow>>(emptyList(), vm.stats.total, vm.stats.due) {
-                    value = withContext(Dispatchers.IO) { vm.db.questions().take(8) }
+                var recent by remember { mutableStateOf<List<QuestionRow>>(emptyList()) }
+                LaunchedEffect(vm.stats.total, vm.stats.due) {
+                    recent = withContext(Dispatchers.IO) { vm.db.questions().take(8) }
                 }
                 if (recent.isNotEmpty()) {
                     SectionLabel("最近导入", Modifier.padding(horizontal = 18.dp)) {
@@ -252,7 +255,7 @@ private fun CategoryCard(cat: CategoryRow, modifier: Modifier = Modifier, onClic
 fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Category) {
     val id = route?.id ?: return
     val cat = vm.categories.firstOrNull { it.id == id }
-    var filter by remember { mutableStateOf("all") }
+    var filter by rememberSaveable(id) { mutableStateOf("all") }
     var selecting by remember { mutableStateOf(false) }
     val selected = remember { mutableStateOf<Set<String>>(emptySet()) }
     var showExport by remember { mutableStateOf(false) }
@@ -265,8 +268,9 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
     androidx.compose.runtime.DisposableEffect(id) {
         onDispose { vm.categoryScroll[id] = listState.firstVisibleItemIndex }
     }
-    val rows by produceState<List<QuestionRow>>(emptyList(), id, filter) {
-        value = withContext(Dispatchers.IO) { vm.db.questions(id, filter) }
+    var rows by remember(id, filter) { mutableStateOf<List<QuestionRow>>(emptyList()) }
+    LaunchedEffect(id, filter) {
+        rows = withContext(Dispatchers.IO) { vm.db.questions(id, filter) }
     }
 
     val createPdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri: Uri? ->
@@ -321,6 +325,7 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
             Column {
                 Row(Modifier.fillMaxWidth().background(Color(0xFFFBFBF8)).padding(horizontal = 11.dp, vertical = 8.dp)) {
                     Text(if (selecting) "" else "题目", fontSize = 9.5.sp, letterSpacing = 1.sp, color = Muted, modifier = Modifier.width(44.dp))
+                    Spacer(Modifier.width(12.dp))
                     Text("题型", fontSize = 9.5.sp, letterSpacing = 1.sp, color = Muted, modifier = Modifier.width(70.dp))
                     Text("知识点", fontSize = 9.5.sp, letterSpacing = 1.sp, color = Muted, modifier = Modifier.weight(1f))
                     Text("掌握", fontSize = 9.5.sp, letterSpacing = 1.sp, color = Muted, modifier = Modifier.width(44.dp))
@@ -344,6 +349,7 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                                     Thumb(q.imagePath, Modifier.width(44.dp).height(54.dp))
                                 }
                             }
+                            Spacer(Modifier.width(12.dp))
                             Text(q.type.ifBlank { "—" }, fontSize = 11.5.sp, color = Ink2, modifier = Modifier.width(70.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
                                 knowledgeText(q).ifBlank { "—" }, fontSize = 11.5.sp, color = Ink,
@@ -436,13 +442,38 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
 @Composable
 fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.Detail) {
     val id = route?.id ?: return
-    var q by remember { mutableStateOf<QuestionRow?>(null) }
+    var savedScroll by rememberSaveable(id) { mutableStateOf(0) }
+    val detailScroll = rememberScrollState()
+    // WebViews initially measure at 1dp while fonts/content load. ScrollState
+    // clamps its restored offset to that temporary range. Keep the user's
+    // position independently and restore as the intrinsic content grows.
+    LaunchedEffect(id, detailScroll) {
+        snapshotFlow { detailScroll.maxValue }.collect { maximum ->
+            if (maximum != Int.MAX_VALUE && !detailScroll.isScrollInProgress) {
+                detailScroll.scrollTo(savedScroll.coerceAtMost(maximum))
+            }
+        }
+    }
+    LaunchedEffect(id, detailScroll) {
+        var wasScrolling = false
+        snapshotFlow { detailScroll.isScrollInProgress to detailScroll.value }.collect { (scrolling, offset) ->
+            if (scrolling || wasScrolling) savedScroll = offset
+            wasScrolling = scrolling
+        }
+    }
+    var q by remember(id) { mutableStateOf<QuestionRow?>(null) }
     var editing by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
 
     LaunchedEffect(id) { q = withContext(Dispatchers.IO) { vm.db.question(id) } }
 
-    val question = q ?: return
+    val question = q ?: run {
+        Column(Modifier.fillMaxSize()) {
+            TjTopBar(title = "题目", subtitle = "正在加载", onBack = { vm.back() })
+            Text("正在读取题目…", color = Muted, modifier = Modifier.padding(18.dp))
+        }
+        return
+    }
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             title = question.type.ifBlank { "题目" },
@@ -453,10 +484,16 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                 IconCircle(Icons.Rounded.DeleteOutline, "删除") { confirmDelete = true }
             }
         )
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(detailScroll).padding(horizontal = 18.dp, vertical = 8.dp)) {
             if (question.imagePath != null) {
-                ZoomableImage(File(question.imagePath))
-                Spacer(Modifier.height(14.dp))
+                CardBox {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("题目原图", fontSize = 12.sp, color = Muted)
+                        Spacer(Modifier.height(12.dp))
+                        ZoomableImage(File(question.imagePath))
+                    }
+                }
+                Spacer(Modifier.height(24.dp))
             }
             val stem = buildString {
                 append(question.stem)
@@ -472,13 +509,13 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                 }
             }
             if (question.answer.isNotBlank()) {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(16.dp))
                 RichSection("答案", "先看结论，再对照解析", Green) {
                     RichText(question.answer, fontSize = 15)
                 }
             }
             if (question.analysis.isNotBlank()) {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(16.dp))
                 RichSection("解析", "按步骤展开推理", Accent) {
                     RichText(question.analysis, fontSize = 15)
                 }
@@ -558,7 +595,7 @@ fun RichSection(
 ) {
     Column(
         Modifier.fillMaxWidth().clip(CardShape).background(CardBg)
-            .border(1.dp, Line, CardShape).padding(horizontal = 14.dp, vertical = 13.dp)
+            .border(1.dp, Line, CardShape).padding(horizontal = 16.dp, vertical = 16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(8.dp).clip(CircleShape).background(color))
@@ -567,7 +604,7 @@ fun RichSection(
                 Text(subtitle, fontSize = 10.5.sp, color = Muted, modifier = Modifier.padding(top = 1.dp))
             }
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(14.dp))
         content()
     }
 }
@@ -665,11 +702,19 @@ fun Thumb(path: String?, modifier: Modifier = Modifier) {
 
 @Composable
 fun ZoomableImage(file: File) {
+    var ratio by remember(file.absolutePath) { mutableStateOf(1.6f) }
+    LaunchedEffect(file.absolutePath) {
+        ratio = withContext(Dispatchers.IO) {
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(file.absolutePath, bounds)
+            if (bounds.outWidth > 0 && bounds.outHeight > 0) bounds.outWidth.toFloat() / bounds.outHeight else 1.6f
+        }
+    }
     var scale by remember { mutableStateOf(1f) }
     var dx by remember { mutableStateOf(0f) }
     var dy by remember { mutableStateOf(0f) }
     Box(
-        Modifier.fillMaxWidth().height(320.dp).clip(RoundedCornerShape(14.dp)).background(Color.White)
+        Modifier.fillMaxWidth().aspectRatio(ratio).clip(RoundedCornerShape(14.dp)).background(Color.White)
             .border(1.dp, Line, RoundedCornerShape(14.dp))
             .pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoom, _ ->
@@ -791,7 +836,7 @@ private fun RecentCard(q: QuestionRow, onClick: () -> Unit) {
                 Text("题", fontSize = 22.sp, color = Muted, modifier = Modifier.align(Alignment.Center))
             }
         }
-        Column(Modifier.padding(10.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 14.dp)) {
             Text(
                 cleanMathLite(q.stem).ifBlank { "（无题干）" },
                 fontSize = 11.5.sp, lineHeight = 17.sp, color = Ink,

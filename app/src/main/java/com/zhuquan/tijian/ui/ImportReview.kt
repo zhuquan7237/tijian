@@ -348,7 +348,7 @@ fun ReviewScreen(vm: AppVm) {
                         modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp).clip(RoundedCornerShape(14.dp))
                             .background(Color.White).border(1.dp, Line, RoundedCornerShape(14.dp))
                     )
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(24.dp))
                 }
                 val richStem = buildString {
                     append(q.stem.ifBlank { "（无题干，见原图）" })
