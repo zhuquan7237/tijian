@@ -15,17 +15,19 @@
     -webkit-text-size-adjust: 100%;
     word-wrap: break-word;
     overflow-wrap: break-word;
+    overflow: visible;
   }
-  #out { padding: 0; max-width: 100%; }
-  p { margin: 0 0 12px; }
+  #out { padding: 0; max-width: 100%; overflow: visible; }
+  p { margin: 0 0 12px; line-height: 1.9; }
   p:last-child { margin-bottom: 0; }
+  p, li, td, th { word-break: break-word; overflow-wrap: anywhere; }
   h1 { font-size: 1.5em; line-height: 1.35; margin: 6px 0 14px; font-weight: 700; }
   h2 { font-size: 1.22em; line-height: 1.4; margin: 22px 0 9px; font-weight: 700; }
   h3 { font-size: 1.06em; line-height: 1.45; margin: 18px 0 7px; font-weight: 700; }
   h4 { display: inline-block; font-size: 0.72em; letter-spacing: 0.12em; color: #4D5CEB; background: #EEF0FF; border-radius: 999px; padding: 4px 9px; margin: 18px 0 9px; font-weight: 700; }
   h5, h6 { font-size: 1em; margin: 12px 0 6px; font-weight: 600; }
   ul, ol { margin: 6px 0 10px; padding-left: 22px; }
-  li { margin: 3px 0; }
+  li { margin: 3px 0; line-height: 1.9; }
   li > p { margin: 0; }
   strong { font-weight: 700; color: #151A2A; }
   em { font-style: italic; }
@@ -58,9 +60,9 @@
   table th { background: #F0F2F7; font-weight: 700; color: #3E465A; }
   table tr:nth-child(even) td { background: #FAFBFD; }
   img { max-width: 100%; height: auto; border-radius: 8px; }
-  .katex { font-size: 1.04em; }
-  .katex-display { margin: 14px 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
-  .math-display { display: block; overflow-x: auto; overflow-y: hidden; margin: 14px 0; padding: 2px 0; }
+  .katex { font-size: 1.04em; line-height: 1.2; vertical-align: -0.12em; word-break: normal; overflow-wrap: normal; }
+  .katex-display { margin: 14px 0; max-width: 100%; overflow-x: auto; overflow-y: visible; padding: 4px 0; line-height: 1.25; }
+  .math-display { display: block; overflow-x: auto; overflow-y: visible; margin: 14px 0; padding: 4px 0; line-height: 1.25; }
   .rt-error { color: #C34D55; font-family: monospace; font-size: 0.9em; background: #FFF1F2; border-radius: 6px; padding: 2px 5px; }
   /* 任务列表 */
   input[type="checkbox"] { margin-right: 6px; }
@@ -74,6 +76,7 @@
 <script src="markdown-it.min.js"></script>
 <script>
 (function () {
+  var RENDER_ID = __RENDER_ID__;
   var RAW = __CONTENT__;
   var blocks = [];
 
@@ -148,10 +151,22 @@
   // 3) 把内容高度报给原生端，父级滚动而不是 WebView 自己滚
   function report() {
     var el = document.getElementById('out');
-    var h = Math.ceil(Math.max(el.getBoundingClientRect().height, el.scrollHeight,
-      document.body.scrollHeight)) + 2;
+    var root = el.getBoundingClientRect();
+    var bottom = root.top;
+    var nodes = el.querySelectorAll('*');
+    for (var i = 0; i < nodes.length; i++) {
+      var rect = nodes[i].getBoundingClientRect();
+      if (rect.bottom > bottom) bottom = rect.bottom;
+    }
+    var h = Math.ceil(Math.max(
+      root.height,
+      el.scrollHeight,
+      document.body.scrollHeight,
+      document.documentElement.scrollHeight,
+      bottom - root.top
+    )) + 4;
     if (window.AndroidRichText && window.AndroidRichText.height) {
-      window.AndroidRichText.height(h);
+      window.AndroidRichText.height(h, RENDER_ID);
     }
   }
   window.__report = report;
@@ -161,11 +176,20 @@
   if (window.ResizeObserver) {
     new ResizeObserver(report).observe(document.getElementById('out'));
   }
+  if (window.MutationObserver) {
+    new MutationObserver(report).observe(document.getElementById('out'), {
+      childList: true, subtree: true, characterData: true
+    });
+  }
   window.addEventListener('load', report);
+  window.addEventListener('pageshow', report);
+  window.addEventListener('resize', report);
+  document.addEventListener('visibilitychange', report);
   setTimeout(report, 60);
   setTimeout(report, 300);
   setTimeout(report, 800);
   setTimeout(report, 1500);
+  requestAnimationFrame(report);
   report();
   setTimeout(function () {
     var el = document.getElementById('out');

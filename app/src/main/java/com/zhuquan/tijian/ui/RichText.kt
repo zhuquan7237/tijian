@@ -6,10 +6,12 @@ import android.graphics.Color
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -28,12 +30,13 @@ object RichTextRenderer {
     @Volatile
     private var template: String? = null
 
-    fun html(context: Context, markdown: String, fontSize: Int, widthDp: Int = 360): String {
+    fun html(context: Context, markdown: String, fontSize: Int, widthDp: Int = 360, renderId: Int = 0): String {
         val tpl = template ?: context.assets.open("richtext/renderer.html")
             .bufferedReader().use { it.readText() }.also { template = it }
         return tpl
             .replace("__FONTSIZE__", fontSize.toString())
             .replace("__WIDTH__", widthDp.toString())
+            .replace("__RENDER_ID__", renderId.toString())
             .replace("__CONTENT__", JSONObject.quote(markdown))
     }
 }
@@ -48,15 +51,21 @@ fun RichText(
     if (markdown.isBlank()) return
     val context = LocalContext.current
     val density = LocalDensity.current
-    val height = remember(markdown) { mutableIntStateOf(0) }
+    val widthDp = widthDpForKey(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp)
+    val normalized = Normalize.text(markdown)
+    val renderId = normalized.hashCode() * 31 + fontSize * 7 + widthDp
+    val height = remember(renderId) {
+        mutableIntStateOf(0)
+    }
     // 固定 CSS 视口宽度，避免部分 OEM WebView 按 980px 宽屏排版导致右侧被裁
     // RichText 可能嵌在带内边距的内容卡片里，视口必须比整屏窄，才能触发正确换行。
     // 过宽会让 WebView 认为内容可以横向铺开，Compose 外层再把右侧直接裁掉。
-    val widthDp = (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp - 64)
-        .coerceAtLeast(240)
-    val html = remember(markdown, fontSize, widthDp) {
-        RichTextRenderer.html(context, Normalize.text(markdown), fontSize, widthDp)
+    val html = remember(normalized, fontSize, widthDp, renderId) {
+        RichTextRenderer.html(context, normalized, fontSize, widthDp, renderId)
     }
+
+    // 内容、宽度或字号变化时，旧 WebView 高度不能继续参与本次布局。
+    LaunchedEffect(html) { height.intValue = 0 }
 
     val heightModifier = if (height.intValue > 0) {
         Modifier.height(with(density) { height.intValue.toDp() })
@@ -67,6 +76,12 @@ fun RichText(
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView, url: String?) {
+                        view.scrollTo(0, 0)
+                        view.evaluateJavascript("window.__report && window.__report()", null)
+                    }
+                }
                 webChromeClient = object : android.webkit.WebChromeClient() {
                     override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean {
                         android.util.Log.d("RichTextJS", "${m.message()} @${m.lineNumber()}")
@@ -94,8 +109,8 @@ fun RichText(
                 isNestedScrollingEnabled = false
                 addJavascriptInterface(object {
                     @JavascriptInterface
-                    fun height(h: Int) {
-                        if (h > 0) {
+                    fun height(h: Int, callbackRenderId: Int) {
+                        if (callbackRenderId == renderId && h > 0) {
                             val cur = height.intValue
                             if (abs(cur - h) > 1) {
                                 android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -112,6 +127,7 @@ fun RichText(
                         )
                     }
                 }
+                scrollTo(0, 0)
                 tag = html
                 loadDataWithBaseURL(
                     "file:///android_asset/richtext/", html, "text/html", "utf-8", null
@@ -120,6 +136,9 @@ fun RichText(
         },
         update = { wv ->
             if (wv.tag != html) {
+                height.intValue = 0
+                wv.stopLoading()
+                wv.scrollTo(0, 0)
                 wv.tag = html
                 wv.loadDataWithBaseURL(
                     "file:///android_asset/richtext/", html, "text/html", "utf-8", null
@@ -129,6 +148,8 @@ fun RichText(
         modifier = modifier.fillMaxWidth().then(heightModifier)
     )
 }
+
+private fun widthDpForKey(screenWidthDp: Int): Int = (screenWidthDp - 64).coerceAtLeast(240)
 
 /** 列表/卡片用的轻量文本：不做完整排版，只把常见命令转成可读符号 */
 fun cleanMathLite(input: String): String {
