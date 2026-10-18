@@ -89,7 +89,7 @@ BUILD SUCCESSFUL
 
 Lint：0 errors、12 warnings，无全局忽略或 baseline。release APK 签名 v2、zipalign -c -P 16 4 验证通过；沿用现有签名配置。
 
-从模拟器提取已安装 base.apk，与待发布 app-release.apk 比对 SHA-256 完全相同：652187cd72d1da6e130dc447e679a6aa2bbe2d71733e4f79333cfa1198ea6e4f。包名 com.zhuquan.tijian，versionName 0.4.1，versionCode 40100。确认验证对象就是待发布包。
+首次视觉验证后，提取模拟器 base.apk 与本地 release APK 的 SHA-256 比对一致。提交文档后 Gradle 会更新 APK 内的 Git 版本元数据，因此最终包另行安装、校验并复看题目；最终下载包校验值以同一 Release 的 update.json 为准。包名 com.zhuquan.tijian，versionName 0.4.1，versionCode 40100。
 
 本轮导航的原始帧统计：[gfxinfo-after.txt](validation/0.4.1/gfxinfo-after.txt)。
 
