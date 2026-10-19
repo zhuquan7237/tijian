@@ -59,6 +59,7 @@ object PdfExporter {
         pager.canvas!!.drawText("题笺", MARGIN, TOP + 2f, paint(9.5f, false, accent))
         pager.canvas!!.drawText(title, MARGIN, TOP + 32f, paint(22f, true))
         pager.canvas!!.drawText("共 ${questions.size} 题 · ${date()}", MARGIN, TOP + 52f, sub)
+        // The title belongs to the first question page, not a cover page.
         pager.y = TOP + 66f
         pager.hairline()
         pager.y += 18f
@@ -95,8 +96,8 @@ object PdfExporter {
                 wrap(cleanMath(q.stem.ifBlank { "（未识别题干）" }), body, CONTENT_W)
             else emptyList()
             val answerText = if (richAnswer != null) "" else buildString {
-                if (opts.includeAnswer && q.answer.isNotBlank()) append("答案：").append(cleanMath(q.answer)).append("\n")
-                if (opts.includeAnalysis && q.analysis.isNotBlank()) append("解析：").append(cleanMath(q.analysis))
+                if (opts.includeAnswer && q.answer.isNotBlank()) append("答案：").append(q.answer).append("\n")
+                if (opts.includeAnalysis && q.analysis.isNotBlank()) append("解析：").append(q.analysis)
             }.trim()
             val answerLines = if (answerText.isBlank()) emptyList() else wrap(answerText, paint(10.5f), CONTENT_W)
 
@@ -110,21 +111,15 @@ object PdfExporter {
             // the fit is calculated. Count drawing offsets exactly once here.
             val blockH = headerH + stemLines.size * 17f + 6f + imgH + 4f + richStemH + 4f + richAnswerH + 18f
 
-            // Content that cannot fit one page is uniformly scaled down. This
-            // preserves the entire question/answer/analysis on the same page and
-            // avoids orphaned slices followed by blank paper.
-            // Always start each question on its own page, matching the option label.
-            // Images and rich blocks are scaled to fit instead of spilling a thin
-            // remainder onto a nearly blank page.
-            if (opts.onePerPage && index > 0) pager.newPage()
-            else if (pager.y + minOf(blockH, 120f) > BOTTOM) pager.newPage()
+            // The PDF must never drop answer/analysis. When a question is too tall
+            // for one page, all text stays readable and only the image shrinks; if
+            // that still overflows, the remaining page is flushed instead of omitted.
+            if (index > 0) pager.newPage()
 
             // Compute after any page switch: the available height is the space left
             // below this page's actual starting cursor, not the whole page height.
             val available = BOTTOM - pager.y - 6f
-            val fit = if (blockH > available) (available / blockH).coerceIn(0.10f, 1f) else 1f
-            // Every image is scaled so the *whole* question block fits this page.
-            // This prevents image-only pages followed by answer-only pages.
+            val fit = 1f
 
             pager.canvas!!.drawText("${index + 1}", MARGIN, pager.y + 10f, paint(11f, true, accent))
             pager.canvas!!.drawText(
@@ -147,22 +142,28 @@ object PdfExporter {
             }
             pager.y += 6f * fit
 
-            // Build top-down geometry. Everything below the scan (question body +
-            // answer) must fit into the current page; the image receives only what
-            // is left. This is the actual fix for answer-only pages.
-            val contentBelowImage = (stemLines.size * 17f + richStemH + richAnswerH +
-                answerLines.size * 16f) * fit + 48f
-            val imageRoom = (available - contentBelowImage).coerceAtLeast(40f)
-            if (bmp != null) pager.image(bmp, fit, allowSlice = false, maxHeight = imageRoom)
-
+            // Text is painted before the scan so an oversized image can never
+            // push the answer/analysis outside the page. The scan receives only
+            // the remaining height and shrinks uniformly.
             if (richStem != null) {
-                pager.y += 4f * fit
-                pager.image(richStem, fit, allowSlice = false)
+                // Text must stay readable at natural scale; if the whole block does
+                // not fit, move it to the next page instead of clipping it.
+                pager.ensure(richStemH + 4f)
+                pager.y += 4f
+                pager.image(richStem, 1f, allowSlice = false)
                 richStem.recycle()
             }
+            if (bmp != null) {
+                val reservedText = richAnswerH + answerLines.size * 16f + 42f
+                val imageRoom = (BOTTOM - pager.y - reservedText).coerceAtLeast(36f)
+                // Keep the scan's aspect ratio. Wide/tall source images may be far
+                // taller than the page; fit by the limiting dimension here.
+                pager.image(bmp, 1f, allowSlice = false, maxHeight = imageRoom)
+            }
             if (richAnswer != null) {
-                pager.y += 4f * fit
-                pager.image(richAnswer, fit, allowSlice = false)
+                pager.ensure(richAnswerH + 6f)
+                pager.y += 4f
+                pager.image(richAnswer, 1f, allowSlice = false)
                 richAnswer.recycle()
             }
 
@@ -289,20 +290,13 @@ object PdfExporter {
         fun image(bmp: Bitmap, fit: Float = 1f, allowSlice: Boolean = true, maxHeight: Float = Float.MAX_VALUE) {
             val scale = CONTENT_W / bmp.width.toFloat() * fit
             if (!allowSlice) {
-                val h = minOf(bmp.height * scale, maxHeight, BOTTOM - y)
-                if (h <= BOTTOM - y) {
-                    val width = if (bmp.height * scale > maxHeight || h < bmp.height * scale) CONTENT_W * (h / (bmp.height * scale)) else CONTENT_W
-                    val dst = RectF(MARGIN, y, MARGIN + width, y + h)
-                    canvas!!.drawBitmap(bmp, null, dst, Paint(Paint.FILTER_BITMAP_FLAG))
-                    y += h
-                    return
-                }
-                // The caller sized this block to fit; guard against rounding by
-                // scaling once more rather than emitting an image orphan page.
-                val fitted = (BOTTOM - y) / bmp.height.toFloat()
-                val fittedScale = minOf(scale, fitted, if (maxHeight > 0f) maxHeight / bmp.height else fitted)
+                var fittedScale = scale
+                // Constrain both dimensions while preserving aspect ratio.
+                if (bmp.height * fittedScale > maxHeight) fittedScale = maxHeight / bmp.height
+                if (bmp.width * fittedScale > CONTENT_W) fittedScale = CONTENT_W / bmp.width
                 val fittedHeight = bmp.height * fittedScale
-                val dst = RectF(MARGIN, y, MARGIN + bmp.width * fittedScale, y + fittedHeight)
+                val fittedWidth = bmp.width * fittedScale
+                val dst = RectF(MARGIN, y, MARGIN + fittedWidth, y + fittedHeight)
                 canvas!!.drawBitmap(bmp, null, dst, Paint(Paint.FILTER_BITMAP_FLAG))
                 y += fittedHeight
                 return

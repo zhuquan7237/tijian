@@ -188,7 +188,8 @@ fun AppRoot(vm: AppVm = viewModel()) {
             }
         }
 
-        if (vm.busy && vm.route !is Route.Import && vm.route !is Route.Category && vm.route !is Route.Doc) {
+        if (vm.busy && vm.route !is Route.Import && vm.route !is Route.Category &&
+            vm.route !is Route.Doc && vm.route !is Route.Library && vm.route !is Route.Home) {
             BusyOverlay(vm.busyLabel)
         }
 

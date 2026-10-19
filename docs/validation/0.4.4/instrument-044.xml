@@ -1,0 +1,27 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="com.zhuquan.tijian.ImageAndCategoryTest" tests="19" failures="0" errors="0" skipped="0" time="51.359" timestamp="2026-10-19T03:21:12" hostname="localhost">
+  <properties>
+    <property name="device" value="AtlasRefactorQA(AVD) - 17" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="originalBytesAndDimensionsSurviveImportAndCropKeepsPixels" classname="com.zhuquan.tijian.ImageAndCategoryTest" time="0.681" />
+  <testcase name="versionOneUpgradeKeepsExistingImageRows" classname="com.zhuquan.tijian.ImageAndCategoryTest" time="0.231" />
+  <testcase name="rotatedAndMirroredImagesCropInDisplayedCoordinates" classname="com.zhuquan.tijian.ImageAndCategoryTest" time="0.106" />
+  <testcase name="sameNamedSubcategoriesStayInTheirSubjectAndDeletionKeepsQuestions" classname="com.zhuquan.tijian.ImageAndCategoryTest" time="0.285" />
+  <testcase name="pdfRendersRichAnswerAndAnalysisWhenOptionsEnabled" classname="com.zhuquan.tijian.ImageEditorLayoutTest" time="7.018" />
+  <testcase name="longImageSlicesContinueOnCurrentPageAndEndAtContent" classname="com.zhuquan.tijian.ImageEditorLayoutTest" time="1.686" />
+  <testcase name="portraitImageKeepsFullHeightInsideStage" classname="com.zhuquan.tijian.ImageEditorLayoutTest" time="1.995" />
+  <testcase name="pdfKeepsAnswerAnalysisAndImageAspect" classname="com.zhuquan.tijian.ImageEditorLayoutTest" time="0.503" />
+  <testcase name="richBitmapRendersLatexInsteadOfFallingBackToSource" classname="com.zhuquan.tijian.ImageEditorLayoutTest" time="2.602" />
+  <testcase name="brushStrokeIsFlattenedIntoExportedCopy" classname="com.zhuquan.tijian.ImageEditorLayoutTest" time="1.824" />
+  <testcase name="normalizeDoesNotDropInlineLatex" classname="com.zhuquan.tijian.KnowledgeRegressionTest" time="0.088" />
+  <testcase name="knowledgeJsonVariantsProduceStableMarkdown" classname="com.zhuquan.tijian.KnowledgeRegressionTest" time="0.005" />
+  <testcase name="knowledgeTagsWithLongChineseAndLatexStayComplete" classname="com.zhuquan.tijian.KnowledgeRegressionTest" time="0.029" />
+  <testcase name="freeformCornerDragAndReset" classname="com.zhuquan.tijian.OriginalImageGestureTest" time="1.615" />
+  <testcase name="pinchZoomChangesActualRenderedPixels" classname="com.zhuquan.tijian.OriginalImageGestureTest" time="1.437" />
+  <testcase name="testTextAndFormulaCorpus" classname="com.zhuquan.tijian.RichTextLayoutTest" time="4.872" />
+  <testcase name="testWidthFontScaleAndResume" classname="com.zhuquan.tijian.RichTextLayoutTest" time="3.616" />
+  <testcase name="testEmptyContentThenLongAnalysis" classname="com.zhuquan.tijian.RichTextLayoutTest" time="2.719" />
+  <testcase name="testAsyncReplacementShrinkAndStableHeight" classname="com.zhuquan.tijian.RichTextLayoutTest" time="3.305" />
+</testsuite>

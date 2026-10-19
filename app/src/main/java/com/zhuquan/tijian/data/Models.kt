@@ -1,6 +1,8 @@
 package com.zhuquan.tijian.data
 
 import java.util.UUID
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.abs
 
 fun newId(): String {
@@ -86,6 +88,55 @@ fun clampMastery(v: Int) = v.coerceIn(0, 5)
 fun colorFor(name: String): String {
     val palette = listOf("#E7EAF8", "#EDEAE1", "#E4EFE9", "#F2E7E3", "#E9E6F2", "#E8EEF2", "#F4EDE4")
     return palette[abs(name.hashCode()) % palette.size]
+}
+
+/** Human-readable knowledge points from the JSON tag array stored in questions. */
+fun parseKnowledgeTags(raw: String): List<String> = try {
+    val arr = org.json.JSONArray(raw)
+    (0 until arr.length()).mapNotNull { i -> arr.optString(i).trim().takeIf { it.isNotBlank() } }
+} catch (_: Exception) { emptyList() }
+
+/** Convert the knowledge model's JSON into stable Markdown regardless of nesting. */
+fun knowledgeMarkdown(raw: String): String {
+    val obj = JSONObject(raw.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim())
+    val sb = StringBuilder()
+    sb.append("# ").append(obj.optString("title").ifBlank { "知识点整理" }).append("\n\n")
+    val points = obj.optJSONArray("points") ?: obj.optJSONArray("knowledge_points") ?: JSONArray()
+    if (points.length() == 0) obj.optJSONObject("point")?.let { points.put(it) }
+    for (i in 0 until points.length()) {
+        val p = points.optJSONObject(i) ?: continue
+        val title = p.optString("title").ifBlank { p.optString("name") }.ifBlank { "知识点 ${i + 1}" }
+        sb.append("## ").append(i + 1).append(". ").append(title).append("\n\n")
+        val def = p.optString("definition").ifBlank { p.optString("summary") }
+        if (def.isNotBlank()) sb.append(def).append("\n\n")
+        val kp = p.optJSONArray("key_points") ?: p.optJSONArray("points")
+        if (kp != null && kp.length() > 0) {
+            sb.append("**要点**\n")
+            for (k in 0 until kp.length()) {
+                val v = when (val item = kp.opt(k)) {
+                    is String -> item
+                    is JSONObject -> item.optString("text").ifBlank { item.optString("content") }
+                    else -> kp.optString(k)
+                }
+                if (v.isNotBlank()) sb.append("- ").append(v.trim()).append("\n")
+            }
+            sb.append("\n")
+        }
+        val pf = p.optJSONArray("pitfalls")
+        if (pf != null && pf.length() > 0) {
+            sb.append("**易错**\n")
+            for (k in 0 until pf.length()) {
+                val v = when (val item = pf.opt(k)) {
+                    is String -> item
+                    is JSONObject -> item.optString("text").ifBlank { item.optString("content") }
+                    else -> pf.optString(k)
+                }
+                if (v.isNotBlank()) sb.append("- ").append(v.trim()).append("\n")
+            }
+            sb.append("\n")
+        }
+    }
+    return sb.toString().trim()
 }
 
 val SUBJECT_ROOTS = listOf("数学", "专业课", "英语", "政治", "其他")

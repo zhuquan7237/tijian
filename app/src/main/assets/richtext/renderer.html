@@ -142,7 +142,18 @@
       });
       return '<span class="' + (b.display ? 'math-display' : 'math-inline') + '">' + rendered + '</span>';
     } catch (e) {
-      return '<span class="rt-error">' + escapeHtml(b.tex) + '</span>';
+      // A first-pass failure can be caused by a macro (\\ce, \\pu) not yet
+      // registered. Retry after mhchem has initialized; if it still fails, show
+      // a compact marker instead of leaking raw TeX into the document.
+      try {
+        var retried = katex.renderToString(b.tex, {
+          displayMode: b.display, throwOnError: true, strict: false, trust: false, output: 'html',
+          macros: (window.__rtMacros || {})
+        });
+        return '<span class="' + (b.display ? 'math-display' : 'math-inline') + '">' + retried + '</span>';
+      } catch (e2) {
+        return '<span class="rt-error" title="' + escapeHtml(String(e2)) + '">[公式]</span>';
+      }
     }
   });
 

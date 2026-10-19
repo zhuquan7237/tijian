@@ -1,11 +1,9 @@
 package com.zhuquan.tijian.export
 
-import android.app.Dialog
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
@@ -37,8 +35,14 @@ object RichBitmap {
 
         // 固定 CSS 视口宽度，避免受设备 DPR 影响导致字号与排版比例失真
         val html = RichTextRenderer.html(ctx, Normalize.text(markdown), fontSize, widthPx)
-        val dialog = Dialog(ctx, android.R.style.Theme_Translucent_NoTitleBar)
+        // Attach the offscreen WebView to the running activity's window. A Dialog
+        // needs a valid window token; using the application context raised
+        // BadTokenException and made PDF formulas silently fall back to text.
+        val activity = com.zhuquan.tijian.MainActivity.current?.get()
+            ?: (ctx as? android.app.Activity)
+        val root = activity?.window?.decorView as? android.view.ViewGroup
         val web = WebView(ctx)
+        var container: FrameLayout? = null
         var lastHeight = 0
         val first = CompletableDeferred<Int>()
 
@@ -47,6 +51,9 @@ object RichBitmap {
             web.setBackgroundColor(Color.WHITE)
             web.settings.javaScriptEnabled = true
             web.settings.allowFileAccess = true
+            web.settings.domStorageEnabled = false
+            web.settings.javaScriptCanOpenWindowsAutomatically = false
+            web.setInitialScale(100)
             web.isVerticalScrollBarEnabled = false
             web.addJavascriptInterface(object {
                 @JavascriptInterface
@@ -57,44 +64,79 @@ object RichBitmap {
                     }
                 }
             }, "AndroidRichText")
+            web.webViewClient = object : android.webkit.WebViewClient() {
+                override fun onPageFinished(view: android.webkit.WebView, url: String?) {
+                    view.evaluateJavascript("window.__report && window.__report()", null)
+                }
+            }
 
-            val container = FrameLayout(ctx)
-            container.addView(
+            val host = FrameLayout(ctx)
+            container = host
+            host.addView(
                 web,
                 ViewGroup.LayoutParams(widthPx, ViewGroup.LayoutParams.WRAP_CONTENT)
             )
-            dialog.setContentView(container)
-            dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            dialog.window?.setLayout(1, 1)
-            dialog.show()
+            host.alpha = 0f
+            if (root != null) {
+                root.addView(host, ViewGroup.LayoutParams(widthPx, ViewGroup.LayoutParams.WRAP_CONTENT))
+                web.resumeTimers()
+                web.onResume()
+            } else {
+                android.util.Log.e("RichBitmap", "no activity window for offscreen renderer")
+                return@withContext null
+            }
 
             web.loadDataWithBaseURL(
                 "file:///android_asset/richtext/", html, "text/html", "utf-8", null
             )
 
-            val h0 = withTimeoutOrNull(7000) { first.await() } ?: return@withContext null
-            delay(1100) // 等字体、KaTeX、表格完成排版
+            val h0 = withTimeoutOrNull(9000) { first.await() } ?: return@withContext null
+            var stable = 0
+            var previous = -1
+            for (attempt in 0 until 12) {
+                delay(180)
+                val now = queryHeight(web)
+                if (now > 0 && now == previous) stable++ else stable = 0
+                previous = now
+                if (stable >= 2) break
+            }
             val reported = maxOf(h0, lastHeight)
             val measured = queryHeight(web)
             // measured 是最终视口下的真实高度；reported 可能来自窄视口的早期测量
-            val contentH = (if (measured > 0) measured else reported).coerceIn(24, 8000) + 6
+            // A window-attached WebView can report the visible viewport height
+            // instead of the full document. Use the larger of both measurements
+            // and the currently laid out height so no block is clipped.
+            val laidOut = web.height.coerceAtLeast(0)
+            val contentH = maxOf(measured, reported, laidOut, 24).coerceIn(24, 8000) + 6
 
             web.measure(
                 View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(contentH, View.MeasureSpec.EXACTLY)
             )
+            // The WebView is still in a FrameLayout; force the container to the
+            // measured size before drawing, otherwise the window clips to screen
+            // height and only the first block makes it into the bitmap.
+            container?.measure(
+                View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(contentH, View.MeasureSpec.EXACTLY)
+            )
+            container?.layout(0, 0, widthPx, contentH)
             web.layout(0, 0, widthPx, contentH)
+            web.requestLayout()
+            web.invalidate()
             delay(350)
 
             val bmp = Bitmap.createBitmap(widthPx, contentH, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bmp)
             canvas.drawColor(Color.WHITE)
+            web.invalidate()
             web.draw(canvas)
             bmp
         } catch (e: Exception) {
+            android.util.Log.e("RichBitmap", "render failed", e)
             null
         } finally {
-            try { dialog.dismiss() } catch (_: Exception) {}
+            try { container?.let { (it.parent as? ViewGroup)?.removeView(it) } } catch (_: Exception) {}
             try { web.destroy() } catch (_: Exception) {}
         }
     }

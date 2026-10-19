@@ -221,7 +221,8 @@ $list
 1. 合并重复，按主题分组，3~8 个知识点。
 2. 每个知识点包含：title、definition（一句话定义）、key_points（2~4 条要点）、pitfalls（1~3 条易错点）。
 3. 不要编造材料里没有的结论；不确定就省略。
-4. 只输出 JSON，不要 markdown 代码块。
+4. 所有数学公式必须使用 LaTeX：行内用 $...$，独立公式用 $$...$$；不要输出 x^(3/2)、sqrt(...) 这类纯文本公式。
+5. 只输出 JSON，不要 markdown 代码块。
 
 材料：
 ${material.take(9000)}
@@ -244,31 +245,7 @@ ${material.take(9000)}
         }
         val raw = call(cfg, body)
         val json = extractJson(raw) ?: throw AiException("知识点结果不是 JSON")
-        // 统一转成可读 Markdown
-        val obj = JSONObject(json)
-        val sb = StringBuilder()
-        val title = obj.optString("title").ifBlank { "知识点整理" }
-        sb.append("# ").append(title).append("\n\n")
-        val points = obj.optJSONArray("points") ?: JSONArray()
-        for (i in 0 until points.length()) {
-            val p = points.optJSONObject(i) ?: continue
-            sb.append("## ").append(i + 1).append(". ").append(p.optString("title")).append("\n\n")
-            val def = p.optString("definition")
-            if (def.isNotBlank()) sb.append(def).append("\n\n")
-            val kp = p.optJSONArray("key_points")
-            if (kp != null && kp.length() > 0) {
-                sb.append("**要点**\n")
-                for (k in 0 until kp.length()) sb.append("- ").append(kp.optString(k)).append("\n")
-                sb.append("\n")
-            }
-            val pf = p.optJSONArray("pitfalls")
-            if (pf != null && pf.length() > 0) {
-                sb.append("**易错**\n")
-                for (k in 0 until pf.length()) sb.append("- ").append(pf.optString(k)).append("\n")
-                sb.append("\n")
-            }
-        }
-        sb.toString().trim()
+        com.zhuquan.tijian.data.knowledgeMarkdown(json)
     }
 
     // ---------------- transport ----------------

@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -300,11 +302,11 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
         }
         Column(Modifier.fillMaxSize().background(Bg).padding(WindowInsets.safeDrawing.asPaddingValues())) {
             TjTopBar("原图查看与编辑", "双指缩放 · 拖动查看 · 裁剪或标注后另存副本", onBack = { if (!saving) onDismiss() })
-            // Compact toolbar first: the image gets the largest stage while every
-            // action remains reachable above the navigation bar. Horizontal insets
-            // keep corner handles away from the system Back gesture edge.
+            // Image keeps a bounded share of the screen. The toolbox below is
+            // always fully reachable and can scroll independently on short phones.
             Box(
-                Modifier.weight(1f).fillMaxWidth().padding(horizontal = 22.dp)
+                Modifier.fillMaxWidth().heightIn(min = 180.dp).weight(0.68f)
+                    .padding(horizontal = 22.dp).padding(bottom = 10.dp)
                     .clip(RoundedCornerShape(14.dp)).background(ComposeColor(0xFFF5F6FA))
             ) {
                 file?.let { imageFile ->
@@ -317,7 +319,13 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
                 }
                 if (file == null && error == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
             }
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                Modifier.fillMaxWidth().weight(0.32f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text(
                     when {
                         cropping -> "拖动四角或边框自由裁剪；拖动框内移动选区"

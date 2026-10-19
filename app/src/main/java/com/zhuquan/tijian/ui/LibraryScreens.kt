@@ -28,7 +28,6 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,6 +45,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhuquan.tijian.data.CategoryRow
 import com.zhuquan.tijian.data.DocRow
+import com.zhuquan.tijian.data.fullName
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -107,17 +112,15 @@ fun LibraryScreen(vm: AppVm) {
     }
 
     if (pickCategory) {
-        CategoryPicker(
-            current = "",
-            categories = vm.categories.filter { it.count > 0 }.map { it.name },
+        CategoryMultiPicker(
+            categories = vm.categories.filter { it.count > 0 },
             onDismiss = { pickCategory = false },
-            onPick = { name ->
+            onConfirm = { selected ->
                 pickCategory = false
-                vm.categories.firstOrNull { it.name == name }?.let { vm.generateKnowledge(it) }
+                if (selected.isNotEmpty()) vm.generateKnowledge(selected)
             }
         )
     }
-    if (vm.busy) BusyOverlay(vm.busyLabel)
 }
 
 @Composable
@@ -225,7 +228,6 @@ fun DocScreen(vm: AppVm, route: Route.Doc? = vm.route as? Route.Doc) {
             Spacer(Modifier.height(60.dp))
         }
     }
-    if (vm.busy) BusyOverlay(vm.busyLabel)
 }
 
 @Composable
@@ -249,5 +251,66 @@ fun MarkdownText(md: String) {
 }
 
 fun countPoints(md: String): Int = md.lineSequence().count { it.startsWith("## ") }
+
+/** Multi-select version for knowledge generation; unlike the draft picker it never closes on a row tap. */
+@Composable
+fun CategoryMultiPicker(
+    categories: List<CategoryRow>,
+    onDismiss: () -> Unit,
+    onConfirm: (List<CategoryRow>) -> Unit,
+) {
+    val chosen = remember { mutableStateOf<Set<String>>(emptySet()) }
+    var query by remember { mutableStateOf("") }
+    val filtered = categories.filter { it.fullName().contains(query.trim(), ignoreCase = true) }
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
+        Column(Modifier.padding(horizontal = 18.dp).padding(bottom = 26.dp)) {
+            Text("选择分类", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text(
+                "可多选 · 已选 ${chosen.value.size} 个",
+                fontSize = 10.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp)
+            )
+            OutlinedTextField(
+                value = query, onValueChange = { query = it },
+                placeholder = { Text("搜索分类", fontSize = 12.sp, color = Muted) },
+                singleLine = true, colors = tjFieldColors(), modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            Column(Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState())) {
+                filtered.forEach { cat ->
+                    val checked = chosen.value.contains(cat.id)
+                    Row(
+                        Modifier.fillMaxWidth().clickableNoRipple {
+                            chosen.value = if (checked) chosen.value - cat.id else chosen.value + cat.id
+                        }.padding(vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = checked, onCheckedChange = null, modifier = Modifier.size(22.dp))
+                        Column(Modifier.weight(1f).padding(start = 9.dp)) {
+                            Text(cat.fullName(), fontSize = 12.5.sp, color = Ink)
+                            Text("${cat.count} 题", fontSize = 10.5.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
+                        }
+                    }
+                    HorizontalDivider(color = Color(0xFFF2F2EC), thickness = 1.dp)
+                }
+                if (filtered.isEmpty()) Text("没有匹配的分类", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 16.dp))
+            }
+            Spacer(Modifier.height(12.dp))
+            Box(
+                Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(12.dp))
+                    .background(if (chosen.value.isEmpty()) SurfaceAlt else Accent)
+                    .clickableNoRipple(enabled = chosen.value.isNotEmpty()) {
+                        onConfirm(categories.filter { chosen.value.contains(it.id) })
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    if (chosen.value.isEmpty()) "选择分类后生成" else "生成知识文档（${chosen.value.size} 个分类）",
+                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                    color = if (chosen.value.isEmpty()) Muted else Color.White
+                )
+            }
+        }
+    }
+}
 
 fun formatDay(ms: Long): String = SimpleDateFormat("MM-dd", Locale.CHINA).format(Date(ms))

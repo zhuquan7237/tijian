@@ -117,4 +117,74 @@ class ImageEditorLayoutTest {
             assertTrue("file must not be empty", out.length() > 800)
         } finally { source.delete(); out.delete() }
     }
+
+    @Test fun pdfKeepsAnswerAnalysisAndImageAspect() {
+        val ctx = instrumentation.targetContext
+        val out = File(ctx.cacheDir, "pdf-complete.pdf")
+        val source = File(ctx.cacheDir, "pdf-complete.png")
+        val bmp = Bitmap.createBitmap(900, 1500, Bitmap.Config.ARGB_8888)
+        Canvas(bmp).apply {
+            drawColor(Color.WHITE)
+            drawRect(40f, 40f, 860f, 1460f, Paint().apply { color = Color.BLUE; style = Paint.Style.STROKE; strokeWidth = 20f })
+        }
+        bmp.compress(Bitmap.CompressFormat.PNG, 100, source.outputStream()); bmp.recycle()
+        try {
+            val q = com.zhuquan.tijian.data.QuestionRow(
+                id = "complete", categoryId = null, categoryName = "数学/函数与导数", type = "解答题",
+                stem = "求函数的极限。", options = "[]",
+                answer = "不存在最大值",
+                analysis = "原式 = 1，两次使用洛必达法则，最后得到结果。",
+                tags = "[\"极限\",\"洛必达法则\"]", difficulty = 3, errorReasons = "[]", source = "test", mastery = 0,
+                reviewCount = 0, nextReviewAt = 0, confidence = 0.9, note = "",
+                imageId = "complete", imagePath = source.path, createdAt = 0
+            )
+            val pages = kotlinx.coroutines.runBlocking {
+                com.zhuquan.tijian.export.PdfExporter.export(ctx, listOf(q), out, "完整性测试",
+                    com.zhuquan.tijian.export.PdfExporter.Options())
+            }
+            java.io.File("/sdcard/Download/pdf-complete.pdf").outputStream().use { target -> out.inputStream().use { it.copyTo(target) } }
+            assertTrue("PDF should be generated", pages >= 1)
+            assertTrue("PDF file should contain data", out.length() > 1000)
+        } finally { source.delete(); out.delete() }
+    }
+
+    @Test fun pdfRendersRichAnswerAndAnalysisWhenOptionsEnabled() {
+        val appCtx = instrumentation.targetContext
+        val ctx = instrumentation.startActivitySync(
+            Intent(appCtx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ) as MainActivity
+        val out = File(ctx.cacheDir, "pdf-rich.pdf")
+        try {
+            val q = com.zhuquan.tijian.data.QuestionRow(
+                id = "rich", categoryId = null, categoryName = "数学/函数与导数", type = "解答题",
+                stem = "求极限。", options = "[]", answer = "结果为 $\\boxed{2}$",
+                analysis = "原式 $=\\lim_{x\\to1}\\dfrac{1}{x}=1$，故结果为 $2$。",
+                tags = "[]", difficulty = 3, errorReasons = "[]", source = "test", mastery = 0,
+                reviewCount = 0, nextReviewAt = 0, confidence = 0.9, note = "",
+                imageId = null, imagePath = null, createdAt = 0
+            )
+            val pages = kotlinx.coroutines.runBlocking {
+                com.zhuquan.tijian.export.PdfExporter.export(ctx, listOf(q), out, "解析测试",
+                    com.zhuquan.tijian.export.PdfExporter.Options(includeAnswer = true, includeAnalysis = true, includeTags = false, onePerPage = true))
+            }
+            java.io.File("/sdcard/Download/pdf-rich.pdf").outputStream().use { target -> out.inputStream().use { it.copyTo(target) } }
+            assertTrue(pages >= 1)
+        } finally { out.delete(); instrumentation.runOnMainSync { ctx.finish() } }
+    }
+
+    @Test fun richBitmapRendersLatexInsteadOfFallingBackToSource() {
+        val host = instrumentation.startActivitySync(Intent(instrumentation.targetContext, RichTextRegressionActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as RichTextRegressionActivity
+        val ctx = host
+        val bmp = kotlinx.coroutines.runBlocking {
+            com.zhuquan.tijian.export.RichBitmap.render(
+                ctx, "答案：$\\dfrac{1}{2}$\n\n解析：原式 $=\\lim_{x\\to1}\\dfrac{1}{x}=1$", widthPx = 700, fontSize = 14
+            )
+        }
+        assertNotNull("Rich text bitmap must be produced for PDF", bmp)
+        assertTrue("Rich text bitmap must contain visible pixels", bmp!!.width > 100 && bmp.height > 30)
+        java.io.File("/sdcard/Download/rich-bitmap.png").outputStream().use { target -> bmp.compress(Bitmap.CompressFormat.PNG, 100, target) }
+        bmp.recycle()
+        instrumentation.runOnMainSync { host.finish() }
+    }
 }

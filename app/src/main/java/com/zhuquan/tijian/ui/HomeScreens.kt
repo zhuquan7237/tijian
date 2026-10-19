@@ -1,4 +1,4 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.zhuquan.tijian.ui
 
@@ -70,6 +70,7 @@ import com.zhuquan.tijian.data.fullName
 import com.zhuquan.tijian.data.subjectGroup
 import com.zhuquan.tijian.data.CategoryRow
 import com.zhuquan.tijian.data.QuestionRow
+import com.zhuquan.tijian.data.parseKnowledgeTags
 import com.zhuquan.tijian.export.PdfExporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -316,7 +317,7 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
 
         Spacer(Modifier.height(12.dp))
 
-        CardBox(Modifier.padding(horizontal = 18.dp).fillMaxWidth()) {
+                CardBox(Modifier.padding(horizontal = 18.dp).fillMaxWidth()) {
             Column {
                 Row(Modifier.fillMaxWidth().background(Color(0xFFFBFBF8)).padding(horizontal = 11.dp, vertical = 8.dp)) {
                     Text(if (selecting) "" else "题目", fontSize = 9.5.sp, letterSpacing = 1.sp, color = Muted, modifier = Modifier.width(44.dp))
@@ -325,12 +326,12 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                     Text("知识点", fontSize = 9.5.sp, letterSpacing = 1.sp, color = Muted, modifier = Modifier.weight(1f))
                     Text("掌握", fontSize = 9.5.sp, letterSpacing = 1.sp, color = Muted, modifier = Modifier.width(44.dp))
                 }
-                val tableHeight = ((rows.size * 68 + 40).coerceIn(96, 460)).dp
+                val tableHeight = ((rows.size * 84 + 40).coerceIn(96, 520)).dp
                 LazyColumn(Modifier.height(tableHeight), state = listState) {
                     items(rows, key = { it.id }) { q ->
                         val isSel = selected.value.contains(q.id)
                         Row(
-                            Modifier.fillMaxWidth().height(68.dp).clickableNoRipple {
+                            Modifier.fillMaxWidth().height(84.dp).clickableNoRipple {
                                 if (selecting) {
                                     selected.value = if (isSel) selected.value - q.id else selected.value + q.id
                                 } else vm.go(Route.Detail(q.id))
@@ -346,10 +347,22 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                             }
                             Spacer(Modifier.width(12.dp))
                             Text(q.type.ifBlank { "—" }, fontSize = 11.5.sp, color = Ink2, modifier = Modifier.width(70.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                knowledgeText(q).ifBlank { "—" }, fontSize = 11.5.sp, color = Ink,
-                                modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis
-                            )
+                            val tags = parseKnowledgeTags(q.tags)
+                            if (tags.isEmpty()) {
+                                Text("—", fontSize = 11.5.sp, color = Muted, modifier = Modifier.weight(1f))
+                            } else {
+                                Row(
+                                    Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    tags.forEach { tag ->
+                                        Box(
+                                            Modifier.clip(RoundedCornerShape(6.dp)).background(AccentSoft)
+                                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                                        ) { Text(tag, fontSize = 10.5.sp, color = Ink2, maxLines = 1) }
+                                    }
+                                }
+                            }
                             Box(Modifier.width(44.dp), contentAlignment = Alignment.CenterEnd) { MasteryDots(q.mastery) }
                         }
                         HorizontalDivider(color = Color(0xFFF0F0EB), thickness = 1.dp)
@@ -431,7 +444,7 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
         )
     }
 
-    if (vm.busy) BusyOverlay(vm.busyLabel)
+    if (vm.busy && (showExport || selecting)) BusyOverlay(vm.busyLabel)
 }
 
 @Composable
@@ -531,6 +544,23 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                 Spacer(Modifier.height(16.dp))
                 RichSection("解析", "按步骤展开推理", Accent) {
                     RichText(question.analysis, fontSize = 15, onReady = { readySections["analysis"] = true })
+                }
+            }
+            val knowledge = parseKnowledgeTags(question.tags)
+            if (knowledge.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                RichSection("知识点", "本题涉及的主题", Amber) {
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        knowledge.forEach { tag ->
+                            Box(
+                                Modifier.clip(RoundedCornerShape(8.dp)).background(AccentSoft)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) { Text(tag, fontSize = 12.sp, lineHeight = 17.sp, color = Ink2) }
+                        }
+                    }
                 }
             }
             if (question.analysis.isNotBlank()) {
@@ -753,7 +783,7 @@ fun BigButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) 
 
 @Composable
 fun BusyOverlay(label: String) {
-    Box(Modifier.fillMaxSize().background(Color(0x66000000)), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize().background(Color(0x66000000)), contentAlignment = Alignment.Center) {
         Column(
             Modifier.clip(RoundedCornerShape(14.dp)).background(Color.White).padding(horizontal = 24.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally

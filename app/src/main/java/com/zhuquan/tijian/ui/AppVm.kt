@@ -344,13 +344,17 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     // ---------- knowledge ----------
 
-    fun generateKnowledge(category: CategoryRow) {
+    fun generateKnowledge(categories: List<CategoryRow>) {
+        val selected = categories.distinctBy { it.id }
+        if (selected.isEmpty()) { toast = "先选择至少一个分类"; return }
         if (!provider.ready()) { toast = "先在「我的 → AI 接入」配置模型"; return }
         viewModelScope.launch {
             busy = true; busyLabel = "AI 提炼知识点"
             try {
-                val qs = withContext(Dispatchers.IO) { db.questions(category.id) }
-                if (qs.isEmpty()) { toast = "这个分类还没有题目"; return@launch }
+                val qs = withContext(Dispatchers.IO) {
+                    selected.flatMap { db.questions(it.id, "all") }.distinctBy { it.id }
+                }
+                if (qs.isEmpty()) { toast = "所选分类还没有题目"; return@launch }
                 val material = qs.take(20).joinToString("\n\n") { q ->
                     buildString {
                         append("题型：").append(q.type).append("\n")
@@ -363,7 +367,8 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 val md = ai.knowledge(provider, material)
                 val ids = JSONArray(qs.take(20).map { it.id }).toString()
                 val docId = withContext(Dispatchers.IO) {
-                    db.insertDoc(category.name.ifBlank { "知识点整理" }, category.id, ids, md)
+                    val title = if (selected.size == 1) selected.first().name else selected.joinToString(" · ") { it.name }
+                    db.insertDoc(title.ifBlank { "知识点整理" }, selected.first().id, ids, md)
                 }
                 refresh()
                 go(Route.Doc(docId))
