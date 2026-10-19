@@ -453,7 +453,7 @@ private fun ModelPickerSheet(
     var query by remember { mutableStateOf("") }
     val filtered = models.filter { it.contains(query.trim(), ignoreCase = true) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = CardBg) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
+        Column(Modifier.blockSheetDrag().padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("选择模型", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)

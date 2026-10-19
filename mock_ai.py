@@ -103,6 +103,19 @@ def reply_for(text):
         return json.dumps(KNOWLEDGE, ensure_ascii=False)
     if "题目数字化助手" in text:
         return json.dumps({"questions": QUESTIONS}, ensure_ascii=False)
+    if "错题辅导老师" in text or "题目资料" in text:
+        return """### 这一步在做什么
+
+你选的这段是**求导**：$y'=3x^2-2$。
+
+把 $x=1$ 代进去得到斜率 $k=1$，再用点斜式 $y-y_0=k(x-x_0)$ 写出切线。
+
+**你缺的那块**：导数的几何意义——某点的导数值就是该点切线的斜率。
+
+| 步骤 | 式子 |
+|---|---|
+| 求导 | $y'=3x^2-2$ |
+| 代点 | $k=1$ |"""
     return "正常"
 
 

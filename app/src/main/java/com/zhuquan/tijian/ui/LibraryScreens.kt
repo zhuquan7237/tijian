@@ -21,13 +21,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -50,6 +55,8 @@ import com.zhuquan.tijian.data.DocRow
 import com.zhuquan.tijian.data.fullName
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.ui.window.Dialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -64,6 +71,8 @@ import java.util.Locale
 @Composable
 fun LibraryScreen(vm: AppVm) {
     var pickCategory by remember { mutableStateOf(false) }
+    var editingDoc by remember { mutableStateOf<DocRow?>(null) }
+    var deletingDoc by remember { mutableStateOf<DocRow?>(null) }
     var pendingFile by remember { mutableStateOf<File?>(null) }
     var pendingDoc by remember { mutableStateOf<DocRow?>(null) }
     val scope = rememberCoroutineScope()
@@ -96,6 +105,8 @@ fun LibraryScreen(vm: AppVm) {
                 items(vm.docs, key = { it.id }) { doc ->
                     DocRowItem(doc,
                         onOpen = { vm.go(Route.Doc(doc.id)) },
+                        onEdit = { editingDoc = doc },
+                        onDelete = { deletingDoc = doc },
                         onPdf = {
                             pendingDoc = doc
                             scope.launch {
@@ -111,6 +122,34 @@ fun LibraryScreen(vm: AppVm) {
             }
             item { Spacer(Modifier.height(80.dp)) }
         }
+    }
+
+    editingDoc?.let { doc ->
+        DocEditDialog(
+            doc = doc,
+            onDismiss = { editingDoc = null },
+            onSave = { title, content ->
+                vm.updateDoc(doc.id, title, content)
+                editingDoc = null
+            }
+        )
+    }
+
+    deletingDoc?.let { doc ->
+        AlertDialog(
+            onDismissRequest = { deletingDoc = null },
+            title = { Text("删除这篇文档？", fontSize = 17.sp) },
+            text = { Text("「${doc.title}」会从知识库移除，原始错题不受影响。", fontSize = 13.sp, lineHeight = 20.sp, color = Ink2) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    vm.deleteDoc(doc.id)
+                    deletingDoc = null
+                }) { Text("删除", color = Red, fontWeight = FontWeight.SemiBold) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { deletingDoc = null }) { Text("取消", color = Ink2) }
+            }
+        )
     }
 
     if (pickCategory) {
@@ -151,7 +190,14 @@ private fun GenerateCard(categoryCount: Int, onClick: () -> Unit) {
 }
 
 @Composable
-private fun DocRowItem(doc: DocRow, onOpen: () -> Unit, onPdf: () -> Unit) {
+private fun DocRowItem(
+    doc: DocRow,
+    onOpen: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onPdf: () -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().tjClickable { onOpen() }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(SurfaceAlt),
@@ -161,8 +207,95 @@ private fun DocRowItem(doc: DocRow, onOpen: () -> Unit, onPdf: () -> Unit) {
             Text(doc.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("${countPoints(doc.contentMd)} 个知识点 · ${formatDay(doc.createdAt)}", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
         }
+        Box {
+            Box(
+                Modifier.size(44.dp).clip(RoundedCornerShape(10.dp))
+                    .tjClickable(label = "更多操作") { menu = true },
+                contentAlignment = Alignment.Center
+            ) { Icon(Icons.Rounded.MoreVert, null, tint = Muted, modifier = Modifier.size(20.dp)) }
+            androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("编辑内容", fontSize = 14.sp) },
+                    onClick = { menu = false; onEdit() }
+                )
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("导出 PDF", fontSize = 14.sp) },
+                    onClick = { menu = false; onPdf() }
+                )
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("删除", fontSize = 14.sp, color = Red) },
+                    onClick = { menu = false; onDelete() }
+                )
+            }
+        }
         Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).tjClickable(label = "导出 PDF") { onPdf() }, contentAlignment = Alignment.Center) {
             androidx.compose.material3.Icon(Icons.Rounded.PictureAsPdf, "导出 PDF", tint = Muted, modifier = Modifier.size(19.dp))
+        }
+    }
+}
+
+@Composable
+private fun DocEditDialog(
+    doc: DocRow,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit,
+) {
+    var title by remember { mutableStateOf(doc.title) }
+    var content by remember { mutableStateOf(doc.contentMd) }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false, decorFitsSystemWindows = false
+        )
+    ) {
+        Column(Modifier.fillMaxSize().background(Bg).padding(bottom = systemNavBarHeight())) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = Space.page, end = 10.dp, top = 12.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("编辑知识文档", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    Text("支持 Markdown 与 LaTeX（$...$）", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
+                }
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape).tjClickable(label = "取消") { onDismiss() },
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Rounded.Close, null, tint = Ink2, modifier = Modifier.size(22.dp)) }
+            }
+            Column(Modifier.weight(1f).padding(horizontal = Space.page)) {
+                OutlinedTextField(
+                    value = title, onValueChange = { title = it },
+                    label = { Text("标题", fontSize = 12.sp) },
+                    singleLine = true, colors = tjFieldColors(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = content, onValueChange = { content = it },
+                    label = { Text("正文", fontSize = 12.sp) },
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink),
+                    colors = tjFieldColors(),
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "提示：二级标题以 ## 开头；公式用 $...$ 包裹；表格用 GFM 语法。",
+                    fontSize = 11.5.sp, lineHeight = 18.sp, color = Muted
+                )
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = Space.page, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    Modifier.weight(0.38f).height(50.dp).clip(RoundedCornerShape(12.dp))
+                        .background(SurfaceAlt).tjClickable { onDismiss() },
+                    contentAlignment = Alignment.Center
+                ) { Text("取消", fontSize = 14.sp, color = Ink2) }
+                BigButton("保存", Modifier.weight(0.62f)) {
+                    if (title.isNotBlank()) onSave(title.trim(), content)
+                }
+            }
         }
     }
 }
@@ -266,8 +399,8 @@ fun CategoryMultiPicker(
     val chosen = remember { mutableStateOf<Set<String>>(emptySet()) }
     var query by remember { mutableStateOf("") }
     val filtered = categories.filter { it.fullName().contains(query.trim(), ignoreCase = true) }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
-        Column(Modifier.padding(horizontal = Space.page).padding(bottom = 26.dp)) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = CardBg) {
+        Column(Modifier.blockSheetDrag().padding(horizontal = Space.page).padding(bottom = 26.dp)) {
             Text("选择分类", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
             Text(
                 "可多选 · 已选 ${chosen.value.size} 个",

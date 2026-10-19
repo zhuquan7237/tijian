@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>题笺 · 纸上有解</title>
+<style>
+:root{
+  --paper:#FAF9F5;--white:#FFFefa;--ink:#252C29;--secondary:#59615A;
+  --line:#DCDDD5;--green:#315846;--light:#E7EDE5;--muted:#F0F0E9;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#E9ECF2;color:var(--ink);font-family:"Noto Sans SC","Microsoft YaHei",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.sheet{width:max-content;min-width:100%;padding:40px 40px 44px}
+.presentation{margin-bottom:28px}
+.presentation .eyebrow{font-size:12px;letter-spacing:2px;color:var(--green);font-weight:700;margin-bottom:10px}
+.presentation h1{font-family:"Noto Serif SC","Songti SC",SimSun,serif;font-size:30px;margin:0 0 10px;letter-spacing:2px}
+.presentation p{margin:0;color:#505B55;font-size:14px;line-height:1.6}
+.screens{display:flex;gap:24px;align-items:flex-start}
+.screen-label{font-size:13px;color:#505A55;margin:0 0 12px;letter-spacing:.5px}
+.phone{width:390px;height:844px;background:var(--paper);position:relative;overflow:hidden;border:1px solid #CDD2CC;border-radius:6px;box-shadow:0 8px 28px #25332909}
+.status{height:30px;padding:9px 22px 0;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:700}
+.status-right{display:flex;gap:5px;align-items:center}
+.icon{width:22px;height:22px;display:inline-block;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;vertical-align:middle}
+.status .icon{width:14px;height:14px;stroke-width:1.9}
+.serif{font-family:"Noto Serif SC","Songti SC",SimSun,serif}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+button{border:0;background:none;min-height:48px}
+.icon-button{width:48px;height:48px;display:inline-flex;align-items:center;justify-content:center;padding:0;flex-shrink:0}
+.small{font-size:12px;color:var(--secondary);line-height:1.5}
+.meta{font-size:11px;color:var(--secondary);line-height:1.5}
+h2,h3,p{margin:0}
+.page-title{font-size:32px;line-height:1.2;font-weight:700;letter-spacing:1px}
+.section-title{font-size:18px;font-weight:700}
+.section-heading{display:flex;align-items:center;justify-content:space-between}
+.text-button{font-size:12px;font-weight:600;color:var(--green);padding:0 0 0 12px;display:inline-flex;align-items:center;gap:4px}
+.text-button .icon{width:16px;height:16px}
+.primary{background:var(--green);color:#fff;border-radius:5px;min-height:48px;font-size:14px;font-weight:600;padding:0 18px;display:inline-flex;align-items:center;justify-content:center;gap:10px}
+.rule{border:0;border-top:1px solid var(--line);margin:0}
+.nav{position:absolute;bottom:20px;height:68px;left:0;right:0;border-top:1px solid var(--line);background:var(--paper);display:flex;padding:6px 20px 0;z-index:5}
+.nav button{flex:1;display:flex;align-items:center;flex-direction:column;gap:3px;font-size:11px;color:var(--secondary);height:58px}
+.nav .nav-icon{height:29px;width:60px;display:flex;align-items:center;justify-content:center;border-radius:20px}
+.nav .active{color:var(--green);font-weight:700}
+.nav .active .nav-icon{background:var(--light)}
+.android{position:absolute;height:20px;bottom:0;left:0;right:0;background:var(--paper);display:flex;align-items:center;justify-content:center;z-index:20}
+.android:after{content:"";height:4px;width:105px;border-radius:3px;background:#252C29}
+.fab{position:absolute;right:18px;bottom:100px;z-index:8;background:var(--green);color:#fff;width:56px;height:56px;border-radius:28px;box-shadow:0 3px 9px #263E4626;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:0;border:1px solid #FAF9F5}
+.fab .icon{width:22px;height:22px}
+.fab span{font-size:10px;line-height:14px}
+.topbar{height:60px;display:flex;align-items:center;padding:0 10px;border-bottom:1px solid var(--line)}
+.topbar-title{flex:1;min-width:0;padding-left:4px}
+.topbar-title strong{font-size:15px;display:block}
+.topbar-title .small{font-size:11px}
+.topbar .label-action{font-size:12px;padding:0 8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1px;min-width:48px}
+.topbar .label-action .icon{width:18px;height:18px}
+.home-header{padding:18px 22px 16px;display:flex;align-items:center;justify-content:space-between}
+.brand-line{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:1.5px;color:var(--green);margin-bottom:8px}
+.brand-line:before{content:"";width:20px;height:1px;background:var(--green)}
+.add-button{width:48px;border:1px solid var(--line);border-radius:50%;background:var(--white)}
+.home-content{padding:0 22px}
+.overview{display:flex;gap:17px;margin-bottom:17px;font-size:12px;color:var(--secondary)}
+.overview b{font-weight:700;color:var(--ink);font-size:14px;margin-right:3px}
+.review-card{height:179px;background:#293E33;color:#fff;border-radius:6px;padding:17px 18px}
+.review-top{display:flex;align-items:center;justify-content:space-between}
+.review-top h3{font-size:17px}
+.review-top span{font-size:11px;color:#D7E1D8}
+.review-middle{display:flex;align-items:baseline;gap:7px;margin-top:7px}
+.review-middle b{font-family:Georgia,serif;font-size:42px;line-height:1}
+.review-middle span{font-size:12px;color:#E0E7DF}
+.review-bottom{display:flex;align-items:center;justify-content:space-between;margin-top:12px}
+.mastery{width:158px;font-size:11px;color:#E0E7DF}
+.progress{height:3px;background:#657468;margin-top:9px;position:relative}
+.progress:before{content:"";display:block;width:3px;height:3px;background:#DCE7D8}
+.review-button{background:#EDF1E7;color:#253E30;border-radius:4px;min-height:48px;padding:0 13px;display:flex;align-items:center;gap:9px;font-size:13px;font-weight:700}
+.review-button .icon{width:17px;height:17px}
+.subjects{margin-top:12px}
+.subject-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px 10px}
+.subject{height:65px;border:1px solid var(--line);border-radius:4px;text-align:left;padding:10px 12px;background:var(--white)}
+.subject-top{display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:600}
+.subject-top span{font-size:11px;font-weight:400}
+.subject-bottom{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--secondary);margin-top:8px}
+.subject-track{width:56px;height:2px;background:#DBDFD6}
+.subject[disabled]{background:#EEEFE9;color:#686E67;cursor:default;border-color:#E4E5DE}
+.subject[disabled] .subject-bottom{color:#686E67}
+.subject:last-child{grid-column:1 / 3;height:58px;display:flex;align-items:center;justify-content:space-between}
+.subject:last-child .subject-top{gap:12px}
+.subject:last-child .subject-bottom{margin:0}
+.recent{margin-top:9px}
+.recent-scroller{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;margin-right:-22px;padding-right:22px}
+.recent-item{min-width:146px;width:146px;text-align:left;padding:0}
+.thumb{height:66px;background:#F0EEE7;border:1px solid #DEDDD4;padding:10px;position:relative;overflow:hidden}
+.thumb:after{content:"";position:absolute;left:0;right:0;bottom:0;height:15px;background:linear-gradient(transparent,#F0EEE7)}
+.scan-text{font-family:"Noto Serif SC",SimSun,serif;font-size:10px;line-height:1.8;color:#50534D;transform:rotate(-2deg)}
+.recent-caption{display:flex;justify-content:space-between;font-size:11px;margin-top:7px;color:var(--secondary)}
+.detail-body{padding:15px 22px 0}
+.source-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+.source-head .meta{letter-spacing:.5px}
+.source{position:relative;background:#F0EEE6;border:1px solid #DFDDD3;height:104px;padding:17px 15px}
+.source p{font-family:SimSun,serif;font-size:13px;line-height:1.9;transform:rotate(-1deg)}
+.zoom{position:absolute;right:0;bottom:0;width:48px;height:48px;display:flex;align-items:center;justify-content:center;background:#FAF9F5E8}
+.zoom .icon{width:18px;height:18px}
+.question-label{display:flex;gap:8px;align-items:center;margin-top:16px;margin-bottom:8px}
+.kicker{font-size:11px;letter-spacing:1.2px;color:var(--green);font-weight:700}
+.tag{padding:3px 6px;background:var(--muted);color:var(--secondary);font-size:10px}
+.question{font-size:17px;line-height:1.8;font-weight:500}
+.math{font-family:Georgia,"Times New Roman",serif}
+.answer-row{display:flex;align-items:center;gap:16px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:11px 0;margin-top:13px}
+.answer-row h3{font-size:13px;font-weight:600;color:var(--secondary)}
+.answer-row p{font-family:Georgia,serif;font-size:23px;color:var(--green)}
+.analysis-block{position:relative;padding-top:14px}
+.analysis-block h3{font-size:15px;margin-bottom:8px}
+.analysis-text{font-size:14px;line-height:1.95}
+.selection{position:relative;background:#DCE7D9;box-shadow:0 2px 0 #315846;padding:2px 0}
+.selection:before,.selection:after{content:"";position:absolute;width:7px;height:7px;background:var(--green);border-radius:50%;bottom:-6px}
+.selection:before{left:-3px}.selection:after{right:-3px}
+.selection-menu{position:absolute;right:2px;top:-11px;display:flex;background:#293D32;color:white;border-radius:5px;box-shadow:0 4px 12px #293D3226;z-index:3}
+.selection-menu:after{content:"";position:absolute;bottom:-5px;left:60%;border-top:6px solid #293D32;border-left:6px solid transparent;border-right:6px solid transparent}
+.selection-menu button{padding:0 15px;font-size:13px;display:flex;align-items:center;gap:6px}
+.selection-menu .icon{width:16px;height:16px}
+.selection-menu button+button{border-left:1px solid #6A7B6F}
+.needs{margin-top:15px;border-top:1px solid var(--line);padding-top:13px}
+.needs h3{font-size:15px;margin-bottom:9px}
+.knowledge-row{display:flex;align-items:center;gap:9px;margin-bottom:7px}
+.knowledge-row .kind{font-size:11px;color:var(--secondary);width:26px;flex-shrink:0}
+.knowledge-tag{font-size:12px;line-height:22px;padding:1px 8px;background:#ECEFE7;border:1px solid #DCE2D6;border-radius:3px;color:#334C3A}
+.mastery-section{margin-top:13px;padding-top:12px;border-top:1px solid var(--line)}
+.mastery-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+.mastery-title h3{font-size:14px}
+.segments{display:flex;height:48px;border:1px solid #BDC8BB;border-radius:4px;overflow:hidden}
+.segments button{flex:1;min-height:46px;font-size:14px;border-right:1px solid #D5DBCF;background:var(--white)}
+.segments button:last-child{border:0}
+.segments .selected{background:var(--green);color:#fff}
+.segment-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--secondary);margin-top:5px}
+.detail-fab{bottom:175px;right:10px;width:50px;height:50px}
+.review-page{padding:18px 22px}
+.review-progress{display:flex;justify-content:space-between;font-size:11px;color:var(--secondary);margin-bottom:12px}
+.review-page .question{font-size:18px;margin:13px 0}
+.review-page details{border-block:1px solid var(--line);margin-top:12px}
+.review-page summary{list-style:none;min-height:48px;display:flex;align-items:center;justify-content:space-between;font-size:13px;cursor:pointer}
+.review-page details p{font-size:17px;padding:0 0 12px;color:var(--green)}
+.review-page summary::-webkit-details-marker{display:none}
+.self-title{font-size:12px;margin-top:13px;color:var(--secondary)}
+.self-ratings{display:flex;gap:8px;margin-top:8px}
+.self-ratings button{flex:1;border:1px solid #BCC6B8;border-radius:4px;background:var(--white);font-size:13px}
+.self-ratings button:last-child{background:var(--light);border-color:#A7B6A0;color:var(--green)}
+.dialog-backdrop{position:absolute;top:402px;bottom:20px;left:0;right:0;background:#26352B12}
+.chat-panel{position:absolute;top:405px;left:0;right:0;bottom:20px;background:var(--white);border-top:1px solid #BAC5B7;border-radius:16px 16px 0 0;box-shadow:0 -6px 24px #25372A12;z-index:10}
+.handle{width:32px;height:4px;background:#BFC5BA;border-radius:3px;margin:9px auto 0}
+.chat-head{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 20px}
+.chat-heading{display:flex;gap:9px;align-items:center}
+.chat-heading h3{font-size:17px}
+.chat-heading .small{font-size:10px;border-left:1px solid var(--line);padding-left:9px}
+.context{margin:0 20px;background:#F0F2EB;border-left:2px solid var(--green);padding:8px 10px}
+.context .meta{font-size:10px}
+.context p{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.messages{padding:12px 20px 0}
+.user-message{margin-left:70px;background:#EBEFE6;padding:9px 11px;border-radius:6px 6px 0 6px;font-size:12px;line-height:1.7}
+.ai-label{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--green);margin:11px 0 6px;font-weight:600}
+.ai-label:before{content:"";height:1px;width:16px;background:var(--green)}
+.ai-answer{font-size:13px;line-height:1.85}
+.ai-answer strong{font-weight:600;color:var(--green)}
+.composer{position:absolute;bottom:10px;left:16px;right:16px}
+.quote-preview{display:flex;align-items:center;border:1px solid var(--line);border-bottom:0;border-radius:5px 5px 0 0;background:#F3F3ED;padding-left:11px;min-height:48px}
+.quote-preview .quote-text{flex:1;border-left:2px solid var(--green);padding-left:8px;font-size:11px;line-height:1.6}
+.quote-text span{display:block;color:var(--secondary);font-size:10px}
+.quote-preview .icon{width:16px;height:16px}
+.input-row{display:flex;align-items:center;border:1px solid #BFC9BA;background:var(--white);border-radius:0 0 5px 5px;padding:3px}
+.input-row input{min-width:0;flex:1;border:0;background:transparent;padding:0 10px;font:12px "Microsoft YaHei",sans-serif;outline:none;height:48px;color:var(--ink)}
+.input-row input::placeholder{color:#626A61}
+.send{background:var(--green);color:white;border-radius:3px}
+.library-head{padding:22px 22px 17px}
+.library-head .small{margin-top:10px}
+.library-content{padding:0 22px}
+.generate-card{border:1px solid #C2CCBC;background:#EEF1E8;border-radius:5px;padding:17px 17px 15px}
+.generate-top{display:flex;justify-content:space-between;align-items:center}
+.generate-top h3{font-size:19px}
+.generate-top .icon{color:var(--green);width:25px;height:25px}
+.generate-card p{font-size:12px;color:#4F5E4F;line-height:1.85;margin-top:9px}
+.generate-card .primary{width:100%;margin-top:15px}
+.library-list-header{margin-top:22px;margin-bottom:2px}
+.library-list-header .small{font-size:11px}
+.document{padding:18px 0 0;border-bottom:1px solid var(--line)}
+.document-top{display:flex;gap:13px}
+.doc-mark{height:46px;width:35px;border:1px solid #ABB9A4;display:flex;align-items:center;justify-content:center;font-family:Georgia,serif;font-size:17px;color:var(--green);background:#F0F2E9;flex-shrink:0}
+.document h3{font-size:18px;line-height:1.4}
+.document .small{font-size:11px;margin-top:6px}
+.doc-description{font-size:12px;color:var(--secondary);line-height:1.7;margin-top:11px}
+.doc-footer{display:flex;justify-content:space-between;align-items:center;margin-top:4px}
+.doc-footer .origin{font-size:10px;color:var(--secondary)}
+.doc-actions{display:flex;gap:4px}
+.doc-actions button{display:flex;align-items:center;gap:5px;padding:0 8px;font-size:12px}
+.doc-actions .icon{width:16px;height:16px}
+.library-note{margin-top:23px;display:flex;gap:8px;padding-top:14px;border-top:1px solid var(--line)}
+.library-note .icon{width:16px;height:16px;color:var(--secondary);margin-top:1px}
+.library-note p{font-size:11px;color:var(--secondary);line-height:1.8}
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+<defs>
+<symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+<symbol id="back" viewBox="0 0 24 24"><path d="m14 5-7 7 7 7"/></symbol>
+<symbol id="book" viewBox="0 0 24 24"><path d="M4 4h7l1 2 1-2h7v15h-7l-1 1-1-1H4zM12 6v14M7 8h2m-2 4h2m6-4h2m-2 4h2"/></symbol>
+<symbol id="library" viewBox="0 0 24 24"><path d="M4 4h4v16H4zM11 4h3v16h-3zM17 5l3-1 3 15-3 1z"/></symbol>
+<symbol id="user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20v-2a7 7 0 0 1 14 0v2"/></symbol>
+<symbol id="chat" viewBox="0 0 24 24"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-8l-6 3v-3a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M8 9h8M8 13h5"/></symbol>
+<symbol id="edit" viewBox="0 0 24 24"><path d="m14 5 5 5M4 20l5-1L21 7l-5-5L4 14zM13 20h7"/></symbol>
+<symbol id="delete" viewBox="0 0 24 24"><path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/></symbol>
+<symbol id="zoom" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6M7 10h6m-3-3v6"/></symbol>
+<symbol id="copy" viewBox="0 0 24 24"><rect x="8" y="7" width="12" height="14" rx="1"/><path d="M16 7V3H4v14h4"/></symbol>
+<symbol id="close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+<symbol id="down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="signal" viewBox="0 0 16 16"><path d="M2 13h2V11H2zm4 0h2V8H6zm4 0h2V5h-2zm4 0h1V2h-1" fill="currentColor" stroke="none"/></symbol>
+<symbol id="wifi" viewBox="0 0 16 16"><path d="M2 6a9 9 0 0 1 12 0M4 9a6 6 0 0 1 8 0m-6 3a3 3 0 0 1 4 0"/><circle cx="8" cy="14" r=".7" fill="currentColor" stroke="none"/></symbol>
+<symbol id="battery" viewBox="0 0 16 16"><rect x="4" y="3" width="8" height="12" rx="1"/><path d="M6 1h4"/><path d="M6 6h4v7H6z" fill="currentColor" stroke="none"/></symbol>
+<symbol id="document" viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5zM14 3v6h5M9 13h6m-6 4h6"/></symbol>
+<symbol id="local" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="m9 11 2 2 4-4M10 18h4"/></symbol>
+<symbol id="send" viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></symbol>
+</defs>
+</svg>
+
+<main class="sheet">
+<header class="presentation">
+<div class="eyebrow">题笺 / ANDROID UI STUDY · 01</div>
+<h1>纸上有解</h1>
+<p>以暖纸、细线与书页式层级收拢学习信息，让每一道错题，都成为可校对、可追问、可反复翻阅的知识。</p>
+</header>
+
+<div class="screens">
+<section>
+<p class="screen-label">01 / 错题本 · 首页</p>
+<div class="phone">
+<div class="status"><span>9:41</span><div class="status-right"><svg class="icon"><use href="#signal"/></svg><svg class="icon"><use href="#wifi"/></svg><svg class="icon"><use href="#battery"/></svg></div></div>
+<header class="home-header">
+<div><div class="brand-line">题笺 · 本地错题本</div><h2 class="page-title serif">错题本</h2></div>
+<button class="add-button" aria-label="拍照或从相册导入试卷"><svg class="icon"><use href="#plus"/></svg></button>
+</header>
+<div class="home-content">
+<div class="overview"><span>共 <b>5</b> 道错题</span><span>待复习 <b>4</b></span><span>已掌握 <b>0</b></span></div>
+<section class="review-card">
+<div class="review-top"><h3 class="serif">今日复习</h3><span>间隔复习 · 到期提醒</span></div>
+<div class="review-middle"><b>4</b><span>道题到期，温故正当时。</span></div>
+<div class="review-bottom"><div class="mastery">掌握进度　0 / 5<div class="progress"></div></div><button class="review-button">开始复习<svg class="icon"><use href="#arrow"/></svg></button></div>
+</section>
+<section class="subjects">
+<div class="section-heading"><h3 class="section-title serif">按学科翻阅</h3><span class="small">5 个学科</span></div>
+<div style="height:11px"></div>
+<div class="subject-grid">
+<button class="subject"><div class="subject-top">数学<span>3 道</span></div><div class="subject-bottom"><span class="subject-track"></span>掌握 0 / 3</div></button>
+<button class="subject" disabled><div class="subject-top">专业课<span>0 道</span></div><div class="subject-bottom">暂无题目 · 掌握 0 / 0</div></button>
+<button class="subject" disabled><div class="subject-top">英语<span>0 道</span></div><div class="subject-bottom">暂无题目 · 掌握 0 / 0</div></button>
+<button class="subject" disabled><div class="subject-top">政治<span>0 道</span></div><div class="subject-bottom">暂无题目 · 掌握 0 / 0</div></button>
+<button class="subject"><div class="subject-top">其他<span>2 道</span></div><div class="subject-bottom"><span class="subject-track"></span>掌握 0 / 2</div></button>
+</div>
+</section>
+<section class="recent">
+<div class="section-heading"><h3 class="section-title serif">最近导入</h3><button class="text-button">全部 5 道<svg class="icon"><use href="#arrow"/></svg></button></div>
+<div class="recent-scroller">
+<button class="recent-item" aria-label="查看函数与导数题目">
+<div class="thumb"><div class="scan-text">填空题<br>曲线 y = x³ − 2x 在点<br>(1, −1) 处的切线方程为 ____。</div></div>
+<div class="recent-caption"><span>函数与导数</span><span>已校对</span></div>
+</button>
+<button class="recent-item" aria-label="查看极值点偏移分类">
+<div class="thumb"><div class="scan-text">极值点偏移<br>设函数的两个极值点为 x₁、x₂，<br>比较极值点与对称中心的位置。</div></div>
+<div class="recent-caption"><span>极值点偏移</span><span>已归类</span></div>
+</button>
+<button class="recent-item" aria-label="查看函数与导数分类"><div class="thumb"><div class="scan-text">函数与导数<br>导数的几何意义<br>k = f′(x₀)</div></div><div class="recent-caption">函数与导数</div></button>
+</div>
+</section>
+</div>
+<button class="fab" aria-label="打开追问，长按拖动位置"><svg class="icon"><use href="#chat"/></svg><span>追问</span></button>
+<nav class="nav" aria-label="主导航"><button class="active"><span class="nav-icon"><svg class="icon"><use href="#book"/></svg></span>错题本</button><button><span class="nav-icon"><svg class="icon"><use href="#library"/></svg></span>知识库</button><button><span class="nav-icon"><svg class="icon"><use href="#user"/></svg></span>我的</button></nav>
+<div class="android"></div>
+</div>
+</section>
+
+<section>
+<p class="screen-label">02 / 题目详情 · 选中解析后追问</p>
+<div class="phone">
+<div class="status"><span>9:41</span><div class="status-right"><svg class="icon"><use href="#signal"/></svg><svg class="icon"><use href="#wifi"/></svg><svg class="icon"><use href="#battery"/></svg></div></div>
+<header class="topbar">
+<button class="icon-button" aria-label="返回"><svg class="icon"><use href="#back"/></svg></button>
+<div class="topbar-title"><strong>填空题</strong><span class="small">数学 / 函数与导数</span></div>
+<button class="label-action"><svg class="icon"><use href="#edit"/></svg>编辑</button><button class="label-action"><svg class="icon"><use href="#delete"/></svg>删除</button>
+</header>
+<div class="detail-body">
+<div class="source-head"><span class="kicker">01 / 题目原图</span><span class="meta">视觉识别 · 已人工校对</span></div>
+<div class="source" role="img" aria-label="题目原图预览：曲线 y = x³ − 2x 在点 (1, −1) 处的切线方程为填空">
+<p>12. 曲线 y = x³ − 2x 在点 (1, −1) 处的<br>　 切线方程为 __________________。</p>
+<button class="zoom" aria-label="放大原图，支持双指缩放"><svg class="icon"><use href="#zoom"/></svg></button>
+</div>
+<div class="question-label"><span class="kicker">题干</span><span class="tag">已自动归类</span></div>
+<p class="question serif">曲线 <span class="math">y = x³ − 2x</span> 在点 <span class="math">(1, −1)</span> 处的切线方程为 ______。</p>
+<div class="answer-row"><h3>答案</h3><p>y = x − 2</p></div>
+<section class="analysis-block">
+<h3 class="serif">解析</h3>
+<div class="selection-menu" role="toolbar" aria-label="选中文本操作"><button><svg class="icon"><use href="#copy"/></svg>复制</button><button><svg class="icon"><use href="#chat"/></svg>追问</button></div>
+<p class="analysis-text"><span class="math">y′ = 3x² − 2</span>，<span class="selection">在 x = 1 处斜率为 1</span>，故切线为 <span class="math">y + 1 = 1·(x − 1)</span>，即 <span class="math">y = x − 2</span>。</p>
+</section>
+<section class="needs">
+<h3 class="serif">要做出这道题，需要掌握</h3>
+<div class="knowledge-row"><span class="kind">公式</span><span class="knowledge-tag">导数的几何意义 k = f′(x₀)</span></div>
+<div class="knowledge-row"><span class="kind">概念</span><span class="knowledge-tag">切点既在曲线上又在切线上</span></div>
+<div class="knowledge-row"><span class="kind">方法</span><span class="knowledge-tag">点斜式求切线方程</span></div>
+</section>
+<section class="mastery-section">
+<div class="mastery-title"><h3 class="serif">当前掌握度</h3><span class="small">0 / 5 · 尚未掌握</span></div>
+<div class="segments" role="group" aria-label="掌握度零至五"><button class="selected" aria-pressed="true">0</button><button aria-pressed="false">1</button><button aria-pressed="false">2</button><button aria-pressed="false">3</button><button aria-pressed="false">4</button><button aria-pressed="false">5</button></div>
+<div class="segment-labels"><span>尚未掌握</span><span>熟练运用</span></div>
+</section>
+<p class="meta" style="margin-top:17px">长按解析可选中追问 · 悬浮球长按可拖动</p>
+</div>
+<button class="fab detail-fab" aria-label="打开追问，长按可拖动"><svg class="icon"><use href="#chat"/></svg><span>追问</span></button>
+<div class="android"></div>
+</div>
+</section>
+
+<section>
+<p class="screen-label">03 / 间隔复习 · 追问对话展开</p>
+<div class="phone">
+<div class="status"><span>9:41</span><div class="status-right"><svg class="icon"><use href="#signal"/></svg><svg class="icon"><use href="#wifi"/></svg><svg class="icon"><use href="#battery"/></svg></div></div>
+<header class="topbar"><button class="icon-button" aria-label="退出复习"><svg class="icon"><use href="#back"/></svg></button><div class="topbar-title"><strong>今日复习</strong><span class="small">函数与导数</span></div><span class="small" style="padding-right:12px">1 / 4</span></header>
+<div class="review-page">
+<div class="review-progress"><span>先独立回想，再查看答案</span><span>剩余 3 道</span></div>
+<div style="height:3px;background:#DBDFD6"><div style="width:25%;height:3px;background:var(--green)"></div></div>
+<p class="question serif">曲线 <span class="math">y = x³ − 2x</span> 在点 <span class="math">(1, −1)</span> 处的切线方程为 ______。</p>
+<details><summary>查看答案与解析<svg class="icon"><use href="#down"/></svg></summary><p class="math">y = x − 2</p><p style="font-size:13px;line-height:1.8">y′ = 3x² − 2，在 x = 1 处斜率为 1，故切线为 y + 1 = 1·(x − 1)，即 y = x − 2。</p></details>
+<p class="self-title">这次回想得怎么样？</p>
+<div class="self-ratings"><button>忘了</button><button>模糊</button><button>记得</button></div>
+<p class="meta" style="margin-top:10px">根据自评安排下一次复习</p>
+</div>
+<div class="dialog-backdrop"></div>
+<section class="chat-panel" aria-label="题目追问对话">
+<div class="handle"></div>
+<header class="chat-head"><div class="chat-heading"><h3 class="serif">题目追问</h3><span class="small">掌握度 0 / 5</span></div><button class="icon-button" aria-label="收起对话"><svg class="icon"><use href="#down"/></svg></button></header>
+<div class="context"><span class="meta">当前题目 · 数学 / 函数与导数</span><p>曲线 y = x³ − 2x 在点 (1, −1) 处的切线方程</p></div>
+<div class="messages">
+<div class="user-message">为什么把 x = 1 代入导数，就能得到斜率？</div>
+<div class="ai-label">题笺 AI · 从基础概念讲起</div>
+<p class="ai-answer">你目前的掌握度是 0 / 5，我们先理解这一步：<strong>导数在某一点的值，就是曲线在该点的切线斜率。</strong>本题切点的横坐标为 1，所以 <span class="math">k = f′(1) = 3 × 1² − 2 = 1</span>。</p>
+</div>
+<form class="composer" action="#" onsubmit="return false">
+<div class="quote-preview"><div class="quote-text"><span>引用解析中的选中内容</span>在 x = 1 处斜率为 1</div><button type="button" class="icon-button" aria-label="移除引用"><svg class="icon"><use href="#close"/></svg></button></div>
+<div class="input-row"><input aria-label="继续追问" placeholder="继续追问，或说说哪里还不懂…"><button type="button" class="icon-button send" aria-label="发送追问"><svg class="icon"><use href="#send"/></svg></button></div>
+</form>
+</section>
+<div class="android"></div>
+</div>
+</section>
+
+<section>
+<p class="screen-label">04 / 知识库 · 文档与管理入口</p>
+<div class="phone">
+<div class="status"><span>9:41</span><div class="status-right"><svg class="icon"><use href="#signal"/></svg><svg class="icon"><use href="#wifi"/></svg><svg class="icon"><use href="#battery"/></svg></div></div>
+<header class="library-head"><div class="brand-line">由题入理 · 积累成册</div><h2 class="page-title serif">知识库</h2><p class="small">2 篇文档 · 6 个知识点</p></header>
+<div class="library-content">
+<section class="generate-card">
+<div class="generate-top"><h3 class="serif">把错题，整理成知识</h3><svg class="icon"><use href="#document"/></svg></div>
+<p>从已有分类中提炼公式、概念与方法，<br>生成一份属于自己的复习文档。</p>
+<button class="primary"><svg class="icon" style="width:18px;height:18px"><use href="#plus"/></svg>选择分类 · 生成知识文档</button>
+</section>
+<div class="section-heading library-list-header"><h3 class="section-title serif">我的文档</h3><span class="small">最近更新</span></div>
+<article class="document">
+<div class="document-top"><div class="doc-mark">01</div><div><h3 class="serif">函数与导数</h3><p class="small">4 个知识点 · 2025.06.18</p></div></div>
+<p class="doc-description">导数的几何意义、切点与切线、<br>点斜式求切线方程、求导法则</p>
+<div class="doc-footer"><span class="origin">来自 数学 / 函数与导数</span><div class="doc-actions"><button aria-label="编辑函数与导数"><svg class="icon"><use href="#edit"/></svg>编辑</button><button aria-label="删除函数与导数"><svg class="icon"><use href="#delete"/></svg>删除</button></div></div>
+</article>
+<article class="document">
+<div class="document-top"><div class="doc-mark">02</div><div><h3 class="serif">极值点偏移</h3><p class="small">2 个知识点 · 2025.06.17</p></div></div>
+<p class="doc-description">极值点的判定、极值点偏移的分析方法</p>
+<div class="doc-footer"><span class="origin">来自 其他 / 极值点偏移</span><div class="doc-actions"><button aria-label="编辑极值点偏移"><svg class="icon"><use href="#edit"/></svg>编辑</button><button aria-label="删除极值点偏移"><svg class="icon"><use href="#delete"/></svg>删除</button></div></div>
+</article>
+<div class="library-note"><svg class="icon"><use href="#local"/></svg><p>文档保存在本机，离线也能翻阅。<br>每次订正，都为下一次理解留下注脚。</p></div>
+</div>
+<button class="fab" aria-label="打开追问，长按拖动位置"><svg class="icon"><use href="#chat"/></svg><span>追问</span></button>
+<nav class="nav" aria-label="主导航"><button><span class="nav-icon"><svg class="icon"><use href="#book"/></svg></span>错题本</button><button class="active"><span class="nav-icon"><svg class="icon"><use href="#library"/></svg></span>知识库</button><button><span class="nav-icon"><svg class="icon"><use href="#user"/></svg></span>我的</button></nav>
+<div class="android"></div>
+</div>
+</section>
+</div>
+</main>
+</body>
+</html>

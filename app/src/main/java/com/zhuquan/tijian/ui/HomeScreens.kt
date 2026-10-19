@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Calculate
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.Gavel
 import androidx.compose.material.icons.rounded.School
@@ -143,15 +144,29 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
                 Modifier.fillMaxWidth().padding(horizontal = Space.page),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SUBJECT_ROOTS.forEach { subject ->
-                    val children = vm.categories.filter { it.subjectGroup() == subject }
-                    SubjectRow(
-                        name = subject,
-                        count = children.sumOf { it.count },
-                        mastered = children.sumOf { it.mastered },
-                        onClick = { vm.go(Route.Subject(subject)) }
-                    )
+                val majors = SUBJECT_ROOTS.dropLast(1)
+                majors.chunked(2).forEach { pair ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pair.forEach { subject ->
+                            val children = vm.categories.filter { it.subjectGroup() == subject }
+                            SubjectTile(
+                                name = subject,
+                                count = children.sumOf { it.count },
+                                mastered = children.sumOf { it.mastered },
+                                modifier = Modifier.weight(1f),
+                                onClick = { vm.go(Route.Subject(subject)) }
+                            )
+                        }
+                    }
                 }
+                val other = SUBJECT_ROOTS.last()
+                val otherChildren = vm.categories.filter { it.subjectGroup() == other }
+                SubjectWideRow(
+                    name = other,
+                    count = otherChildren.sumOf { it.count },
+                    mastered = otherChildren.sumOf { it.mastered },
+                    onClick = { vm.go(Route.Subject(other)) }
+                )
             }
             run {
                 var recent by remember { mutableStateOf<List<QuestionRow>>(emptyList()) }
@@ -182,19 +197,19 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
 private fun ReviewHero(due: Int, total: Int, mastered: Int, onClick: () -> Unit) {
     Column(
         Modifier.padding(horizontal = Space.page).fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp)).background(Ink)
+            .clip(RoundedCornerShape(16.dp)).background(Color(0xFF252F40))
             .padding(20.dp)
     ) {
         Row(verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
                 Text("今日复习", fontSize = 11.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = OnHeroKicker)
                 Text(
-                    if (due > 0) "间隔 0/1/3/7/16/35 天，按到期排序" else "今天没有到期任务",
+                    if (due > 0) "按掌握程度自动安排下次复习" else "今天没有到期任务",
                     fontSize = 12.5.sp, color = OnHeroMuted, modifier = Modifier.padding(top = 8.dp)
                 )
             }
             Row(verticalAlignment = Alignment.Bottom) {
-                Text("$due", fontSize = 52.sp, lineHeight = 54.sp, fontWeight = FontWeight.Light, color = Color.White, letterSpacing = (-2).sp)
+                Text("$due", fontSize = 40.sp, lineHeight = 44.sp, fontWeight = FontWeight.SemiBold, color = Color.White, letterSpacing = (-1.2).sp)
                 Text("题", fontSize = 13.sp, color = OnHeroMuted, modifier = Modifier.padding(bottom = 10.dp, start = 5.dp))
             }
         }
@@ -210,18 +225,19 @@ private fun ReviewHero(due: Int, total: Int, mastered: Int, onClick: () -> Unit)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("已掌握 $mastered / $total", fontSize = 12.sp, color = OnHeroMuted)
             Spacer(Modifier.weight(1f))
-            Text("约 ${maxOf(1, due * 2 / 3 + 1)} 分钟", fontSize = 12.sp, color = OnHeroMuted)
+            Text(if (due > 0) "约 ${maxOf(1, due * 2 / 3 + 1)} 分钟" else "今日已完成", fontSize = 12.sp, color = OnHeroMuted)
         }
         Spacer(Modifier.height(16.dp))
         Box(
             Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(12.dp))
-                .background(if (due > 0) Accent else Color(0xFF2A2F39))
+                .background(if (due > 0) AccentSoft else Color(0xFF3A4454))
                 .tjClickable(label = if (due > 0) "开始复习" else "查看全部错题") { onClick() },
             contentAlignment = Alignment.Center
         ) {
             Text(
                 if (due > 0) "开始复习" else "查看全部错题",
-                fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White
+                fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                color = if (due > 0) Color(0xFF2449AE) else Color.White
             )
         }
     }
@@ -236,63 +252,89 @@ private fun subjectIcon(subject: String): ImageVector = when (subject) {
 }
 
 @Composable
-private fun SubjectRow(name: String, count: Int, mastered: Int, onClick: () -> Unit) {
+private fun SubjectTile(name: String, count: Int, mastered: Int, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val hasQuestions = count > 0
-    Row(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+    Column(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
             .background(CardBg)
-            .border(1.dp, Line, RoundedCornerShape(14.dp))
+            .border(1.dp, Line, RoundedCornerShape(12.dp))
             .bounceClick(label = name, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 12.dp, vertical = 11.dp)
     ) {
-        Box(
-            Modifier.size(38.dp).clip(RoundedCornerShape(11.dp))
-                .background(if (hasQuestions) AccentSoft else SurfaceAlt),
-            contentAlignment = Alignment.Center
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 subjectIcon(name), null,
                 tint = if (hasQuestions) Accent else Muted,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                color = if (hasQuestions) Ink else Ink2,
+                modifier = Modifier.padding(start = 7.dp)
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                if (hasQuestions) "$count 道" else "0",
+                fontSize = 12.sp, color = Muted
             )
         }
-        Column(Modifier.weight(1f).padding(start = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                    color = if (hasQuestions) Ink else Ink2
-                )
-                Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(9.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp))
+                    .background(if (hasQuestions) SurfaceAlt else Color(0xFFF1F3F6))
+            ) {
                 if (hasQuestions) {
-                    Text("$count 道", fontSize = 12.5.sp, color = Ink2, fontWeight = FontWeight.Medium)
-                } else {
-                    Text("暂无错题", fontSize = 12.sp, color = Muted)
-                }
-            }
-            if (hasQuestions) {
-                Spacer(Modifier.height(7.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
-                        Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp)).background(SurfaceAlt)
-                    ) {
-                        Box(
-                            Modifier.fillMaxWidth((mastered.toFloat() / count).coerceIn(0f, 1f))
-                                .height(4.dp).background(Green)
-                        )
-                    }
-                    Text(
-                        "已掌握 $mastered / $count",
-                        fontSize = 11.5.sp, color = Ink2,
-                        modifier = Modifier.padding(start = 10.dp)
+                        Modifier.fillMaxWidth((mastered.toFloat() / count).coerceIn(0f, 1f))
+                            .height(3.dp).background(Green)
                     )
                 }
             }
+            Text(
+                if (hasQuestions) "$mastered/$count" else "暂无",
+                fontSize = 11.sp, color = Muted,
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SubjectWideRow(name: String, count: Int, mastered: Int, onClick: () -> Unit) {
+    val hasQuestions = count > 0
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(CardBg)
+            .border(1.dp, Line, RoundedCornerShape(12.dp))
+            .bounceClick(label = name, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            subjectIcon(name), null,
+            tint = if (hasQuestions) Accent else Muted,
+            modifier = Modifier.size(19.dp)
+        )
+        Text(
+            name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            color = if (hasQuestions) Ink else Ink2,
+            modifier = Modifier.padding(start = 8.dp)
+        )
+        Text(
+            if (hasQuestions) "$count 道" else "暂无错题",
+            fontSize = 12.sp, color = Muted, modifier = Modifier.padding(start = 8.dp)
+        )
+        Spacer(Modifier.weight(1f))
+        if (hasQuestions) {
+            Text("已掌握 $mastered / $count", fontSize = 11.5.sp, color = Ink2)
+            Spacer(Modifier.width(6.dp))
         }
         Icon(
             Icons.AutoMirrored.Rounded.KeyboardArrowRight, null,
-            tint = Color(0xFF98A3B3), modifier = Modifier.size(20.dp).padding(start = 6.dp)
+            tint = Color(0xFF98A3B3), modifier = Modifier.size(20.dp)
         )
     }
 }
@@ -526,10 +568,12 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
     var editing by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var viewingImage by remember { mutableStateOf<String?>(null) }
+    var selection by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val readySections = remember(id) { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
 
     LaunchedEffect(id) {
+        vm.rememberQuestion(id)
         runCatching { withContext(Dispatchers.IO) { vm.db.question(id) ?: error("题目不存在或已删除") } }
             .onSuccess { q = it }.onFailure { loadError = it.message ?: "题目读取失败"; vm.pageReady(Route.Detail(id)) }
     }
@@ -583,21 +627,38 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                 Text("（未识别题干，点下方编辑按钮补录）", fontSize = 12.sp, color = Muted)
             } else {
                 RichSection("题目", "题干与选项", Ink2) {
-                    RichText(stem, fontSize = 16, onReady = { readySections["stem"] = true })
+                    RichText(stem, fontSize = 16, selectable = true,
+                        onSelect = { selection = it }, onAsk = { vm.openChat(it) }, onReady = { readySections["stem"] = true })
                 }
             }
             if (question.answer.isNotBlank()) {
                 Spacer(Modifier.height(16.dp))
                 RichSection("答案", "先看结论，再对照解析", Green) {
-                    RichText(question.answer, fontSize = 15, onReady = { readySections["answer"] = true })
+                    RichText(question.answer, fontSize = 15, selectable = true,
+                        onSelect = { selection = it }, onAsk = { vm.openChat(it) }, onReady = { readySections["answer"] = true })
                 }
             }
             if (question.analysis.isNotBlank()) {
                 Spacer(Modifier.height(16.dp))
                 RichSection("解析", "按步骤展开推理", Accent) {
-                    RichText(question.analysis, fontSize = 15, onReady = { readySections["analysis"] = true })
+                    RichText(question.analysis, fontSize = 15, selectable = true,
+                        onSelect = { selection = it }, onAsk = { vm.openChat(it) }, onReady = { readySections["analysis"] = true })
                 }
             }
+            val needFormulas = parseKnowledgeTags(question.needFormulas)
+            val needConcepts = parseKnowledgeTags(question.needConcepts)
+            val needMethods = parseKnowledgeTags(question.needMethods)
+            if (needFormulas.isNotEmpty() || needConcepts.isNotEmpty() || needMethods.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                RichSection("要做出这题，需要掌握", "公式 · 概念 · 方法", Amber) {
+                    Column {
+                        NeedLine("公式", needFormulas, Accent)
+                        NeedLine("概念", needConcepts, Green)
+                        NeedLine("方法", needMethods, Amber)
+                    }
+                }
+            }
+
             val knowledge = parseKnowledgeTags(question.tags)
             if (knowledge.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
@@ -670,6 +731,51 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
         }
     }
 
+        if (selection.isNotBlank()) {
+            Row(
+                Modifier.align(Alignment.BottomCenter)
+                    .padding(horizontal = Space.page, vertical = 16.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Ink)
+                    .padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("已选中", fontSize = 10.5.sp, color = OnHeroKicker)
+                    Text(
+                        selection.replace("\n", " ").take(28) + if (selection.length > 28) "…" else "",
+                        fontSize = 12.5.sp, color = Color.White, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Box(
+                    Modifier.height(40.dp).clip(RoundedCornerShape(9.dp))
+                        .background(Color(0x14FFFFFF))
+                        .tjClickable(label = "复制选中内容") {
+                            val cm = vm.getApplication<android.app.Application>()
+                                .getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            cm.setPrimaryClip(android.content.ClipData.newPlainText("题笺", selection))
+                            vm.toast = "已复制"
+                            selection = ""
+                        }
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text("复制", fontSize = 12.5.sp, color = Color.White) }
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    Modifier.height(40.dp).clip(RoundedCornerShape(9.dp))
+                        .background(Accent)
+                        .tjClickable(label = "追问选中内容") { vm.openChat(selection); selection = "" }
+                        .padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text("追问", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Color.White) }
+                Box(
+                    Modifier.size(40.dp).clip(CircleShape)
+                        .tjClickable(label = "取消选中") { selection = "" },
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Rounded.Close, null, tint = OnHeroMuted, modifier = Modifier.size(18.dp)) }
+            }
+        }
     }
     viewingImage?.let { path ->
         ImageEditorDialog(Uri.fromFile(File(path)), onDismiss = { viewingImage = null }, onSaved = { uri ->
@@ -699,6 +805,26 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
             }) { Text("删除", color = Red) } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } }
         )
+    }
+}
+
+@Composable
+private fun NeedLine(label: String, items: List<String>, color: Color) {
+    if (items.isEmpty()) return
+    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.Top) {
+        Text(
+            label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = color,
+            modifier = Modifier.width(34.dp).padding(top = 3.dp)
+        )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items.forEach { item ->
+                Box(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                        .background(color.copy(alpha = 0.08f))
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                ) { RichText(item, fontSize = 13) }
+            }
+        }
     }
 }
 
@@ -861,7 +987,7 @@ fun ExportSheet(count: Int, onDismiss: () -> Unit, onExport: (PdfExporter.Option
     var analysis by remember { mutableStateOf(true) }
     var tags by remember { mutableStateOf(true) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = CardBg) {
-        Column(Modifier.padding(horizontal = Space.page).padding(bottom = 26.dp)) {
+        Column(Modifier.blockSheetDrag().padding(horizontal = Space.page).padding(bottom = 26.dp)) {
             Text("导出 PDF", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
             Text("已选 $count 题 · A4 / 2cm 页边距", fontSize = 12.5.sp, color = Muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
             OptRow("版式", if (onePerPage) "一题一页" else "紧凑") { onePerPage = !onePerPage }

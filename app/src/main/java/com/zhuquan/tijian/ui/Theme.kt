@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -58,16 +59,16 @@ import androidx.compose.ui.unit.sp
 val Bg = Color(0xFFF5F6F8)
 val CardBg = Color(0xFFFFFFFF)
 val SurfaceAlt = Color(0xFFEDF0F5)
-val Ink = Color(0xFF12161C)
-val Ink2 = Color(0xFF37414D)
-val Muted = Color(0xFF5A6675)
+val Ink = Color(0xFF202733)
+val Ink2 = Color(0xFF46505F)
+val Muted = Color(0xFF596372)
 /** 装饰性 hairline：只用于分组，不承担可点击边界。 */
-val Line = Color(0xFFDFE4EB)
+val Line = Color(0xFFE0E4EA)
 /** 输入框/可选控件的功能边框：4.7:1，强光下也能看见。 */
 val FieldBorder = Color(0xFF6B7789)
-val Accent = Color(0xFF2F4BD8)
-val AccentSoft = Color(0xFFEDF0FE)
-val AccentPressed = Color(0xFF243CAE)
+val Accent = Color(0xFF355CCE)
+val AccentSoft = Color(0xFFEDF2FF)
+val AccentPressed = Color(0xFF2449AE)
 val Green = Color(0xFF2F7D63)
 val GreenSoft = Color(0xFFE8F3EE)
 val Amber = Color(0xFF9A6B1F)
@@ -193,6 +194,22 @@ fun Modifier.tjClickable(
         )
 }
 
+/**
+ * 底部选择面板里的长列表滚到边缘后，继续拖动会把整个面板一起拖下去。
+ * 这里把子列表未消费的纵向滚动全部吃掉，面板只能通过关闭按钮/点遮罩退出。
+ */
+private val consumeSheetOverscroll = object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+    override fun onPostScroll(
+        consumed: androidx.compose.ui.geometry.Offset,
+        available: androidx.compose.ui.geometry.Offset,
+        source: androidx.compose.ui.input.nestedscroll.NestedScrollSource,
+    ): androidx.compose.ui.geometry.Offset =
+        androidx.compose.ui.geometry.Offset(0f, available.y)
+}
+
+fun Modifier.blockSheetDrag(): Modifier =
+    this.nestedScroll(consumeSheetOverscroll)
+
 /** 卡片式压缩反馈：用于整块卡片，已有足够大的触控面积。 */
 @Composable
 fun Modifier.bounceClick(
@@ -285,7 +302,7 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, trailing: (@Compos
         modifier.fillMaxWidth().padding(top = Space.xl, bottom = Space.m),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text, fontSize = 15.sp, lineHeight = 22.sp, color = Ink, fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp)
+        Text(text, fontSize = 17.sp, lineHeight = 25.sp, color = Ink, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp)
         Spacer(Modifier.weight(1f))
         trailing?.invoke()
     }
@@ -377,4 +394,14 @@ fun parseOptions(json: String): List<String> = try {
 @Composable
 fun DividerSoft() {
     Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
+}
+
+
+/** 对话框窗口里 navigationBarsPadding 往往拿不到 inset，这里直接读系统尺寸兜底。 */
+@Composable
+fun systemNavBarHeight(): androidx.compose.ui.unit.Dp {
+    val res = androidx.compose.ui.platform.LocalContext.current.resources
+    val id = res.getIdentifier("navigation_bar_height", "dimen", "android")
+    val px = if (id > 0) res.getDimensionPixelSize(id) else 0
+    return with(androidx.compose.ui.platform.LocalDensity.current) { px.toDp() }
 }

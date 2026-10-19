@@ -186,9 +186,12 @@ fun AppRoot(vm: AppVm = viewModel()) {
 
         if (vm.updateInfo != null) UpdateDialog(vm)
 
+        // 全局追问：悬浮球在所有页面可见；面板打开时接管整个屏幕
+        ChatOverlay(vm)
+
         if (showImport) {
             ModalBottomSheet(onDismissRequest = { showImport = false }, containerColor = CardBg) {
-                Column(Modifier.padding(horizontal = Space.page).padding(bottom = 26.dp)) {
+                Column(Modifier.blockSheetDrag().padding(horizontal = Space.page).padding(bottom = 26.dp)) {
                     Text("导入错题", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink, letterSpacing = (-0.3).sp)
                     Text("可以一次选 9 张，AI 会自动切题", fontSize = 12.5.sp, color = Muted, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
                     ImportOption(Icons.Rounded.PhotoLibrary, "从相册选择", "支持多选，原图会保留") {

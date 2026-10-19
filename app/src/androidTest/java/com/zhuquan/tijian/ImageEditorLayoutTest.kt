@@ -108,8 +108,8 @@ class ImageEditorLayoutTest {
             }
             // Keep the artifact available for manual page rendering; the page-count
             // itself is asserted below only as a sanity bound.
-            java.io.File("/sdcard/Download/pdf-slices.pdf").outputStream().use { target -> out.inputStream().use { it.copyTo(target) } }
-            java.io.File("/sdcard/Download/pdf-pages.txt").writeText(
+            java.io.File(ctx.getExternalFilesDir(null)!!, "pdf-slices.pdf").outputStream().use { target -> out.inputStream().use { it.copyTo(target) } }
+            java.io.File(ctx.getExternalFilesDir(null)!!, "pdf-pages.txt").writeText(
                 "pages=$pages file=${out.length()}\n" +
                     "source=${source.length()} width=${android.graphics.BitmapFactory.decodeFile(source.path)?.width}\n"
             )
@@ -142,7 +142,7 @@ class ImageEditorLayoutTest {
                 com.zhuquan.tijian.export.PdfExporter.export(ctx, listOf(q), out, "完整性测试",
                     com.zhuquan.tijian.export.PdfExporter.Options())
             }
-            java.io.File("/sdcard/Download/pdf-complete.pdf").outputStream().use { target -> out.inputStream().use { it.copyTo(target) } }
+            java.io.File(ctx.getExternalFilesDir(null)!!, "pdf-complete.pdf").outputStream().use { target -> out.inputStream().use { it.copyTo(target) } }
             assertTrue("PDF should be generated", pages >= 1)
             assertTrue("PDF file should contain data", out.length() > 1000)
         } finally { source.delete(); out.delete() }
@@ -167,7 +167,7 @@ class ImageEditorLayoutTest {
                 com.zhuquan.tijian.export.PdfExporter.export(ctx, listOf(q), out, "解析测试",
                     com.zhuquan.tijian.export.PdfExporter.Options(includeAnswer = true, includeAnalysis = true, includeTags = false, onePerPage = true))
             }
-            java.io.File("/sdcard/Download/pdf-rich.pdf").outputStream().use { target -> out.inputStream().use { it.copyTo(target) } }
+            java.io.File(ctx.getExternalFilesDir(null)!!, "pdf-rich.pdf").outputStream().use { target -> out.inputStream().use { it.copyTo(target) } }
             assertTrue(pages >= 1)
         } finally { out.delete(); instrumentation.runOnMainSync { ctx.finish() } }
     }
@@ -183,7 +183,7 @@ class ImageEditorLayoutTest {
         }
         assertNotNull("Rich text bitmap must be produced for PDF", bmp)
         assertTrue("Rich text bitmap must contain visible pixels", bmp!!.width > 100 && bmp.height > 30)
-        java.io.File("/sdcard/Download/rich-bitmap.png").outputStream().use { target -> bmp.compress(Bitmap.CompressFormat.PNG, 100, target) }
+        java.io.File(ctx.getExternalFilesDir(null)!!, "rich-bitmap.png").outputStream().use { target -> bmp.compress(Bitmap.CompressFormat.PNG, 100, target) }
         bmp.recycle()
         instrumentation.runOnMainSync { host.finish() }
     }

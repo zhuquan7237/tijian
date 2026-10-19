@@ -40,13 +40,21 @@ object RichTextRenderer {
     @Volatile
     private var template: String? = null
 
-    fun html(context: Context, markdown: String, fontSize: Int, widthDp: Int = 360, renderId: Int = 0): String {
+    fun html(
+        context: Context,
+        markdown: String,
+        fontSize: Int,
+        widthDp: Int = 360,
+        renderId: Int = 0,
+        selectable: Boolean = false,
+    ): String {
         val tpl = template ?: context.assets.open("richtext/renderer.html")
             .bufferedReader().use { it.readText() }.also { template = it }
         return tpl
             .replace("__FONTSIZE__", fontSize.toString())
             .replace("__WIDTH__", widthDp.toString())
             .replace("__RENDER_ID__", renderId.toString())
+            .replace("__SELECTABLE__", if (selectable) "true" else "false")
             .replace("__CONTENT__", JSONObject.quote(markdown))
     }
 }
@@ -57,6 +65,9 @@ fun RichText(
     markdown: String,
     modifier: Modifier = Modifier,
     fontSize: Int = 15,
+    selectable: Boolean = false,
+    onSelect: (String) -> Unit = {},
+    onAsk: (String) -> Unit = {},
     onReady: () -> Unit = {},
 ) {
     if (markdown.isBlank()) return
@@ -67,12 +78,12 @@ fun RichText(
     val widthDp = maxWidth.value.roundToInt().coerceAtLeast(1)
     val scaledFontSize = (fontSize * fontScale).roundToInt().coerceAtLeast(1)
     val normalized = remember(markdown) { Normalize.text(markdown) }
-    val renderId = remember(normalized, scaledFontSize, widthDp) { RichTextRenderer.nextGeneration() }
+    val renderId = remember(normalized, scaledFontSize, widthDp, selectable) { RichTextRenderer.nextGeneration() }
     val height = remember(renderId) {
         mutableIntStateOf(0)
     }
     val html = remember(normalized, scaledFontSize, widthDp, renderId) {
-        RichTextRenderer.html(context, normalized, scaledFontSize, widthDp, renderId)
+        RichTextRenderer.html(context, normalized, scaledFontSize, widthDp, renderId, selectable)
     }
     // AndroidView factory lives longer than this document: always route callbacks
     // to the current state, and check the generation again on the UI thread.
@@ -80,6 +91,8 @@ fun RichText(
         if (generation == renderId && h > 0 && abs(height.intValue - h) >= 1) height.intValue = h
     }
     val readyCallback = rememberUpdatedState(onReady)
+    val askCallback = rememberUpdatedState(onAsk)
+    val selectCallback = rememberUpdatedState(onSelect)
     androidx.compose.runtime.LaunchedEffect(renderId, height.intValue) {
         if (height.intValue > 0) readyCallback.value()
     }
@@ -140,12 +153,36 @@ fun RichText(
                 overScrollMode = View.OVER_SCROLL_NEVER
                 isFocusable = false
                 isFocusableInTouchMode = false
-                isLongClickable = false
+                isLongClickable = selectable
                 isNestedScrollingEnabled = false
                 addJavascriptInterface(object {
                     @JavascriptInterface
                     fun height(h: Int, callbackRenderId: Int) {
                         post { receiveHeight.value(h, callbackRenderId) }
+                    }
+
+                    @JavascriptInterface
+                    fun copy(text: String) {
+                        post {
+                            val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            cm.setPrimaryClip(android.content.ClipData.newPlainText("题笺", text))
+                            android.widget.Toast.makeText(ctx, "已复制", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+
+                    @JavascriptInterface
+                    fun ask(text: String) {
+                        post { askCallback.value(text) }
+                    }
+
+                    @JavascriptInterface
+                    fun select(text: String) {
+                        post { selectCallback.value(text) }
+                    }
+
+                    @JavascriptInterface
+                    fun clearSelection() {
+                        post { selectCallback.value("") }
                     }
                 }, "AndroidRichText")
                 addOnLayoutChangeListener { v, l, t, r, b, ol, ot, or_, ob ->

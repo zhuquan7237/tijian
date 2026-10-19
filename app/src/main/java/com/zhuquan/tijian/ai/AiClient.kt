@@ -24,6 +24,9 @@ data class ParsedQuestion(
     val answer: String = "",
     val analysis: String = "",
     val tags: List<String> = emptyList(),
+    val needFormulas: List<String> = emptyList(),
+    val needConcepts: List<String> = emptyList(),
+    val needMethods: List<String> = emptyList(),
     val difficulty: Int = 3,
     val category: String = "",
     val confidence: Double = 0.0,
@@ -248,6 +251,69 @@ ${material.take(9000)}
         com.zhuquan.tijian.data.knowledgeMarkdown(json)
     }
 
+    /**
+     * 题目追问：把题目、解析、需要掌握的知识点和用户当前掌握度一起交给模型，
+     * 再附上最近几轮对话。回答使用 Markdown + LaTeX，由应用里的富文本管线渲染。
+     */
+    suspend fun ask(
+        cfg: ProviderConfig,
+        context: String,
+        history: List<Pair<String, String>>,
+        question: String,
+        quote: String = "",
+    ): String = withContext(Dispatchers.IO) {
+        val askText = buildString {
+            if (quote.isNotBlank()) {
+                append("我在解析里选中的这段内容：\n> ")
+                append(quote.replace("\n", "\n> "))
+                append("\n\n")
+            }
+            append(question)
+        }
+        val body = if (cfg.protocol == "responses") {
+            val transcript = buildString {
+                append("【题目资料】\n").append(context).append("\n\n")
+                if (history.isNotEmpty()) {
+                    append("【此前的对话】\n")
+                    history.takeLast(8).forEach { (role, text) ->
+                        append(if (role == "user") "学生：" else "老师：").append(text).append("\n")
+                    }
+                    append("\n")
+                }
+                append("【学生现在的问题】\n").append(askText)
+            }
+            JSONObject().apply {
+                put("model", cfg.model)
+                put("input", transcript)
+                put("instructions", TUTOR_SYSTEM)
+                put("temperature", 0.4)
+                put("max_output_tokens", 1600)
+            }
+        } else {
+            val messages = JSONArray()
+            messages.put(JSONObject().apply { put("role", "system"); put("content", TUTOR_SYSTEM) })
+            messages.put(JSONObject().apply {
+                put("role", "user")
+                put("content", "【题目资料】\n$context")
+            })
+            messages.put(JSONObject().apply {
+                put("role", "assistant")
+                put("content", "我已读完这道题的题干、答案、解析、需要掌握的知识点，以及你目前的掌握情况。你想先弄懂哪一步？")
+            })
+            history.takeLast(8).forEach { (role, text) ->
+                messages.put(JSONObject().apply { put("role", role); put("content", text) })
+            }
+            messages.put(JSONObject().apply { put("role", "user"); put("content", askText) })
+            JSONObject().apply {
+                put("model", cfg.model)
+                put("messages", messages)
+                put("temperature", 0.4)
+                put("max_tokens", 1600)
+            }
+        }
+        call(cfg, body).trim()
+    }
+
     // ---------------- transport ----------------
 
     private fun call(cfg: ProviderConfig, body: JSONObject): String {
@@ -328,6 +394,18 @@ ${material.take(9000)}
             o.optJSONArray("options")?.let { a ->
                 for (k in 0 until a.length()) opts.add(a.optString(k))
             }
+            fun strList(vararg keys: String): List<String> {
+                for (k in keys) {
+                    val a = o.optJSONArray(k) ?: continue
+                    val list = ArrayList<String>()
+                    for (n in 0 until a.length()) {
+                        val v = a.optString(n).trim()
+                        if (v.isNotBlank()) list.add(v)
+                    }
+                    if (list.isNotEmpty()) return list
+                }
+                return emptyList()
+            }
             val tags = ArrayList<String>()
             val tagArr = o.optJSONArray("knowledge_tags") ?: o.optJSONArray("knowledge_points")
             tagArr?.let { a -> for (k in 0 until a.length()) tags.add(a.optString(k)) }
@@ -344,6 +422,9 @@ ${material.take(9000)}
                     answer = o.optString("answer"),
                     analysis = o.optString("analysis"),
                     tags = tags,
+                    needFormulas = strList("need_formulas", "required_formulas"),
+                    needConcepts = strList("need_concepts", "required_concepts"),
+                    needMethods = strList("need_methods", "required_methods"),
                     difficulty = o.optInt("difficulty", 3).coerceIn(1, 5),
                     category = o.optString("category").ifBlank { o.optString("category_path") },
                     confidence = o.optDouble("confidence", 0.0).let { if (it.isNaN()) 0.0 else it },
@@ -375,6 +456,15 @@ ${material.take(9000)}
     companion object {
         private const val SYSTEM = "你是严谨的题目结构化助手。只输出 JSON，不输出解释或 markdown 代码块。"
 
+        private const val TUTOR_SYSTEM = """你是一位耐心、准确的错题辅导老师。学生正在复盘一道已经做错的题。
+规则：
+1. 只围绕当前这道题回答，不要跑题去讲整章内容。
+2. 学生可能只问某一步；如果给了「选中的内容」，优先解释那一段，并指出它在解题中的作用。
+3. 结合学生当前的掌握度：mastery 低时把前置概念补出来，mastery 高时直接讲关键卡点。
+4. 回答用中文，先给结论或直接答案，再分步解释；控制在 300 字以内，除非学生要求展开。
+5. 所有数学公式使用 LaTeX：行内 $...$，独立公式 $$...$$。不要输出纯文本公式。
+6. 不要编造题目里没有的条件；不确定就说不确定。"""
+
         val RECOGNIZE_PROMPT = """你是题目数字化助手。输入是一张中文试卷/练习册照片，可能包含多道题。
 任务：切分每一道独立题目，逐题输出结构化 JSON。
 
@@ -387,9 +477,10 @@ ${material.take(9000)}
 6. 跨页/跨栏的同一题，合并为一道。
 7. type 只使用：选择题、判断题、填空题、计算题、证明题、解答题、实验题、材料题；无法判断时填“题目”。
 8. answer 只写最终答案，analysis 写清楚推理步骤；不要把答案重复粘进解析，也不要把解析塞进 answer。
+9. need_formulas / need_concepts / need_methods 分别列出"要独立做出这道题必须掌握"的公式、概念、方法，各 0~4 条，每条一句话，可用 LaTeX；只写本题真正需要的内容，不要泛泛而谈。
 
 模板：
-{"questions":[{"no":"12","type":"选择题","stem":"...","options":["A. ...","B. ..."],"answer":"","analysis":"","knowledge_tags":["..."],"difficulty":3,"category":"数学/函数与导数","confidence":0.9,"bbox":[0.06,0.31,0.94,0.52]}]}"""
+{"questions":[{"no":"12","type":"选择题","stem":"...","options":["A. ...","B. ..."],"answer":"","analysis":"","knowledge_tags":["..."],"need_formulas":["导数的几何意义 ${'$'}k=f'(x_0)${'$'}"],"need_concepts":["切点既在曲线上又在切线上"],"need_methods":["点斜式求切线方程"],"difficulty":3,"category":"数学/函数与导数","confidence":0.9,"bbox":[0.06,0.31,0.94,0.52]}]}"""
 
         fun extractJson(text: String): String? {
             var t = text.trim()

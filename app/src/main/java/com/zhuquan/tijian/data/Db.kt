@@ -6,7 +6,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelper(context, databaseName, null, 3) {
+class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelper(context, databaseName, null, 4) {
 
     companion object {
         const val UNCAT = "uncat"
@@ -42,7 +42,9 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                 id TEXT PRIMARY KEY, batch_id TEXT, subject TEXT DEFAULT '',
                 category_id TEXT, type TEXT DEFAULT '', stem TEXT DEFAULT '',
                 options TEXT DEFAULT '[]', answer TEXT DEFAULT '', analysis TEXT DEFAULT '',
-                knowledge_tags TEXT DEFAULT '[]', difficulty INTEGER NOT NULL DEFAULT 3,
+                knowledge_tags TEXT DEFAULT '[]',
+                need_formulas TEXT DEFAULT '[]', need_concepts TEXT DEFAULT '[]',
+                need_methods TEXT DEFAULT '[]', difficulty INTEGER NOT NULL DEFAULT 3,
                 error_reasons TEXT DEFAULT '[]', source TEXT DEFAULT '',
                 captured_at INTEGER, mastery INTEGER NOT NULL DEFAULT 0,
                 review_count INTEGER NOT NULL DEFAULT 0,
@@ -66,6 +68,12 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                 created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER)"""
         )
         db.execSQL("CREATE TABLE setting(k TEXT PRIMARY KEY, v TEXT NOT NULL)")
+        db.execSQL(
+            """CREATE TABLE chat_message(
+                id TEXT PRIMARY KEY, question_id TEXT NOT NULL, role TEXT NOT NULL,
+                content TEXT NOT NULL, quote TEXT DEFAULT '', created_at INTEGER NOT NULL)"""
+        )
+        db.execSQL("CREATE INDEX idx_chat_q ON chat_message(question_id, created_at)")
 
         val now = System.currentTimeMillis()
         db.insert("category", null, ContentValues().apply {
@@ -90,6 +98,33 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             ).use { if (it.moveToFirst()) it.getInt(0) > 0 else false }
             if (hasCategory) seedMaterialCategories(db)
         }
+        if (oldVersion < 4) {
+            // 旧库/半初始化库里 question 可能还不存在，不能无条件 ALTER
+            if (hasTable(db, "question")) {
+                addColumnIfMissing(db, "question", "need_formulas", "TEXT DEFAULT '[]'")
+                addColumnIfMissing(db, "question", "need_concepts", "TEXT DEFAULT '[]'")
+                addColumnIfMissing(db, "question", "need_methods", "TEXT DEFAULT '[]'")
+            }
+            db.execSQL(
+                """CREATE TABLE IF NOT EXISTS chat_message(
+                    id TEXT PRIMARY KEY, question_id TEXT NOT NULL, role TEXT NOT NULL,
+                    content TEXT NOT NULL, quote TEXT DEFAULT '', created_at INTEGER NOT NULL)"""
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_chat_q ON chat_message(question_id, created_at)")
+        }
+    }
+
+    private fun hasTable(db: SQLiteDatabase, name: String): Boolean = db.rawQuery(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", arrayOf(name)
+    ).use { it.moveToFirst() && it.getInt(0) > 0 }
+
+    private fun addColumnIfMissing(db: SQLiteDatabase, table: String, column: String, decl: String) {
+        val exists = db.rawQuery("PRAGMA table_info($table)", null).use { c ->
+            var found = false
+            while (c.moveToNext()) if (c.getString(1) == column) found = true
+            found
+        }
+        if (!exists) db.execSQL("ALTER TABLE $table ADD COLUMN $column $decl")
     }
 
     /** Add once on upgrade; deletion must stay deleted on later launches. */
@@ -265,7 +300,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         val sql = """SELECT q.id, q.category_id, IFNULL(c.name,'未分类'), q.type, q.stem, q.options,
             q.answer, q.analysis, q.knowledge_tags, q.difficulty, q.error_reasons, q.source,
             q.mastery, q.review_count, IFNULL(q.next_review_at,0), q.ai_confidence, q.note,
-            q.image_id, i.path, q.created_at
+            q.image_id, i.path, q.created_at, q.need_formulas, q.need_concepts, q.need_methods
             FROM question q LEFT JOIN category c ON c.id=q.category_id
             LEFT JOIN image i ON i.id=q.image_id
             WHERE $where ORDER BY $order"""
@@ -277,7 +312,10 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                 difficulty = c.getInt(9), errorReasons = c.getString(10), source = c.getString(11),
                 mastery = c.getInt(12), reviewCount = c.getInt(13), nextReviewAt = c.getLong(14),
                 confidence = c.getDouble(15), note = c.getString(16),
-                imageId = c.getString(17), imagePath = c.getString(18), createdAt = c.getLong(19)
+                imageId = c.getString(17), imagePath = c.getString(18), createdAt = c.getLong(19),
+                needFormulas = c.getString(20) ?: "[]",
+                needConcepts = c.getString(21) ?: "[]",
+                needMethods = c.getString(22) ?: "[]"
             )
         }
     }
@@ -293,6 +331,9 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             put("category_id", categoryId); put("type", draft.type); put("stem", draft.stem)
             put("options", draft.options); put("answer", draft.answer); put("analysis", draft.analysis)
             put("knowledge_tags", draft.tags); put("difficulty", draft.difficulty)
+            put("need_formulas", draft.needFormulas)
+            put("need_concepts", draft.needConcepts)
+            put("need_methods", draft.needMethods)
             put("error_reasons", errorReasons); put("source", source)
             put("captured_at", now); put("mastery", 0); put("review_count", 0)
             put("next_review_at", now); put("ai_confidence", draft.confidence)
@@ -309,6 +350,12 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
            note=?, error_reasons=?, category_id=?, updated_at=? WHERE id=?""",
         arrayOf(stem, answer, analysis, type, tags, note, errorReasons, categoryId, System.currentTimeMillis(), id)
     )
+
+    fun updateQuestionNeeds(id: String, formulas: String, concepts: String, methods: String) =
+        writableDatabase.execSQL(
+            "UPDATE question SET need_formulas=?, need_concepts=?, need_methods=?, updated_at=? WHERE id=?",
+            arrayOf(formulas, concepts, methods, System.currentTimeMillis(), id)
+        )
 
     fun deleteQuestion(id: String) = writableDatabase.execSQL(
         "UPDATE question SET deleted_at=?, updated_at=? WHERE id=?",
@@ -423,6 +470,29 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
     fun deleteDoc(id: String) = writableDatabase.execSQL(
         "UPDATE knowledge_doc SET deleted_at=? WHERE id=?",
         arrayOf(System.currentTimeMillis(), id)
+    )
+
+    fun updateDoc(id: String, title: String, content: String) = writableDatabase.execSQL(
+        "UPDATE knowledge_doc SET title=?, content_md=?, updated_at=? WHERE id=?",
+        arrayOf(title.trim(), content, System.currentTimeMillis(), id)
+    )
+
+    // ---------- chat ----------
+
+    fun chatMessages(questionId: String): List<Pair<String, String>> = read(
+        "SELECT role, content FROM chat_message WHERE question_id=? ORDER BY created_at ASC",
+        arrayOf(questionId)
+    ) { it.getString(0) to it.getString(1) }
+
+    fun addChatMessage(questionId: String, role: String, content: String, quote: String = "") {
+        writableDatabase.insert("chat_message", null, ContentValues().apply {
+            put("id", newId()); put("question_id", questionId); put("role", role)
+            put("content", content); put("quote", quote); put("created_at", System.currentTimeMillis())
+        })
+    }
+
+    fun clearChat(questionId: String) = writableDatabase.execSQL(
+        "DELETE FROM chat_message WHERE question_id=?", arrayOf(questionId)
     )
 
     // ---------- settings ----------
