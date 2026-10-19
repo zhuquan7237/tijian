@@ -154,13 +154,26 @@ fun subjectRoot(subject: String): String = when (subject.trim()) {
     "政治", "思想政治" -> "政治"
     else -> "其他"
 }
-fun CategoryRow.subjectGroup(): String = subjectRoot(subject.ifBlank {
-    when {
-        listOf("数学", "函数", "极限", "导数", "积分", "代数", "几何", "概率", "数列", "矩阵").any { name.contains(it) } -> "数学"
-        listOf("英语", "词汇", "语法", "英文").any { name.contains(it) } -> "英语"
-        listOf("政治", "马原", "毛概", "思修").any { name.contains(it) } -> "政治"
-        listOf("材料", "晶体", "扩散", "相图", "相变", "位错", "陶瓷", "高分子", "复合材料").any { name.contains(it) } -> "专业课"
-        else -> "其他"
-    }
-})
+/** 单段分类名（AI 返回的“函数与导数”）按关键词推断学科。 */
+fun inferSubject(name: String): String = when {
+    listOf("数学", "函数", "极限", "导数", "积分", "代数", "几何", "概率", "数列", "矩阵", "三角", "不等式")
+        .any { name.contains(it) } -> "数学"
+    listOf("英语", "词汇", "语法", "英文", "阅读", "写作", "翻译", "完形")
+        .any { name.contains(it) } -> "英语"
+    listOf("政治", "马原", "毛概", "思修", "近代史", "时事", "哲学")
+        .any { name.contains(it) } -> "政治"
+    listOf("材料", "晶体", "扩散", "相图", "相变", "位错", "陶瓷", "高分子", "复合", "物理", "化学", "力学")
+        .any { name.contains(it) } -> "专业课"
+    else -> "其他"
+}
+
+/**
+ * 学科归属：优先使用显式 subject；若它缺失或只落到兜底的“其他”，
+ * 再用分类名推断 —— 否则 AI 新建的“函数与导数”会一直挂在“其他”下。
+ */
+fun CategoryRow.subjectGroup(): String {
+    val declared = if (subject.isBlank()) "其他" else subjectRoot(subject)
+    if (declared != "其他") return declared
+    return inferSubject(name)
+}
 fun CategoryRow.fullName(): String = subjectGroup() + "/" + name

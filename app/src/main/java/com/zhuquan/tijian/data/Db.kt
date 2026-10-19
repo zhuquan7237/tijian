@@ -147,7 +147,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         var name = rawName.trim()
         if (name.isBlank() || name == "未分类") return UNCAT
         val parts = name.split('/', '·', '>').map { it.trim() }.filter { it.isNotBlank() }
-        val subject = if (parts.size >= 2) subjectRoot(parts.first()) else "其他"
+        val subject = if (parts.size >= 2) subjectRoot(parts.first()) else inferSubject(parts.last())
         name = parts.last()
         val existing = categories().firstOrNull { normalize(it.name) == normalize(name) && it.subjectGroup() == subject }
         if (existing != null) return existing.id
