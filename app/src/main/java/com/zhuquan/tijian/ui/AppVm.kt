@@ -389,6 +389,15 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** 多选批量删除（软删除），成功后刷新列表。 */
+    fun deleteQuestions(ids: List<String>) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            ids.forEach { db.deleteQuestion(it) }
+            withContext(Dispatchers.Main) { refresh() }
+        }
+    }
+
     fun deleteDoc(id: String) {
         viewModelScope.launch(Dispatchers.IO) {
             db.deleteDoc(id); refresh()
@@ -421,6 +430,10 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             is Route.Review -> reviewQueue.getOrNull(reviewIndex)?.id
             else -> lastQuestionId
         }
+        // 换题时先把上一题的气泡清掉，避免短暂串题；历史仍按 question_id 各存各的
+        chatMessages = emptyList()
+        chatError = null
+        chatQuote = quote
         viewModelScope.launch {
             // 没有打开题目时，用最近导入的一道题作为上下文，保证悬浮球随时可用
             val resolved = id ?: withContext(Dispatchers.IO) { db.questions().firstOrNull()?.id }
@@ -431,7 +444,6 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             val history = withContext(Dispatchers.IO) { db.chatMessages(resolved) }
             chatQuestion = q
             chatMessages = history
-            chatQuote = quote
             chatError = null
             chatOpen = true
         }

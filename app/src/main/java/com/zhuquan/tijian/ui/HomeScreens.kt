@@ -346,6 +346,7 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
     var filter by rememberSaveable(id) { mutableStateOf("all") }
     var selecting by remember { mutableStateOf(false) }
     val selected = remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingBatchDelete by remember { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
     var pendingFile by remember { mutableStateOf<File?>(null) }
     val scope = rememberCoroutineScope()
@@ -512,11 +513,42 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                 Text("已选 ${selected.value.size} 题", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.weight(1f))
                 Box(
-                    Modifier.clip(RoundedCornerShape(9.dp)).background(Color.White)
-                        .tjClickable { showExport = true }.padding(horizontal = 14.dp, vertical = 8.dp)
+                    Modifier.height(38.dp).clip(RoundedCornerShape(9.dp))
+                        .border(1.dp, Color(0x59FF8A8A), RoundedCornerShape(9.dp))
+                        .tjClickable(label = "删除所选") { pendingBatchDelete = true }
+                        .padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text("删除", fontSize = 12.sp, color = Color(0xFFFF9B9B), fontWeight = FontWeight.SemiBold) }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier.height(38.dp).clip(RoundedCornerShape(9.dp)).background(Color.White)
+                        .tjClickable { showExport = true }.padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.Center
                 ) { Text("导出 PDF", fontSize = 11.5.sp, color = Ink, fontWeight = FontWeight.SemiBold) }
             }
         }
+    }
+
+    if (pendingBatchDelete) {
+        AlertDialog(
+            onDismissRequest = { pendingBatchDelete = false },
+            title = { Text("删除所选 ${selected.value.size} 道题？", fontSize = 17.sp) },
+            text = { Text("删除后不再出现在复习和导出里，原图文件会保留。", fontSize = 13.sp, lineHeight = 20.sp, color = Ink2) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    val ids = selected.value.toList()
+                    pendingBatchDelete = false
+                    selected.value = emptySet()
+                    selecting = false
+                    vm.deleteQuestions(ids)
+                }) { Text("删除", color = Red, fontWeight = FontWeight.SemiBold) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { pendingBatchDelete = false }) {
+                    Text("取消", color = Ink2)
+                }
+            }
+        )
     }
 
     if (showExport) {
