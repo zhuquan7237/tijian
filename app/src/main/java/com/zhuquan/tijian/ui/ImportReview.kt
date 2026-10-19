@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -261,7 +262,7 @@ private fun DraftPreviewDialog(draft: DraftQuestion, onDismiss: () -> Unit, onEd
             usePlatformDefaultWidth = false, decorFitsSystemWindows = false
         )
     ) {
-        Column(Modifier.fillMaxSize().background(Bg).padding(bottom = systemNavBarHeight())) {
+        Column(Modifier.fillMaxSize().background(Bg).padding(bottom = systemNavBarHeight()).imePadding()) {
             Row(
                 Modifier.fillMaxWidth().padding(start = Space.page, end = 10.dp, top = 12.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically

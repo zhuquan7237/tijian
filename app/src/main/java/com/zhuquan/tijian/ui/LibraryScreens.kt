@@ -55,6 +55,7 @@ import com.zhuquan.tijian.data.DocRow
 import com.zhuquan.tijian.data.fullName
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.window.Dialog
 import androidx.compose.material3.Checkbox
@@ -248,7 +249,7 @@ private fun DocEditDialog(
             usePlatformDefaultWidth = false, decorFitsSystemWindows = false
         )
     ) {
-        Column(Modifier.fillMaxSize().background(Bg).padding(bottom = systemNavBarHeight())) {
+        Column(Modifier.fillMaxSize().background(Bg).padding(bottom = systemNavBarHeight()).imePadding()) {
             Row(
                 Modifier.fillMaxWidth().padding(start = Space.page, end = 10.dp, top = 12.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
