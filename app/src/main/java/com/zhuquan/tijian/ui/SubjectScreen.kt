@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,7 +37,7 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
             actions = { IconCircle(Icons.Rounded.Add, "新增子分类") { name = ""; creating = true } }
         )
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 4.dp)
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.page, vertical = 4.dp)
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -90,30 +91,43 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
 
 @Composable
 private fun SubjectChildCard(cat: CategoryRow, onOpen: () -> Unit, onDelete: () -> Unit) {
-    Box(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(CardBg)
-            .border(1.dp, Line, RoundedCornerShape(16.dp)).clickableNoRipple(onOpen)
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(CardBg)
+            .border(1.dp, Line, RoundedCornerShape(16.dp))
+            .bounceClick(label = cat.name, onClick = onOpen)
+            .padding(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 18.dp, top = 16.dp, bottom = 16.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(cat.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp)).background(if (cat.count > 0) Accent else Line))
-                    Text(
-                        "${cat.count} 题 · 已掌握 ${cat.mastered}", fontSize = 11.5.sp, color = Ink2,
-                        modifier = Modifier.padding(start = 6.dp)
-                    )
+        Column(Modifier.weight(1f)) {
+            Text(cat.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Row(Modifier.padding(top = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp)).background(SurfaceAlt)
+                ) {
+                    if (cat.count > 0) {
+                        Box(
+                            Modifier.fillMaxWidth((cat.mastered.toFloat() / cat.count).coerceIn(0f, 1f))
+                                .height(4.dp).background(Green)
+                        )
+                    }
                 }
+                Text(
+                    if (cat.count > 0) "${cat.count} 题 · 已掌握 ${cat.mastered}" else "暂无错题",
+                    fontSize = 12.sp, color = Ink2,
+                    modifier = Modifier.padding(start = 10.dp)
+                )
             }
-            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "打开", tint = Muted, modifier = Modifier.size(22.dp))
-            Box(
-                Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).clickable(
-                    interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDelete
-                ), contentAlignment = Alignment.Center
-            ) { Icon(Icons.Rounded.DeleteOutline, "删除子分类", tint = Red.copy(alpha = 0.82f), modifier = Modifier.size(19.dp)) }
         }
+        Box(
+            Modifier.size(48.dp).clip(RoundedCornerShape(12.dp))
+                .tjClickable(label = "删除 ${cat.name}") { onDelete() },
+            contentAlignment = Alignment.Center
+        ) { Icon(Icons.Rounded.DeleteOutline, null, tint = Red, modifier = Modifier.size(20.dp)) }
+        Icon(
+            Icons.AutoMirrored.Rounded.KeyboardArrowRight, null,
+            tint = Color(0xFF98A3B3), modifier = Modifier.size(20.dp).padding(end = 6.dp)
+        )
     }
 }

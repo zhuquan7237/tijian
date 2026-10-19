@@ -65,7 +65,7 @@ fun ImportScreen(vm: AppVm) {
             actions = {
                 if (!vm.importing && vm.pending.isNotEmpty()) {
                     Text("全部确认", fontSize = 12.5.sp, color = Accent,
-                        modifier = Modifier.clickableNoRipple { vm.confirmPending() }.padding(8.dp))
+                        modifier = Modifier.tjClickable { vm.confirmPending() }.padding(8.dp))
                 }
             }
         )
@@ -82,7 +82,7 @@ fun ImportScreen(vm: AppVm) {
                 )
                 Spacer(Modifier.height(18.dp))
                 Text(vm.importLabel, fontSize = 13.sp, color = Ink)
-                Text("图片只在你配置的模型服务里处理", fontSize = 10.5.sp, color = Muted, modifier = Modifier.padding(top = 6.dp))
+                Text("图片只在你配置的模型服务里处理", fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 6.dp))
             }
             return@Column
         }
@@ -92,9 +92,9 @@ fun ImportScreen(vm: AppVm) {
                 BigButton("返回", Modifier.width(140.dp)) { vm.home() }
             }
             if (vm.importErrors.isNotEmpty()) {
-                Column(Modifier.padding(horizontal = 18.dp)) {
+                Column(Modifier.padding(horizontal = Space.page)) {
                     vm.importErrors.take(4).forEach {
-                        Text("· $it", fontSize = 10.5.sp, color = Amber, modifier = Modifier.padding(vertical = 2.dp))
+                        Text("· $it", fontSize = 11.5.sp, color = Amber, modifier = Modifier.padding(vertical = 2.dp))
                     }
                 }
             }
@@ -103,15 +103,15 @@ fun ImportScreen(vm: AppVm) {
 
         if (vm.importErrors.isNotEmpty()) {
             Box(
-                Modifier.padding(horizontal = 18.dp).fillMaxWidth()
+                Modifier.padding(horizontal = Space.page).fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp)).background(Color(0xFFFDF8EF))
                     .padding(10.dp)
             ) {
-                Text(vm.importErrors.first(), fontSize = 10.5.sp, color = Color(0xFF8A5E1F), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(vm.importErrors.first(), fontSize = 11.5.sp, color = Color(0xFF8A5E1F), maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
 
-        LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 10.dp)) {
+        LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Space.page, vertical = 10.dp)) {
             items(vm.pending, key = { it.id }) { d ->
                 DraftCard(
                     draft = d,
@@ -129,7 +129,7 @@ fun ImportScreen(vm: AppVm) {
         ) {
             Box(
                 Modifier.weight(0.38f).height(46.dp).clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFF4F4EF)).clickableNoRipple { vm.autoClassify() },
+                    .background(SurfaceAlt).tjClickable { vm.autoClassify() },
                 contentAlignment = Alignment.Center
             ) { Text("AI 重新分类", fontSize = 11.5.sp, color = Ink2) }
             BigButton("确认入库 ${vm.pending.size} 题", Modifier.weight(0.62f)) { vm.confirmPending() }
@@ -186,7 +186,7 @@ private fun DraftCard(
                         Box(Modifier.size(6.dp).clip(CircleShape).background(color))
                         Text(
                             "  ${(draft.confidence * 100).toInt()}%",
-                            fontSize = 9.5.sp, color = Muted
+                            fontSize = 11.sp, color = Muted
                         )
                     }
                 }
@@ -194,12 +194,12 @@ private fun DraftCard(
                     draft.stem.ifBlank { "（未识别题干，点此补录）" },
                     fontSize = 12.5.sp, color = if (draft.stem.isBlank()) Muted else Ink,
                     maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 5.dp).clickableNoRipple(onEdit)
+                    modifier = Modifier.padding(top = 5.dp).tjClickable { onEdit() }
                 )
             }
             Icon(
                 Icons.Rounded.Close, "移除", tint = Color(0xFFBDBDB6),
-                modifier = Modifier.size(18.dp).clickableNoRipple(onRemove)
+                modifier = Modifier.size(18.dp).tjClickable { onRemove() }
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -208,25 +208,25 @@ private fun DraftCard(
                 Modifier.clip(RoundedCornerShape(7.dp))
                     .background(if (draft.categoryName.isBlank()) Color(0xFFFDF8EF) else Color(0xFFFCFCF9))
                     .border(1.dp, Line, RoundedCornerShape(7.dp))
-                    .clickableNoRipple(onPickCategory)
+                    .tjClickable { onPickCategory() }
                     .padding(horizontal = 9.dp, vertical = 5.dp)
             ) {
                 Text(
                     draft.categoryName.ifBlank { "选择分类" },
-                    fontSize = 10.5.sp,
+                    fontSize = 11.5.sp,
                     color = if (draft.categoryName.isBlank()) Amber else Ink2
                 )
             }
             Spacer(Modifier.weight(1f))
-            Text("编辑", fontSize = 10.5.sp, color = Accent, modifier = Modifier.clickableNoRipple(onEdit).padding(4.dp))
+            Text("编辑", fontSize = 11.5.sp, color = Accent, modifier = Modifier.tjClickable { onEdit() }.padding(4.dp))
         }
     }
 }
 
 @Composable
 fun Tag(text: String) {
-    Box(Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xFFF3F3EE)).padding(horizontal = 6.dp, vertical = 2.dp)) {
-        Text(text, fontSize = 9.5.sp, color = Ink2)
+    Box(Modifier.clip(RoundedCornerShape(4.dp)).background(SurfaceAlt).padding(horizontal = 6.dp, vertical = 2.dp)) {
+        Text(text, fontSize = 11.sp, color = Ink2)
     }
 }
 
@@ -270,9 +270,9 @@ fun CategoryPicker(
     var newName by remember { mutableStateOf("") }
     val filtered = categories.filter { it.contains(query.trim(), ignoreCase = true) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
-        Column(Modifier.padding(horizontal = 18.dp).padding(bottom = 26.dp)) {
+        Column(Modifier.padding(horizontal = Space.page).padding(bottom = 26.dp)) {
             Text("选择分类", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            Text("当前：${current.ifBlank { "未分类" }}", fontSize = 10.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
+            Text("当前：${current.ifBlank { "未分类" }}", fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
                 placeholder = { Text("搜索分类", fontSize = 12.sp, color = Muted) },
@@ -282,13 +282,13 @@ fun CategoryPicker(
             Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState())) {
                 filtered.forEach { name ->
                     Row(
-                        Modifier.fillMaxWidth().clickableNoRipple { onPick(name) }.padding(vertical = 11.dp),
+                        Modifier.fillMaxWidth().tjClickable { onPick(name) }.padding(vertical = 11.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         RadioDot(current == name)
                         Text(name, fontSize = 12.5.sp, color = Ink, modifier = Modifier.padding(start = 9.dp))
                     }
-                    HorizontalDivider(color = Color(0xFFF2F2EC), thickness = 1.dp)
+                    HorizontalDivider(color = Line, thickness = 1.dp)
                 }
             }
             Spacer(Modifier.height(10.dp))
@@ -301,7 +301,7 @@ fun CategoryPicker(
                 Spacer(Modifier.width(8.dp))
                 Box(
                     Modifier.height(44.dp).clip(RoundedCornerShape(10.dp)).background(Accent)
-                        .clickableNoRipple { if (newName.isNotBlank()) onPick(newName.trim()) }
+                        .tjClickable { if (newName.isNotBlank()) onPick(newName.trim()) }
                         .padding(horizontal = 14.dp), contentAlignment = Alignment.Center
                 ) { Text("新建", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold) }
             }
@@ -327,7 +327,7 @@ fun ReviewScreen(vm: AppVm) {
             return@Column
         }
 
-        Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
+        Column(Modifier.fillMaxSize().padding(horizontal = Space.page)) {
             Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(SurfaceAlt)) {
                 Box(
                     Modifier.fillMaxWidth((vm.reviewIndex + 1).toFloat() / vm.reviewQueue.size)
@@ -338,7 +338,7 @@ fun ReviewScreen(vm: AppVm) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Tag(q.type.ifBlank { "题目" })
                 Spacer(Modifier.width(6.dp))
-                Text(q.categoryName, fontSize = 10.5.sp, color = Muted)
+                Text(q.categoryName, fontSize = 11.5.sp, color = Muted)
             }
             Spacer(Modifier.height(12.dp))
 
@@ -383,6 +383,11 @@ fun ReviewScreen(vm: AppVm) {
             if (!vm.revealAnswer) {
                 BigButton("显示答案", Modifier.fillMaxWidth()) { vm.reveal() }
             } else {
+                Text(
+                    "这道题记得多牢？选择后按间隔重复安排下次复习",
+                    fontSize = 12.sp, color = Muted,
+                    modifier = Modifier.padding(bottom = 10.dp)
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     RateButton("忘了", Red, Modifier.weight(1f)) { vm.rate(0) }
                     RateButton("模糊", Amber, Modifier.weight(1f)) { vm.rate(1) }
@@ -399,7 +404,7 @@ private fun RateButton(text: String, color: Color, modifier: Modifier = Modifier
     Box(
         modifier.height(50.dp).clip(RoundedCornerShape(14.dp)).background(Color.White)
             .border(1.dp, color.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
-            .clickableNoRipple(onClick),
+            .tjClickable { onClick() },
         contentAlignment = Alignment.Center
     ) { Text(text, fontSize = 12.5.sp, color = color, fontWeight = FontWeight.SemiBold) }
 }

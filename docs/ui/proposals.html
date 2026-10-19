@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --gap: 28px; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #E9ECF2; padding: 40px 36px 36px;
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 { font-size: 22px; color: #12161C; letter-spacing: -.4px; }
+  .sub { font-size: 12px; color: #5A6675; margin-top: 6px; }
+  .wrap { display: flex; gap: 34px; margin-top: 26px; align-items: flex-start; }
+  .col { width: 360px; }
+  .label { font-size: 13px; font-weight: 700; letter-spacing: .2px; margin-bottom: 4px; }
+  .desc { font-size: 11px; color: #5A6675; line-height: 17px; margin-bottom: 12px; min-height: 34px; }
+  .phone {
+    width: 360px; height: 760px; border-radius: 26px; overflow: hidden;
+    box-shadow: 0 18px 40px rgba(16,22,32,.16), 0 2px 6px rgba(16,22,32,.10);
+    position: relative; margin-bottom: 18px;
+  }
+  .status { height: 26px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; font-size: 10px; font-weight: 600; }
+  .body { padding: 0 18px; }
+  .h1s { font-size: 30px; font-weight: 800; letter-spacing: -1.1px; margin-top: 4px; }
+  .hs { font-size: 12px; margin-top: 5px; }
+  .hero { border-radius: 20px; padding: 18px; margin-top: 16px; }
+  .hero-top { display: flex; align-items: flex-start; }
+  .kicker { font-size: 10px; letter-spacing: 1.4px; font-weight: 700; }
+  .big { font-size: 52px; font-weight: 300; line-height: .9; letter-spacing: -2px; }
+  .unit { font-size: 12px; margin-left: 4px; }
+  .bar { height: 4px; border-radius: 3px; margin-top: 16px; overflow: hidden; }
+  .bar i { display: block; height: 4px; border-radius: 3px; }
+  .hero-foot { display: flex; align-items: center; margin-top: 12px; font-size: 11px; }
+  .cta { height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; margin-top: 14px; }
+  .sec { display: flex; align-items: baseline; justify-content: space-between; margin: 22px 0 10px; }
+  .sec h3 { font-size: 15px; font-weight: 700; letter-spacing: -.2px; }
+  .sec span { font-size: 11px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .cat { border-radius: 14px; padding: 12px; }
+  .cat-top { display: flex; align-items: center; justify-content: space-between; }
+  .ic { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; }
+  .cnt { font-size: 11px; font-weight: 700; }
+  .cat h4 { font-size: 14px; font-weight: 700; margin-top: 10px; letter-spacing: -.2px; }
+  .cat p { font-size: 11px; margin-top: 3px; }
+  .cat .bar { margin-top: 8px; }
+  .cat.zero h4 { opacity: .62; }
+  .tabs { position: absolute; bottom: 0; left: 0; right: 0; height: 64px; display: flex; align-items: center; }
+  .tab { flex: 1; text-align: center; font-size: 10px; font-weight: 600; padding: 6px 0; }
+  .tab b { display: block; font-size: 17px; font-weight: 500; margin-bottom: 2px; }
+  .tab.on { font-weight: 800; }
+  .fab { position: absolute; right: 16px; bottom: 78px; width: 52px; height: 52px; border-radius: 26px; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 300; }
+
+  /* ================= A : 墨白 Editorial ================= */
+  .A { background: #F5F6F8; color: #12161C; }
+  .A .status { color: #12161C; }
+  .A .hs { color: #5A6675; }
+  .A .hero { background: #12161C; color: #fff; }
+  .A .kicker { color: #AEB8C8; }
+  .A .big { color: #fff; }
+  .A .unit { color: #AEB8C8; }
+  .A .bar { background: rgba(255,255,255,.16); }
+  .A .bar i { background: #6F86FF; }
+  .A .hero-foot { color: #C3CBDA; }
+  .A .cta { background: #2F4BD8; color: #fff; }
+  .A .sec span { color: #5A6675; }
+  .A .cat { background: #fff; border: 1px solid #E1E6EE; }
+  .A .ic { background: #EDF0FC; color: #2F4BD8; }
+  .A .cnt { color: #5A6675; }
+  .A .cat p { color: #5A6675; }
+  .A .cat .bar { background: #E8ECF3; }
+  .A .cat .bar i { background: #2F7D63; }
+  .A .tabs { background: rgba(255,255,255,.96); border-top: 1px solid #E1E6EE; }
+  .A .tab { color: #6B7787; }
+  .A .tab.on { color: #12161C; }
+  .A .fab { background: #12161C; color: #fff; box-shadow: 0 8px 18px rgba(18,22,28,.24); }
+
+  /* ================= B : 暖纸 Scholar ================= */
+  .B { background: #FAF6EC; color: #24211C; }
+  .B .status { color: #24211C; }
+  .B .h1s { font-family: "Songti SC", "SimSun", serif; font-weight: 700; letter-spacing: -.6px; }
+  .B .hs { color: #6A6153; }
+  .B .hero { background: #2A2620; color: #FFF9EE; }
+  .B .kicker { color: #C9BEAA; }
+  .B .big { color: #FFF9EE; font-family: "Songti SC","SimSun",serif; }
+  .B .unit { color: #C9BEAA; }
+  .B .bar { background: rgba(255,249,238,.18); }
+  .B .bar i { background: #C96F4E; }
+  .B .hero-foot { color: #D9CFBE; }
+  .B .cta { background: #B4553A; color: #FFF9EE; }
+  .B .sec span { color: #6A6153; }
+  .B .cat { background: #FFFDF8; border: 1px solid #E8DFCE; box-shadow: 0 4px 10px rgba(74,60,40,.05); }
+  .B .ic { background: #F2E8D8; color: #9A5B3A; }
+  .B .cnt { color: #6A6153; }
+  .B .cat p { color: #6A6153; }
+  .B .cat .bar { background: #EDE5D5; }
+  .B .cat .bar i { background: #4F7A5A; }
+  .B .tabs { background: rgba(255,253,248,.97); border-top: 1px solid #E8DFCE; }
+  .B .tab { color: #7A7264; }
+  .B .tab.on { color: #24211C; }
+  .B .fab { background: #B4553A; color: #FFF9EE; box-shadow: 0 8px 18px rgba(120,62,40,.28); }
+
+  /* ================= C : 夜蓝 Focus ================= */
+  .C { background: #0E1218; color: #E9EEF6; }
+  .C .status { color: #E9EEF6; }
+  .C .hs { color: #93A0B4; }
+  .C .hero { background: #171E29; border: 1px solid #243041; color: #E9EEF6; }
+  .C .kicker { color: #8FA0B8; }
+  .C .big { color: #fff; }
+  .C .unit { color: #8FA0B8; }
+  .C .bar { background: #22303F; }
+  .C .bar i { background: #35D0A5; }
+  .C .hero-foot { color: #9AA9BE; }
+  .C .cta { background: #35D0A5; color: #08211A; }
+  .C .sec span { color: #93A0B4; }
+  .C .cat { background: #171E29; border: 1px solid #243041; }
+  .C .ic { background: #1E2A38; color: #35D0A5; }
+  .C .cnt { color: #93A0B4; }
+  .C .cat p { color: #93A0B4; }
+  .C .cat .bar { background: #22303F; }
+  .C .cat .bar i { background: #35D0A5; }
+  .C .tabs { background: rgba(17,23,32,.98); border-top: 1px solid #243041; }
+  .C .tab { color: #8494AA; }
+  .C .tab.on { color: #35D0A5; }
+  .C .fab { background: #35D0A5; color: #08211A; box-shadow: 0 8px 20px rgba(53,208,165,.28); }
+
+  /* detail screens */
+  .D { background: #F5F6F8; color: #12161C; }
+  .D .status { color: #12161C; }
+  .D2 { background: #FAF6EC; color: #24211C; }
+  .D2 .status { color: #24211C; }
+  .D3 { background: #0E1218; color: #E9EEF6; }
+  .D3 .status { color: #E9EEF6; }
+  .topbar { display: flex; align-items: center; padding: 8px 0 12px; }
+  .back { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; font-size: 17px; }
+  .ttl { font-size: 18px; font-weight: 700; margin-left: 4px; }
+  .sub2 { font-size: 11px; margin-top: 2px; margin-left: 38px; }
+  .shot { height: 168px; border-radius: 16px; margin-top: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; letter-spacing: .6px; }
+  .stem { font-size: 15px; line-height: 27px; margin-top: 16px; }
+  .ans { border-radius: 14px; padding: 14px; margin-top: 14px; }
+  .ans .lb { font-size: 10px; letter-spacing: 1.4px; font-weight: 700; }
+  .ans .v { font-size: 22px; font-weight: 700; margin-top: 6px; letter-spacing: -.3px; }
+  .ana { font-size: 13px; line-height: 23px; margin-top: 12px; }
+  .mask { display: flex; align-items: center; margin-top: 22px; font-size: 11px; letter-spacing: 1px; font-weight: 700; }
+  .seg { display: flex; gap: 6px; margin-top: 10px; }
+  .seg div { flex: 1; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+</style>
+</head>
+<body>
+  <h1>题笺 · UI 方向探索（3 套）</h1>
+  <div class="sub">同一信息架构，不同视觉语言。每列：首页 + 题目详情。数据为真实环境：4 道错题 / 数学 3 / 其他 1 / 其余学科尚未使用。</div>
+
+  <div class="wrap">
+
+    <!-- ============ A ============ -->
+    <div class="col">
+      <div class="label">A · 墨白 Editorial</div>
+      <div class="desc">冷白纸 + 近黑墨 + 单一靛蓝强调。无渐变、无装饰符号，靠字号与留白分层。目标：克制、长期耐看、白天户外可读。</div>
+
+      <div class="phone A">
+        <div class="status"><span>9:41</span><span>▮▮▮ ᯤ 100%</span></div>
+        <div class="body">
+          <div class="h1s">错题本</div>
+          <div class="hs">4 道错题 · 4 道待复习</div>
+          <div class="hero">
+            <div class="hero-top">
+              <div style="flex:1">
+                <div class="kicker">今日复习</div>
+                <div style="font-size:12px;margin-top:8px;color:#C3CBDA">按间隔重复排好的队列</div>
+              </div>
+              <div style="display:flex;align-items:flex-end"><span class="big">4</span><span class="unit" style="padding-bottom:7px">题</span></div>
+            </div>
+            <div class="bar"><i style="width:20%"></i></div>
+            <div class="hero-foot"><span>已掌握 0 / 4</span><span style="flex:1"></span><span>约 3 分钟</span></div>
+            <div class="cta">开始复习</div>
+          </div>
+          <div class="sec"><h3>学科</h3><span>2 个有题</span></div>
+          <div class="grid">
+            <div class="cat"><div class="cat-top"><div class="ic">∑</div><div class="cnt">3 道</div></div><h4>数学</h4><p>已掌握 0 / 3</p><div class="bar"><i style="width:2%"></i></div></div>
+            <div class="cat"><div class="cat-top"><div class="ic">◎</div><div class="cnt">1 道</div></div><h4>其他</h4><p>已掌握 0 / 1</p><div class="bar"><i style="width:2%"></i></div></div>
+            <div class="cat zero"><div class="cat-top"><div class="ic">⌘</div><div class="cnt">0 道</div></div><h4>专业课</h4><p>暂未录入</p><div class="bar"><i style="width:0"></i></div></div>
+            <div class="cat zero"><div class="cat-top"><div class="ic">A</div><div class="cnt">0 道</div></div><h4>英语</h4><p>暂未录入</p><div class="bar"><i style="width:0"></i></div></div>
+          </div>
+          <div class="sec"><h3>最近导入</h3><span>全部 4 道</span></div>
+        </div>
+        <div class="fab">+</div>
+        <div class="tabs"><div class="tab on"><b>▤</b>错题本</div><div class="tab"><b>▭</b>知识库</div><div class="tab"><b>◯</b>我的</div></div>
+      </div>
+
+      <div class="phone D">
+        <div class="status"><span>9:41</span><span>▮▮▮ ᯤ 100%</span></div>
+        <div class="body">
+          <div class="topbar"><div class="back">‹</div><div><div class="ttl">解答题</div></div><div style="flex:1"></div><div style="font-size:15px;color:#5A6675">✎　⌫</div></div>
+          <div class="sub2" style="color:#5A6675">数学 · 函数与导数</div>
+          <div class="shot" style="background:#EDF0F5;border:1px solid #E1E6EE;color:#8494A6">原题图片（可双指缩放）</div>
+          <div class="stem">设 f(x)=ln x−ax，讨论 f(x) 的零点个数，并证明当 a&gt;1/e 时 f′(x)&lt;0。</div>
+          <div class="ans" style="background:#fff;border:1px solid #E1E6EE">
+            <div class="lb" style="color:#2F4BD8">答案</div>
+            <div class="v">a ≤ 0 时 1 个零点</div>
+          </div>
+          <div class="ana" style="color:#37414D">解析：求导得 f′(x)=1/x−a。当 a≤0 时 f′&gt;0，函数单调递增，由端点极限可知恰有一个零点……</div>
+          <div class="mask" style="color:#5A6675">掌握度 <span style="flex:1"></span><span style="font-weight:400">复习 1 次</span></div>
+          <div class="seg"><div style="background:#12161C;color:#fff">0</div><div style="background:#fff;border:1px solid #DCE2EA;color:#37414D">1</div><div style="background:#fff;border:1px solid #DCE2EA;color:#37414D">2</div><div style="background:#fff;border:1px solid #DCE2EA;color:#37414D">3</div><div style="background:#fff;border:1px solid #DCE2EA;color:#37414D">4</div><div style="background:#fff;border:1px solid #DCE2EA;color:#37414D">5</div></div>
+        </div>
+        <div class="tabs" style="height:26px;border:none;background:transparent"></div>
+      </div>
+    </div>
+
+    <!-- ============ B ============ -->
+    <div class="col">
+      <div class="label">B · 暖纸 Scholar</div>
+      <div class="desc">象牙纸 + 赤陶 + 墨绿，柔和投影与衬线标题。像一本装帧考究的笔记本，有温度；浅色对比度需严格压深。</div>
+
+      <div class="phone B">
+        <div class="status"><span>9:41</span><span>▮▮▮ ᯤ 100%</span></div>
+        <div class="body">
+          <div class="h1s">错题本</div>
+          <div class="hs">4 道错题 · 4 道待复习</div>
+          <div class="hero">
+            <div class="hero-top">
+              <div style="flex:1">
+                <div class="kicker">今日复习</div>
+                <div style="font-size:12px;margin-top:8px;color:#D9CFBE">按间隔重复排好的队列</div>
+              </div>
+              <div style="display:flex;align-items:flex-end"><span class="big">4</span><span class="unit" style="padding-bottom:7px">题</span></div>
+            </div>
+            <div class="bar"><i style="width:20%"></i></div>
+            <div class="hero-foot"><span>已掌握 0 / 4</span><span style="flex:1"></span><span>约 3 分钟</span></div>
+            <div class="cta">开始复习</div>
+          </div>
+          <div class="sec"><h3>学科</h3><span>2 个有题</span></div>
+          <div class="grid">
+            <div class="cat"><div class="cat-top"><div class="ic">∑</div><div class="cnt">3 道</div></div><h4>数学</h4><p>已掌握 0 / 3</p><div class="bar"><i style="width:2%"></i></div></div>
+            <div class="cat"><div class="cat-top"><div class="ic">◎</div><div class="cnt">1 道</div></div><h4>其他</h4><p>已掌握 0 / 1</p><div class="bar"><i style="width:2%"></i></div></div>
+            <div class="cat zero"><div class="cat-top"><div class="ic">⌘</div><div class="cnt">0 道</div></div><h4>专业课</h4><p>暂未录入</p><div class="bar"><i style="width:0"></i></div></div>
+            <div class="cat zero"><div class="cat-top"><div class="ic">A</div><div class="cnt">0 道</div></div><h4>英语</h4><p>暂未录入</p><div class="bar"><i style="width:0"></i></div></div>
+          </div>
+          <div class="sec"><h3>最近导入</h3><span>全部 4 道</span></div>
+        </div>
+        <div class="fab">+</div>
+        <div class="tabs"><div class="tab on"><b>▤</b>错题本</div><div class="tab"><b>▭</b>知识库</div><div class="tab"><b>◯</b>我的</div></div>
+      </div>
+
+      <div class="phone D2">
+        <div class="status"><span>9:41</span><span>▮▮▮ ᯤ 100%</span></div>
+        <div class="body">
+          <div class="topbar"><div class="back">‹</div><div><div class="ttl">解答题</div></div><div style="flex:1"></div><div style="font-size:15px;color:#6A6153">✎　⌫</div></div>
+          <div class="sub2" style="color:#6A6153">数学 · 函数与导数</div>
+          <div class="shot" style="background:#F2E8D8;border:1px solid #E8DFCE;color:#8E7F66">原题图片（可双指缩放）</div>
+          <div class="stem">设 f(x)=ln x−ax，讨论 f(x) 的零点个数，并证明当 a&gt;1/e 时 f′(x)&lt;0。</div>
+          <div class="ans" style="background:#FFFDF8;border:1px solid #E8DFCE">
+            <div class="lb" style="color:#9A5B3A">答案</div>
+            <div class="v">a ≤ 0 时 1 个零点</div>
+          </div>
+          <div class="ana" style="color:#4A4235">解析：求导得 f′(x)=1/x−a。当 a≤0 时 f′&gt;0，函数单调递增，由端点极限可知恰有一个零点……</div>
+          <div class="mask" style="color:#6A6153">掌握度 <span style="flex:1"></span><span style="font-weight:400">复习 1 次</span></div>
+          <div class="seg"><div style="background:#2A2620;color:#FFF9EE">0</div><div style="background:#FFFDF8;border:1px solid #E8DFCE;color:#4A4235">1</div><div style="background:#FFFDF8;border:1px solid #E8DFCE;color:#4A4235">2</div><div style="background:#FFFDF8;border:1px solid #E8DFCE;color:#4A4235">3</div><div style="background:#FFFDF8;border:1px solid #E8DFCE;color:#4A4235">4</div><div style="background:#FFFDF8;border:1px solid #E8DFCE;color:#4A4235">5</div></div>
+        </div>
+        <div class="tabs" style="height:26px;border:none;background:transparent"></div>
+      </div>
+    </div>
+
+    <!-- ============ C ============ -->
+    <div class="col">
+      <div class="label">C · 夜蓝 Focus</div>
+      <div class="desc">深底 + 青绿强调，夜间沉浸感强、对比度高。代价：白天户外反光下可读性差，且需要维护第二套色板。</div>
+
+      <div class="phone C">
+        <div class="status"><span>9:41</span><span>▮▮▮ ᯤ 100%</span></div>
+        <div class="body">
+          <div class="h1s">错题本</div>
+          <div class="hs">4 道错题 · 4 道待复习</div>
+          <div class="hero">
+            <div class="hero-top">
+              <div style="flex:1">
+                <div class="kicker">今日复习</div>
+                <div style="font-size:12px;margin-top:8px;color:#9AA9BE">按间隔重复排好的队列</div>
+              </div>
+              <div style="display:flex;align-items:flex-end"><span class="big">4</span><span class="unit" style="padding-bottom:7px">题</span></div>
+            </div>
+            <div class="bar"><i style="width:20%"></i></div>
+            <div class="hero-foot"><span>已掌握 0 / 4</span><span style="flex:1"></span><span>约 3 分钟</span></div>
+            <div class="cta">开始复习</div>
+          </div>
+          <div class="sec"><h3>学科</h3><span>2 个有题</span></div>
+          <div class="grid">
+            <div class="cat"><div class="cat-top"><div class="ic">∑</div><div class="cnt">3 道</div></div><h4>数学</h4><p>已掌握 0 / 3</p><div class="bar"><i style="width:2%"></i></div></div>
+            <div class="cat"><div class="cat-top"><div class="ic">◎</div><div class="cnt">1 道</div></div><h4>其他</h4><p>已掌握 0 / 1</p><div class="bar"><i style="width:2%"></i></div></div>
+            <div class="cat zero"><div class="cat-top"><div class="ic">⌘</div><div class="cnt">0 道</div></div><h4>专业课</h4><p>暂未录入</p><div class="bar"><i style="width:0"></i></div></div>
+            <div class="cat zero"><div class="cat-top"><div class="ic">A</div><div class="cnt">0 道</div></div><h4>英语</h4><p>暂未录入</p><div class="bar"><i style="width:0"></i></div></div>
+          </div>
+          <div class="sec"><h3>最近导入</h3><span>全部 4 道</span></div>
+        </div>
+        <div class="fab">+</div>
+        <div class="tabs"><div class="tab on"><b>▤</b>错题本</div><div class="tab"><b>▭</b>知识库</div><div class="tab"><b>◯</b>我的</div></div>
+      </div>
+
+      <div class="phone D3">
+        <div class="status"><span>9:41</span><span>▮▮▮ ᯤ 100%</span></div>
+        <div class="body">
+          <div class="topbar"><div class="back">‹</div><div><div class="ttl">解答题</div></div><div style="flex:1"></div><div style="font-size:15px;color:#93A0B4">✎　⌫</div></div>
+          <div class="sub2" style="color:#93A0B4">数学 · 函数与导数</div>
+          <div class="shot" style="background:#171E29;border:1px solid #243041;color:#7C8CA3">原题图片（可双指缩放）</div>
+          <div class="stem">设 f(x)=ln x−ax，讨论 f(x) 的零点个数，并证明当 a&gt;1/e 时 f′(x)&lt;0。</div>
+          <div class="ans" style="background:#171E29;border:1px solid #243041">
+            <div class="lb" style="color:#35D0A5">答案</div>
+            <div class="v">a ≤ 0 时 1 个零点</div>
+          </div>
+          <div class="ana" style="color:#C6D1E0">解析：求导得 f′(x)=1/x−a。当 a≤0 时 f′&gt;0，函数单调递增，由端点极限可知恰有一个零点……</div>
+          <div class="mask" style="color:#93A0B4">掌握度 <span style="flex:1"></span><span style="font-weight:400">复习 1 次</span></div>
+          <div class="seg"><div style="background:#35D0A5;color:#08211A">0</div><div style="background:#171E29;border:1px solid #243041;color:#C6D1E0">1</div><div style="background:#171E29;border:1px solid #243041;color:#C6D1E0">2</div><div style="background:#171E29;border:1px solid #243041;color:#C6D1E0">3</div><div style="background:#171E29;border:1px solid #243041;color:#C6D1E0">4</div><div style="background:#171E29;border:1px solid #243041;color:#C6D1E0">5</div></div>
+        </div>
+        <div class="tabs" style="height:26px;border:none;background:transparent"></div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

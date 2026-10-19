@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -53,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -164,27 +166,16 @@ fun AppRoot(vm: AppVm = viewModel()) {
                 Text("正在排版题目…", color = Ink2, fontSize = 12.sp)
             }
         }
-        if (vm.route is Route.Home) {
-            Box(
-                Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 104.dp)
-                    .size(54.dp).clip(CircleShape).background(Ink)
-                    .bounceClick { showImport = true },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Rounded.Add, "导入", tint = Color.White, modifier = Modifier.size(26.dp))
-            }
-        }
-
         vm.toast?.let { msg ->
             LaunchedEffect(msg) {
                 delay(2400)
                 if (vm.toast == msg) vm.toast = null
             }
-            Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp)) {
+            Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 92.dp, start = 20.dp, end = 20.dp)) {
                 Box(
-                    Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xF217171C))
-                        .padding(horizontal = 14.dp, vertical = 9.dp)
-                ) { Text(msg, fontSize = 11.5.sp, color = Color.White) }
+                    Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xF217171C))
+                        .padding(horizontal = 16.dp, vertical = 11.dp)
+                ) { Text(msg, fontSize = 12.5.sp, lineHeight = 18.sp, color = Color.White) }
             }
         }
 
@@ -196,10 +187,10 @@ fun AppRoot(vm: AppVm = viewModel()) {
         if (vm.updateInfo != null) UpdateDialog(vm)
 
         if (showImport) {
-            ModalBottomSheet(onDismissRequest = { showImport = false }, containerColor = Color.White) {
-                Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 30.dp)) {
-                    Text("导入错题", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-                    Text("可以一次选 9 张，AI 会自动切题", fontSize = 10.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp, bottom = 12.dp))
+            ModalBottomSheet(onDismissRequest = { showImport = false }, containerColor = CardBg) {
+                Column(Modifier.padding(horizontal = Space.page).padding(bottom = 26.dp)) {
+                    Text("导入错题", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink, letterSpacing = (-0.3).sp)
+                    Text("可以一次选 9 张，AI 会自动切题", fontSize = 12.5.sp, color = Muted, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
                     ImportOption(Icons.Rounded.PhotoLibrary, "从相册选择", "支持多选，原图会保留") {
                         showImport = false; pickImages.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     }
@@ -240,29 +231,29 @@ private fun ImportOption(
     onClick: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().clickableNoRipple(onClick).padding(vertical = 12.dp),
+        Modifier.fillMaxWidth().tjClickable(label = title, onClick = onClick).padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFFF6F6F1)),
+            Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceAlt),
             contentAlignment = Alignment.Center
-        ) { Icon(icon, null, tint = Ink2, modifier = Modifier.size(19.dp)) }
+        ) { Icon(icon, null, tint = Ink2, modifier = Modifier.size(21.dp)) }
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
-            Text(title, fontSize = 13.sp, color = Ink, fontWeight = FontWeight.Medium)
-            Text(subtitle, fontSize = 10.5.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
+            Text(title, fontSize = 15.sp, color = Ink, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
         }
     }
 }
 
 @Composable
 private fun BottomBar(route: Route, onHome: () -> Unit, onLibrary: () -> Unit, onSettings: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().height(86.dp).background(Color(0xF7FFFFFF)).padding(bottom = 18.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        TabItem(Icons.Rounded.MenuBook, "错题本", route is Route.Home, Modifier.weight(1f), onHome)
-        TabItem(Icons.Rounded.AutoStories, "知识库", route is Route.Library, Modifier.weight(1f), onLibrary)
-        TabItem(Icons.Rounded.Person, "我的", route is Route.Settings, Modifier.weight(1f), onSettings)
+    Column(Modifier.fillMaxWidth().background(Color(0xFAFFFFFF))) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
+        Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+            TabItem(Icons.Rounded.MenuBook, "错题本", route is Route.Home, Modifier.weight(1f), onHome)
+            TabItem(Icons.Rounded.AutoStories, "知识库", route is Route.Library, Modifier.weight(1f), onLibrary)
+            TabItem(Icons.Rounded.Person, "我的", route is Route.Settings, Modifier.weight(1f), onSettings)
+        }
     }
 }
 
@@ -275,11 +266,26 @@ private fun TabItem(
     onClick: () -> Unit,
 ) {
     Column(
-        modifier.clickableNoRipple(onClick).padding(vertical = 8.dp),
+        modifier.fillMaxHeight().tjClickable(label = label, onClick = onClick).padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(icon, label, tint = if (selected) Ink else Muted, modifier = Modifier.size(21.dp))
-        Text(label, fontSize = 10.sp, color = if (selected) Ink else Muted, modifier = Modifier.padding(top = 4.dp))
+        Box(
+            Modifier.clip(RoundedCornerShape(999.dp))
+                .background(if (selected) AccentSoft else Color.Transparent)
+                .padding(horizontal = 14.dp, vertical = 3.dp)
+        ) {
+            Icon(
+                icon, null,
+                tint = if (selected) Accent else Muted,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        Text(
+            label, fontSize = 11.sp,
+            color = if (selected) Accent else Muted,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            modifier = Modifier.padding(top = 2.dp)
+        )
     }
 }

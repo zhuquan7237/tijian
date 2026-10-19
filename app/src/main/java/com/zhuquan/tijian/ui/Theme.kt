@@ -1,13 +1,13 @@
 package com.zhuquan.tijian.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Icon
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -35,31 +36,62 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// 清晰的蓝紫强调色 + 冷白底，保证题目正文、答案和解析有足够对比度。
-// 2026-10-19: 正文和输入框对比度再次提高，正文使用近黑色，输入边框使用可辨识的灰蓝色。
-val Bg = Color(0xFFF5F7FB)
+/* ------------------------------------------------------------------
+ * 题笺 · 墨白 Editorial（0.5.0）
+ *
+ * 冷白纸底 + 近黑墨字 + 单一靛蓝强调。层级靠字号/字重/留白，不靠
+ * 装饰符号；所有正文 ≥ 7:1，次要文字 ≥ 4.5:1，功能边框 ≥ 3:1。
+ * 实测值见 docs/ui/contrast.py 与 docs/ui/DESIGN-0.5.md。
+ * ------------------------------------------------------------------ */
+
+val Bg = Color(0xFFF5F6F8)
 val CardBg = Color(0xFFFFFFFF)
-val SurfaceAlt = Color(0xFFEEF1F7)
-val Ink = Color(0xFF111827)
-val Ink2 = Color(0xFF303B4F)
-val Muted = Color(0xFF4E5A70)
-val Line = Color(0xFFD5DCE8)
-/** Input borders need to be visible at a glance, including in bright rooms. */
-val FieldBorder = Color(0xFF66738A)
-val Accent = Color(0xFF4354D8)
-val AccentSoft = Color(0xFFEEF0FF)
-val Green = Color(0xFF2E866B)
-val Amber = Color(0xFFB47A2C)
-val Red = Color(0xFFC34D55)
+val SurfaceAlt = Color(0xFFEDF0F5)
+val Ink = Color(0xFF12161C)
+val Ink2 = Color(0xFF37414D)
+val Muted = Color(0xFF5A6675)
+/** 装饰性 hairline：只用于分组，不承担可点击边界。 */
+val Line = Color(0xFFDFE4EB)
+/** 输入框/可选控件的功能边框：4.7:1，强光下也能看见。 */
+val FieldBorder = Color(0xFF6B7789)
+val Accent = Color(0xFF2F4BD8)
+val AccentSoft = Color(0xFFEDF0FE)
+val AccentPressed = Color(0xFF243CAE)
+val Green = Color(0xFF2F7D63)
+val GreenSoft = Color(0xFFE8F3EE)
+val Amber = Color(0xFF9A6B1F)
+val AmberSoft = Color(0xFFFBF1DC)
+val Red = Color(0xFFB83C45)
+val RedSoft = Color(0xFFFBEBEC)
+val OnHeroMuted = Color(0xFFC3CBDA)
+val OnHeroKicker = Color(0xFFAEB8C8)
 
 val CardShape = RoundedCornerShape(18.dp)
 val SmallShape = RoundedCornerShape(12.dp)
+val InnerShape = RoundedCornerShape(10.dp)
+
+/** 4/8 栅格：同一屏只用这几档间距。 */
+object Space {
+    val xs = 4.dp
+    val s = 8.dp
+    val m = 12.dp
+    val l = 16.dp
+    val xl = 24.dp
+    val xxl = 32.dp
+    /** 页面左右统一内边距。 */
+    val page = 20.dp
+}
 
 @Composable
 fun TijianTheme(content: @Composable () -> Unit) {
@@ -68,9 +100,11 @@ fun TijianTheme(content: @Composable () -> Unit) {
             primary = Accent,
             onPrimary = Color.White,
             primaryContainer = AccentSoft,
-            onPrimaryContainer = Color(0xFF6E2E1C),
+            onPrimaryContainer = Color(0xFF1B2A8A),
             secondary = Green,
-            secondaryContainer = Color(0xFFE3EDE3),
+            onSecondary = Color.White,
+            secondaryContainer = GreenSoft,
+            onSecondaryContainer = Color(0xFF1D4F3F),
             background = Bg,
             onBackground = Ink,
             surface = CardBg,
@@ -80,32 +114,39 @@ fun TijianTheme(content: @Composable () -> Unit) {
             outline = FieldBorder,
             outlineVariant = Line,
             error = Red,
+            onError = Color.White,
+            errorContainer = RedSoft,
+            onErrorContainer = Color(0xFF7A1F26),
         ),
         typography = Typography(
             displaySmall = Typography().displaySmall.copy(
-                fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.8).sp,
+                fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold,
+                fontSize = 32.sp, lineHeight = 40.sp, letterSpacing = (-0.9).sp,
             ),
             headlineMedium = Typography().headlineMedium.copy(
-                fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp,
+                fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold,
+                fontSize = 22.sp, lineHeight = 30.sp, letterSpacing = (-0.4).sp,
             ),
             titleLarge = Typography().titleLarge.copy(
-                fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp,
+                fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold,
+                fontSize = 17.sp, lineHeight = 24.sp, letterSpacing = (-0.2).sp,
             ),
             bodyLarge = Typography().bodyLarge.copy(
-                fontFamily = FontFamily.SansSerif, fontSize = 15.sp, lineHeight = 26.sp,
+                fontFamily = FontFamily.SansSerif, fontSize = 15.sp, lineHeight = 25.sp,
             ),
             bodyMedium = Typography().bodyMedium.copy(
-                fontFamily = FontFamily.SansSerif, fontSize = 13.sp, lineHeight = 22.sp,
+                fontFamily = FontFamily.SansSerif, fontSize = 13.sp, lineHeight = 21.sp,
             ),
             labelSmall = Typography().labelSmall.copy(
-                fontFamily = FontFamily.SansSerif, fontSize = 10.sp, letterSpacing = 0.8.sp,
+                fontFamily = FontFamily.SansSerif, fontSize = 11.sp,
+                lineHeight = 16.sp, letterSpacing = 0.3.sp,
             ),
         ),
         content = content
     )
 }
 
-/** Shared text-field colors: readable labels, an actual visible border and dark input text. */
+/** Shared text-field colors: readable labels, a visible border and near-black input text. */
 @Composable
 fun tjFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = Ink,
@@ -120,7 +161,79 @@ fun tjFieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedLabelColor = Ink2,
     focusedPlaceholderColor = Muted,
     unfocusedPlaceholderColor = Muted,
+    focusedLeadingIconColor = Ink2,
+    unfocusedLeadingIconColor = Muted,
+    focusedTrailingIconColor = Ink2,
+    unfocusedTrailingIconColor = Muted,
 )
+
+/**
+ * 所有可点元素的统一入口：真实涟漪 + 无障碍 role + 可读标签。
+ * 视觉尺寸可以小（例如 36dp 的 chip），但 `minimumInteractiveComponentSize`
+ * 保证实际触控区域不小于 48dp —— 这是“看得见却点不中”的根因修复。
+ */
+@Composable
+fun Modifier.tjClickable(
+    label: String? = null,
+    role: Role = Role.Button,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+): Modifier {
+    val indication = LocalIndication.current
+    var m = this
+    if (enabled) m = m.minimumInteractiveComponentSize()
+    return m
+        .then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)
+        .clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = indication,
+            enabled = enabled,
+            role = role,
+            onClick = onClick,
+        )
+}
+
+/** 卡片式压缩反馈：用于整块卡片，已有足够大的触控面积。 */
+@Composable
+fun Modifier.bounceClick(
+    label: String? = null,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+): Modifier {
+    val src = remember { MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.976f else 1f,
+        animationSpec = tween(110),
+        label = "press"
+    )
+    return this
+        .graphicsLayer { scaleX = scale; scaleY = scale }
+        .then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)
+        .clickable(interactionSource = src, indication = LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick)
+}
+
+/** 圆角图标按钮：视觉 44dp，触控 48dp。 */
+@Composable
+fun IconCircle(
+    icon: ImageVector,
+    label: String,
+    tint: Color = Ink2,
+    filled: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val bg = if (filled) Accent else CardBg
+    val fg = if (filled) Color.White else tint
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .background(bg)
+            .then(if (filled) Modifier else Modifier.border(1.dp, Line, CircleShape))
+            .tjClickable(label = label) { onClick() },
+        contentAlignment = Alignment.Center
+    ) { Icon(icon, label, tint = fg, modifier = Modifier.size(20.dp)) }
+}
 
 @Composable
 fun TjTopBar(
@@ -133,114 +246,89 @@ fun TjTopBar(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                start = if (onBack != null) 6.dp else 18.dp,
-                end = 20.dp,
+                start = if (onBack != null) 10.dp else Space.page,
+                end = Space.page,
                 top = if (onBack != null) 6.dp else 12.dp,
-                bottom = 12.dp
+                bottom = if (onBack != null) 10.dp else 12.dp
             ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (onBack != null) {
             Box(
-                modifier = Modifier.size(40.dp).clip(CircleShape).clickableNoRipple(onBack),
+                modifier = Modifier.size(48.dp).clip(CircleShape).tjClickable(label = "返回") { onBack() },
                 contentAlignment = Alignment.Center
-            ) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回", tint = Ink, modifier = Modifier.size(21.dp)) }
+            ) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回", tint = Ink, modifier = Modifier.size(22.dp)) }
         }
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).padding(start = if (onBack != null) 4.dp else 0.dp)) {
             Text(
                 title,
-                fontSize = if (onBack != null) 18.sp else 28.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = if (onBack != null) (-0.2).sp else (-0.9).sp,
+                fontSize = if (onBack != null) 19.sp else 30.sp,
+                lineHeight = if (onBack != null) 26.sp else 38.sp,
+                fontWeight = if (onBack != null) FontWeight.SemiBold else FontWeight.Bold,
+                letterSpacing = if (onBack != null) (-0.3).sp else (-1.0).sp,
                 color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis
             )
             if (subtitle != null) Text(
                 subtitle, fontSize = 12.sp, lineHeight = 18.sp, color = Muted,
-                modifier = Modifier.padding(top = if (onBack != null) 4.dp else 6.dp)
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = if (onBack != null) 3.dp else 5.dp)
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) { actions() }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) { actions() }
     }
 }
 
-fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier = this.clickable(
-    interactionSource = androidx.compose.foundation.interaction.MutableInteractionSource(),
-    indication = null,
-    onClick = onClick
-)
-
-fun Modifier.clickableNoRipple(enabled: Boolean, onClick: () -> Unit): Modifier = this.clickable(
-    enabled = enabled,
-    interactionSource = androidx.compose.foundation.interaction.MutableInteractionSource(),
-    indication = null,
-    onClick = onClick
-)
-
-@Composable
-fun Modifier.bounceClick(onClick: () -> Unit): Modifier {
-    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    val pressed by src.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.972f else 1f,
-        animationSpec = tween(110),
-        label = "press"
-    )
-    return this
-        .graphicsLayer { scaleX = scale; scaleY = scale }
-        .clickable(interactionSource = src, indication = null, onClick = onClick)
-}
-
-@Composable
-fun IconCircle(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier.size(38.dp).clip(CircleShape).background(CardBg)
-            .border(1.dp, Line, CircleShape).clickableNoRipple(onClick),
-        contentAlignment = Alignment.Center
-    ) { Icon(icon, label, tint = Ink2, modifier = Modifier.size(18.dp)) }
-}
-
+/** 区块标题：15sp 半粗，右侧可选计数。中文不做夸张字距。 */
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier, trailing: (@Composable () -> Unit)? = null) {
     Row(
-        modifier.fillMaxWidth().padding(top = 24.dp, bottom = 12.dp),
+        modifier.fillMaxWidth().padding(top = Space.xl, bottom = Space.m),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text, fontSize = 10.sp, letterSpacing = 1.6.sp, color = Muted, fontWeight = FontWeight.SemiBold)
+        Text(text, fontSize = 15.sp, lineHeight = 22.sp, color = Ink, fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp)
         Spacer(Modifier.weight(1f))
         trailing?.invoke()
     }
 }
 
+/** 筛选 chip：选中=实心靛蓝白字，未选中=白底可辨边框。 */
 @Composable
 fun TjChip(text: String, selected: Boolean = false, onClick: () -> Unit) {
     Box(
-        Modifier.clip(RoundedCornerShape(999.dp))
-            .background(if (selected) AccentSoft else CardBg)
-            .border(1.dp, if (selected) Accent.copy(alpha = 0.35f) else Line, RoundedCornerShape(999.dp))
-            .clickableNoRipple(onClick)
-            .padding(horizontal = 13.dp, vertical = 7.dp)
+        Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (selected) Accent else CardBg)
+            .border(1.dp, if (selected) Accent else FieldBorder.copy(alpha = 0.8f), RoundedCornerShape(999.dp))
+            .tjClickable(label = text) { onClick() }
+            .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
-        Text(text, fontSize = 11.5.sp, color = if (selected) Accent else Ink2, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+        Text(
+            text, fontSize = 12.sp, lineHeight = 16.sp,
+            color = if (selected) Color.White else Ink2,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+        )
     }
 }
 
+/** 白卡：1dp 可见边框 + 极轻阴影，替代“描边糊成一片”的旧观感。 */
 @Composable
 fun CardBox(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Box(
         modifier
-            .shadow(3.dp, CardShape, ambientColor = Color(0x140F1B3D), spotColor = Color(0x140F1B3D))
+            .shadow(2.dp, CardShape, ambientColor = Color(0x0F0F1B3D), spotColor = Color(0x0F0F1B3D))
             .clip(CardShape)
             .background(CardBg)
+            .border(1.dp, Line, CardShape)
     ) { content() }
 }
 
 @Composable
-fun MasteryDots(mastery: Int, size: Int = 6) {
+fun MasteryDots(mastery: Int, size: Int = 7) {
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         repeat(5) { i ->
             Box(
                 Modifier.size(size.dp).clip(CircleShape)
-                    .background(if (i < mastery) Green else Color(0xFFE2DCCE))
+                    .background(if (i < mastery) Green else Color(0xFFD5DCE8))
             )
         }
     }
@@ -253,9 +341,19 @@ fun EmptyState(title: String, hint: String, action: (@Composable () -> Unit)? = 
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-        Text(hint, fontSize = 12.sp, lineHeight = 19.sp, color = Muted, modifier = Modifier.padding(top = 8.dp))
+        Text(hint, fontSize = 13.sp, lineHeight = 21.sp, color = Muted,
+            modifier = Modifier.padding(top = 6.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         if (action != null) { Spacer(Modifier.height(18.dp)); action() }
     }
+}
+
+/** 状态标签：用色块 + 文本双通道表达，不只靠颜色。 */
+@Composable
+fun StatusTag(text: String, color: Color, bg: Color) {
+    Box(
+        Modifier.clip(RoundedCornerShape(6.dp)).background(bg)
+            .padding(horizontal = 7.dp, vertical = 3.dp)
+    ) { Text(text, fontSize = 11.sp, lineHeight = 14.sp, color = color, fontWeight = FontWeight.SemiBold) }
 }
 
 fun cleanMath(input: String): String {

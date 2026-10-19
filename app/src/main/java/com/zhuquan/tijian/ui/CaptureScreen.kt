@@ -81,7 +81,7 @@ fun CaptureScreen(vm: AppVm) {
                         "清空",
                         fontSize = 12.sp,
                         color = Muted,
-                        modifier = Modifier.clickableNoRipple { vm.clearCapture() }.padding(8.dp)
+                        modifier = Modifier.tjClickable { vm.clearCapture() }.padding(8.dp)
                     )
                 }
             }
@@ -122,17 +122,17 @@ fun CaptureScreen(vm: AppVm) {
                     ) {
                         AsyncImage(
                             model = uri, contentDescription = null,
-                            contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().clickableNoRipple { editingUri = uri }
+                            contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().tjClickable { editingUri = uri }
                         )
                         Box(
                             Modifier.align(Alignment.TopEnd).padding(7.dp).size(26.dp)
                                 .clip(CircleShape).background(Color(0xCC232220))
-                                .clickableNoRipple { vm.removeCapture(uri) },
+                                .tjClickable { vm.removeCapture(uri) },
                             contentAlignment = Alignment.Center
                         ) { Icon(Icons.Rounded.Close, "删除", tint = Color.White, modifier = Modifier.size(14.dp)) }
                         Text(
                             "${vm.captureUris.indexOf(uri) + 1}",
-                            fontSize = 10.sp, color = Color.White,
+                            fontSize = 11.sp, color = Color.White,
                             modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
                                 .clip(RoundedCornerShape(6.dp)).background(Color(0x99232220))
                                 .padding(horizontal = 7.dp, vertical = 3.dp)
@@ -146,7 +146,7 @@ fun CaptureScreen(vm: AppVm) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(
                     Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(14.dp)).background(CardBg)
-                        .clickableNoRipple {
+                        .tjClickable {
                             pickMore.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                         },
                     contentAlignment = Alignment.Center
@@ -158,7 +158,7 @@ fun CaptureScreen(vm: AppVm) {
                 }
                 Box(
                     Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(14.dp)).background(Accent)
-                        .clickableNoRipple { shoot() },
+                        .tjClickable { shoot() },
                     contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -175,7 +175,7 @@ fun CaptureScreen(vm: AppVm) {
             Box(
                 Modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(14.dp))
                     .background(if (vm.captureUris.isEmpty()) SurfaceAlt else Ink)
-                    .clickableNoRipple { if (vm.captureUris.isNotEmpty()) vm.importCapture() },
+                    .tjClickable { if (vm.captureUris.isNotEmpty()) vm.importCapture() },
                 contentAlignment = Alignment.Center
             ) {
                 Text(

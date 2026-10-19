@@ -1,5 +1,7 @@
 # 题笺 · AI 错题本
 
+<img src="docs/ui/icon-512.png" width="96" align="right" alt="题笺图标">
+
 拍 → 认 → 分 → 练。Android 本地优先的错题本：AI 识别题目、自动分类、画廊/表格浏览、PDF 导出、间隔复习、知识库整理。
 
 ## 功能
@@ -46,4 +48,11 @@ Release 使用 debug 签名，方便个人设备直接覆盖安装与自动更�
 
 ## 设计
 
-界面草案见 `docs/mockup.html`，完整方案见 `docs/DESIGN.md`。
+0.5.0 起采用「墨白 Editorial」：冷灰白纸面 + 近黑墨字 + 单一靛蓝强调，所有正文 ≥ 7:1、
+次要文字 ≥ 4.5:1、可点目标 ≥ 48dp。
+
+- 视觉规范、三套方案与评分：`docs/ui/DESIGN-0.5.md`
+- 三套方向对比图：`docs/ui/proposals.png`
+- 验收报告（对比度 / 触控 / 越界）：`docs/ui/ACCEPTANCE-0.5.md`
+- 界面截图：`docs/validation/0.5.0/`
+- 图标：`docs/ui/icon-512.png`，生成脚本 `docs/ui/gen_icon.py`

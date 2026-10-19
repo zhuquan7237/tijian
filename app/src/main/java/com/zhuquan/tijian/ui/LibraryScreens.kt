@@ -25,8 +25,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -81,7 +83,7 @@ fun LibraryScreen(vm: AppVm) {
             }
         )
 
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 6.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Space.page, vertical = 6.dp)) {
             item {
                 GenerateCard(vm.categories.filter { it.count > 0 }.size) { pickCategory = true }
                 SectionLabel("最近生成") {
@@ -104,7 +106,7 @@ fun LibraryScreen(vm: AppVm) {
                                 createPdf.launch("${doc.title}_${dateStamp()}.pdf")
                             }
                         })
-                    HorizontalDivider(color = Color(0xFFF1F1EB), thickness = 1.dp)
+                    HorizontalDivider(color = Line, thickness = 1.dp)
                 }
             }
             item { Spacer(Modifier.height(80.dp)) }
@@ -128,37 +130,39 @@ private fun GenerateCard(categoryCount: Int, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
             .background(Ink)
-            .clickableNoRipple(onClick).padding(16.dp),
+            .tjClickable { onClick() }.padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Color(0x1FFFFFFF)),
+            Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(Color(0x1FFFFFFF)),
             contentAlignment = Alignment.Center
-        ) { Text("∂", fontSize = 22.sp, color = Color(0xFFB9BEFF)) }
+        ) { Icon(Icons.Rounded.AutoAwesome, null, tint = Color(0xFFB9BEFF), modifier = Modifier.size(20.dp)) }
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
-            Text("生成知识文档", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-            Text("从 $categoryCount 个分类里提炼要点与易错点", fontSize = 10.5.sp, color = Color(0x8CFFFFFF), modifier = Modifier.padding(top = 3.dp))
+            Text("生成知识文档", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+            Text("从 $categoryCount 个分类里提炼要点与易错点", fontSize = 12.sp, color = OnHeroMuted, modifier = Modifier.padding(top = 3.dp))
         }
         Box(
-            Modifier.clip(RoundedCornerShape(999.dp)).background(Color.White)
-                .padding(horizontal = 12.dp, vertical = 7.dp)
-        ) { Text("选择分类", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = Ink) }
+            Modifier.height(36.dp).clip(RoundedCornerShape(999.dp)).background(Color.White)
+                .tjClickable(label = "选择分类") { onClick() }
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.Center
+        ) { Text("选择分类", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Ink) }
     }
 }
 
 @Composable
 private fun DocRowItem(doc: DocRow, onOpen: () -> Unit, onPdf: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickableNoRipple(onOpen).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().tjClickable { onOpen() }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
-            Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFF6F6F1)),
+            Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(SurfaceAlt),
             contentAlignment = Alignment.Center
-        ) { Text("∂", fontSize = 15.sp, color = Color(0xFF9A9AA2)) }
-        Column(Modifier.weight(1f).padding(start = 10.dp)) {
-            Text(doc.title, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("${countPoints(doc.contentMd)} 个知识点 · ${formatDay(doc.createdAt)}", fontSize = 10.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
+        ) { Icon(Icons.Rounded.Description, null, tint = Ink2, modifier = Modifier.size(19.dp)) }
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(doc.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${countPoints(doc.contentMd)} 个知识点 · ${formatDay(doc.createdAt)}", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
         }
-        Box(Modifier.clickableNoRipple(onPdf).padding(6.dp)) {
-            androidx.compose.material3.Icon(Icons.Rounded.PictureAsPdf, "导出 PDF", tint = Color(0xFFA6A6AE), modifier = Modifier.size(19.dp))
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).tjClickable(label = "导出 PDF") { onPdf() }, contentAlignment = Alignment.Center) {
+            androidx.compose.material3.Icon(Icons.Rounded.PictureAsPdf, "导出 PDF", tint = Muted, modifier = Modifier.size(19.dp))
         }
     }
 }
@@ -195,13 +199,13 @@ fun DocScreen(vm: AppVm, route: Route.Doc? = vm.route as? Route.Doc) {
                 }
             }
         )
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.page)) {
             RichText(d.contentMd, fontSize = 14)
             Spacer(Modifier.height(18.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(
-                    Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(11.dp)).background(Color(0xFFF4F4EF))
-                        .clickableNoRipple {
+                    Modifier.weight(1f).height(50.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceAlt)
+                        .tjClickable {
                             scope.launch {
                                 vm.busy = true; vm.busyLabel = "排版 PDF"
                                 val f = vm.buildDocPdf(d)
@@ -210,10 +214,10 @@ fun DocScreen(vm: AppVm, route: Route.Doc? = vm.route as? Route.Doc) {
                             }
                         },
                     contentAlignment = Alignment.Center
-                ) { Text("生成并分享", fontSize = 12.sp, color = Ink2) }
+                ) { Text("生成并分享", fontSize = 14.sp, color = Ink2, fontWeight = FontWeight.Medium) }
                 Box(
-                    Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(11.dp)).background(Accent)
-                        .clickableNoRipple {
+                    Modifier.weight(1f).height(50.dp).clip(RoundedCornerShape(12.dp)).background(Accent)
+                        .tjClickable {
                             scope.launch {
                                 vm.busy = true; vm.busyLabel = "排版 PDF"
                                 val f = vm.buildDocPdf(d)
@@ -223,7 +227,7 @@ fun DocScreen(vm: AppVm, route: Route.Doc? = vm.route as? Route.Doc) {
                             }
                         },
                     contentAlignment = Alignment.Center
-                ) { Text("保存 PDF", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold) }
+                ) { Text("保存 PDF", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.SemiBold) }
             }
             Spacer(Modifier.height(60.dp))
         }
@@ -236,13 +240,13 @@ fun MarkdownText(md: String) {
         md.lineSequence().forEach { raw ->
             val line = raw.trimEnd()
             when {
-                line.startsWith("# ") -> Text(line.removePrefix("# "), fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 6.dp, bottom = 10.dp))
-                line.startsWith("## ") -> Text(line.removePrefix("## "), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp))
+                line.startsWith("# ") -> Text(line.removePrefix("# "), fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 6.dp, bottom = 10.dp))
+                line.startsWith("## ") -> Text(line.removePrefix("## "), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp))
                 line.startsWith("- ") || line.startsWith("* ") -> Row(Modifier.padding(vertical = 2.dp)) {
                     Text("·", fontSize = 12.sp, color = Muted, modifier = Modifier.width(12.dp))
                     Text(line.drop(2), fontSize = 12.5.sp, lineHeight = 20.sp, color = Ink2)
                 }
-                line.startsWith("**") && line.endsWith("**") -> Text(line.trim('*'), fontSize = 10.sp, letterSpacing = 1.sp, color = Muted, modifier = Modifier.padding(top = 10.dp, bottom = 3.dp))
+                line.startsWith("**") && line.endsWith("**") -> Text(line.trim('*'), fontSize = 11.sp, letterSpacing = 1.sp, color = Muted, modifier = Modifier.padding(top = 10.dp, bottom = 3.dp))
                 line.isBlank() -> Spacer(Modifier.height(6.dp))
                 else -> Text(line, fontSize = 12.5.sp, lineHeight = 21.sp, color = Ink2, modifier = Modifier.padding(vertical = 2.dp))
             }
@@ -263,11 +267,11 @@ fun CategoryMultiPicker(
     var query by remember { mutableStateOf("") }
     val filtered = categories.filter { it.fullName().contains(query.trim(), ignoreCase = true) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color.White) {
-        Column(Modifier.padding(horizontal = 18.dp).padding(bottom = 26.dp)) {
+        Column(Modifier.padding(horizontal = Space.page).padding(bottom = 26.dp)) {
             Text("选择分类", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
             Text(
                 "可多选 · 已选 ${chosen.value.size} 个",
-                fontSize = 10.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp)
+                fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp)
             )
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
@@ -279,7 +283,7 @@ fun CategoryMultiPicker(
                 filtered.forEach { cat ->
                     val checked = chosen.value.contains(cat.id)
                     Row(
-                        Modifier.fillMaxWidth().clickableNoRipple {
+                        Modifier.fillMaxWidth().tjClickable {
                             chosen.value = if (checked) chosen.value - cat.id else chosen.value + cat.id
                         }.padding(vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -287,10 +291,10 @@ fun CategoryMultiPicker(
                         Checkbox(checked = checked, onCheckedChange = null, modifier = Modifier.size(22.dp))
                         Column(Modifier.weight(1f).padding(start = 9.dp)) {
                             Text(cat.fullName(), fontSize = 12.5.sp, color = Ink)
-                            Text("${cat.count} 题", fontSize = 10.5.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
+                            Text("${cat.count} 题", fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
                         }
                     }
-                    HorizontalDivider(color = Color(0xFFF2F2EC), thickness = 1.dp)
+                    HorizontalDivider(color = Line, thickness = 1.dp)
                 }
                 if (filtered.isEmpty()) Text("没有匹配的分类", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 16.dp))
             }
@@ -298,7 +302,7 @@ fun CategoryMultiPicker(
             Box(
                 Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(12.dp))
                     .background(if (chosen.value.isEmpty()) SurfaceAlt else Accent)
-                    .clickableNoRipple(enabled = chosen.value.isNotEmpty()) {
+                    .tjClickable(enabled = chosen.value.isNotEmpty()) {
                         onConfirm(categories.filter { chosen.value.contains(it.id) })
                     },
                 contentAlignment = Alignment.Center

@@ -4,16 +4,31 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:scaleX="0.52" android:scaleY="0.52" android:translateX="26" android:translateY="26">
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M8,10 h40 a6,6 0 0 1 6,6 v56 a6,6 0 0 1 -6,6 h-40 a6,6 0 0 1 -6,-6 v-56 a6,6 0 0 1 6,-6 z" />
-        <path
-            android:strokeColor="#141418"
-            android:strokeWidth="3"
-            android:pathData="M14,26 h28 M14,36 h20 M14,50 h28 M14,60 h16" />
-        <path
-            android:fillColor="#4457D6"
-            android:pathData="M56,30 h10 a4,4 0 0 1 4,4 v34 a4,4 0 0 1 -4,4 h-10 z" />
-    </group>
+    <!-- 纸笺：右上折角 -->
+    <path
+        android:fillColor="#FCFBF7"
+        android:pathData="M32,21 H68 L81,34 V82 A5,5 0 0 1 76,87 H32 A5,5 0 0 1 27,82 V26 A5,5 0 0 1 32,21 Z" />
+    <path
+        android:fillColor="#C3CEDC"
+        android:pathData="M68,21 L81,34 H68 Z" />
+    <path
+        android:strokeColor="#93A2B6"
+        android:strokeWidth="0.9"
+        android:pathData="M68,21 L81,34" />
+
+    <!-- 一条错题（红），一条订正（灰） -->
+    <path
+        android:fillColor="#C04A53"
+        android:pathData="M40.2,38 H66.8 A2.2,2.2 0 0 1 69,40.2 V41.3 A2.2,2.2 0 0 1 66.8,43.5 H40.2 A2.2,2.2 0 0 1 38,41.3 V40.2 A2.2,2.2 0 0 1 40.2,38 Z" />
+    <path
+        android:fillColor="#B8C2D2"
+        android:pathData="M40.2,49 H58.8 A2.2,2.2 0 0 1 61,51.2 V52.3 A2.2,2.2 0 0 1 58.8,54.5 H40.2 A2.2,2.2 0 0 1 38,52.3 V51.2 A2.2,2.2 0 0 1 40.2,49 Z" />
+
+    <!-- 蓝色的“订正完成”勾 -->
+    <path
+        android:strokeColor="#2F4BD8"
+        android:strokeWidth="7.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M41.5,67 L51.5,76.5 L69,58.5" />
 </vector>

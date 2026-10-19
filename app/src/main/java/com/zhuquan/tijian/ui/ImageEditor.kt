@@ -346,7 +346,7 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
                             Box(
                                 Modifier.size(25.dp).clip(CircleShape).background(ComposeColor(c))
                                     .border(if (brushColor == c) 2.5.dp else 1.dp, if (brushColor == c) Accent else Line, CircleShape)
-                                    .clickableNoRipple { brushColor = c; view?.brushColor = c }
+                                    .tjClickable { brushColor = c; view?.brushColor = c }
                             )
                         }
                         Spacer(Modifier.weight(1f))
@@ -354,7 +354,7 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
                             Box(
                                 Modifier.height(30.dp).clip(RoundedCornerShape(9.dp))
                                     .background(if (brushWidth == w) AccentSoft else SurfaceAlt)
-                                    .clickableNoRipple { brushWidth = w; view?.brushWidth = w }
+                                    .tjClickable { brushWidth = w; view?.brushWidth = w }
                                     .padding(horizontal = 11.dp), contentAlignment = Alignment.Center
                             ) { Text(label, fontSize = 11.sp, color = if (brushWidth == w) Accent else Ink2) }
                         }
@@ -400,7 +400,7 @@ private fun ToolChip(label: String, selected: Boolean, enabled: Boolean, onClick
         Modifier.height(38.dp).clip(RoundedCornerShape(10.dp))
             .background(if (selected) Accent else SurfaceAlt)
             .border(1.dp, if (selected) Accent else Line, RoundedCornerShape(10.dp))
-            .clickableNoRipple(enabled, onClick).padding(horizontal = 13.dp),
+            .tjClickable(enabled = enabled) { onClick() }.padding(horizontal = 13.dp),
         contentAlignment = Alignment.Center
     ) { Text(label, fontSize = 12.sp, color = if (!enabled) Muted.copy(alpha = .45f) else if (selected) androidx.compose.ui.graphics.Color.White else Ink, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) }
 }

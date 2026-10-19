@@ -32,12 +32,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -60,6 +62,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,24 +86,34 @@ fun SettingsScreen(vm: AppVm) {
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             title = "我的",
-            subtitle = "本地优先 · 数据只在你的手机与你配置的模型之间流转",
-            actions = { IconCircle(Icons.Rounded.Info, "关于") { showAbout = true } }
+            subtitle = "本地优先 · 数据只在本机与你配置的模型之间流转"
         )
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(Color.White)
-                    .border(1.dp, Line, RoundedCornerShape(15.dp)).padding(vertical = 14.dp)
-            ) {
-                StatCell("${vm.stats.total}", "错题", Modifier.weight(1f))
-                StatCell("${vm.stats.mastered}", "已掌握", Modifier.weight(1f))
-                StatCell("${vm.stats.due}", "待复习", Modifier.weight(1f))
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.page)) {
+            CardBox(Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(vertical = 16.dp)) {
+                    StatCell("${vm.stats.total}", "错题", Modifier.weight(1f)) { vm.home() }
+                    StatCell("${vm.stats.mastered}", "已掌握", Modifier.weight(1f)) { vm.home() }
+                    StatCell("${vm.stats.due}", "待复习", Modifier.weight(1f)) {
+                        if (vm.stats.due > 0) vm.startReview()
+                    }
+                }
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(8.dp))
 
-            Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(Color.White)
-                    .border(1.dp, Line, RoundedCornerShape(15.dp))
-            ) {
+            SectionLabel("快捷操作")
+            CardBox(Modifier.fillMaxWidth()) {
+                Column {
+                    SettingRow(Icons.Rounded.PlayArrow, "开始今日复习", if (vm.stats.due > 0) "${vm.stats.due} 道到期" else "今天没有到期任务") {
+                        if (vm.stats.due > 0) vm.startReview() else vm.home()
+                    }
+                    DividerSoft()
+                    SettingRow(Icons.Rounded.AutoStories, "生成知识文档", "从一个分类提炼知识点") { vm.replace(Route.Library) }
+                }
+            }
+
+            SectionLabel("设置")
+            CardBox(Modifier.fillMaxWidth()) {
+                Column {
                 SettingRow(Icons.Rounded.Key, "AI 接入", if (vm.provider.ready()) "${vm.provider.model} · ${vm.provider.protocol}" else "未配置，点此接入") {
                     vm.go(Route.Provider)
                 }
@@ -111,20 +124,18 @@ fun SettingsScreen(vm: AppVm) {
                 ) { vm.checkUpdate(silent = false) }
                 DividerSoft()
                 SettingRow(Icons.Rounded.Backup, "备份与恢复", "数据库 + 图片，整包 zip") { showBackup = true }
+                }
             }
 
-            Spacer(Modifier.height(14.dp))
-            Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(Color.White)
-                    .border(1.dp, Line, RoundedCornerShape(15.dp))
-            ) {
+            SectionLabel("关于")
+            CardBox(Modifier.fillMaxWidth()) {
                 SettingRow(Icons.Rounded.Info, "关于题笺", "v${Updater.currentName()} · 本地优先") { showAbout = true }
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(20.dp))
             Text(
-                "题笺 v${Updater.currentName()} · 数据存储在本机\n识别与分类由你配置的模型完成，请自行评估隐私与费用。",
-                fontSize = 10.sp, lineHeight = 16.sp, color = Muted
+                "题笺 v${Updater.currentName()} · 全部数据保存在本机\n识别与分类由你配置的模型完成，请自行评估隐私与费用。",
+                fontSize = 12.sp, lineHeight = 19.sp, color = Muted
             )
             Spacer(Modifier.height(80.dp))
         }
@@ -172,28 +183,34 @@ fun SettingsScreen(vm: AppVm) {
 }
 
 @Composable
-private fun StatCell(value: String, label: String, modifier: Modifier = Modifier) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, fontSize = 19.sp, fontWeight = FontWeight.Medium, color = Ink)
-        Text(label, fontSize = 10.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
+private fun StatCell(value: String, label: String, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
+    Column(
+        modifier.tjClickable(label = "$label $value") { onClick() }.padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            value, fontSize = 24.sp, fontWeight = FontWeight.SemiBold,
+            color = if (value == "0") Muted else Ink
+        )
+        Text(label, fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
     }
 }
 
 @Composable
 fun SettingRow(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickableNoRipple(onClick).padding(horizontal = 14.dp, vertical = 13.dp),
+        Modifier.fillMaxWidth().tjClickable { onClick() }.padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFF6F6F1)),
+            Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(SurfaceAlt),
             contentAlignment = Alignment.Center
-        ) { Icon(icon, null, tint = Ink2, modifier = Modifier.size(15.dp)) }
-        Column(Modifier.weight(1f).padding(start = 10.dp)) {
-            Text(title, fontSize = 12.5.sp, color = Ink)
-            Text(subtitle, fontSize = 10.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
+        ) { Icon(icon, null, tint = Ink2, modifier = Modifier.size(18.dp)) }
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(title, fontSize = 15.sp, color = Ink, fontWeight = FontWeight.Medium)
+            Text(subtitle, fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 3.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Icon(Icons.Rounded.ChevronRight, null, tint = Color(0xFFC4C4BC), modifier = Modifier.size(16.dp))
+        Icon(Icons.Rounded.ChevronRight, null, tint = Color(0xFF98A3B3), modifier = Modifier.size(18.dp))
     }
 }
 
@@ -237,13 +254,14 @@ fun ProviderScreen(vm: AppVm) {
             subtitle = if (vm.provider.ready()) "当前 ${vm.provider.model}" else "填一个 OpenAI 兼容接口即可开始",
             onBack = { vm.back() },
             actions = {
-                Text(
-                    "保存", fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clickableNoRipple {
-                        vm.saveProvider(ProviderConfig(baseUrl, apiKey, model, protocol, models))
-                        vm.back()
-                    }.padding(8.dp)
-                )
+                Box(
+                    Modifier.height(40.dp).clip(RoundedCornerShape(10.dp)).background(Accent)
+                        .tjClickable(label = "保存") {
+                            vm.saveProvider(ProviderConfig(baseUrl, apiKey, model, protocol, models))
+                            vm.back()
+                        }.padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text("保存", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.SemiBold) }
             }
         )
 
@@ -271,7 +289,7 @@ fun ProviderScreen(vm: AppVm) {
             Spacer(Modifier.height(16.dp))
             CardBox(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
-                    FieldLabel("BASE URL")
+                    FieldLabel("接口地址")
                     OutlinedTextField(
                         value = baseUrl, onValueChange = { baseUrl = it },
                         placeholder = { Text("https://api.example.com/v1", fontSize = 12.5.sp, color = Muted) },
@@ -279,7 +297,7 @@ fun ProviderScreen(vm: AppVm) {
                         shape = RoundedCornerShape(12.dp)
                     )
                     Spacer(Modifier.height(12.dp))
-                    FieldLabel("API KEY")
+                    FieldLabel("API Key")
                     OutlinedTextField(
                         value = apiKey, onValueChange = { apiKey = it },
                         placeholder = { Text("sk-…", fontSize = 12.5.sp, color = Muted) },
@@ -296,10 +314,10 @@ fun ProviderScreen(vm: AppVm) {
                             singleLine = true, modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp)
                         )
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(10.dp))
                         Box(
                             Modifier.height(56.dp).clip(RoundedCornerShape(12.dp)).background(Accent)
-                                .clickableNoRipple {
+                                .tjClickable {
                                     if (models.isEmpty()) { showPicker = true; pull() }
                                     else showPicker = true
                                 }
@@ -317,13 +335,13 @@ fun ProviderScreen(vm: AppVm) {
                                 models.isEmpty() -> "还没有拉取过模型"
                                 else -> "已拉取 ${models.size} 个模型"
                             },
-                            fontSize = 10.5.sp, color = Muted
+                            fontSize = 11.5.sp, color = Muted
                         )
                         Spacer(Modifier.weight(1f))
                         if (models.isNotEmpty()) {
                             Text(
-                                "浏览", fontSize = 10.5.sp, color = Accent,
-                                modifier = Modifier.clickableNoRipple { showPicker = true }.padding(4.dp)
+                                "浏览", fontSize = 11.5.sp, color = Accent,
+                                modifier = Modifier.tjClickable { showPicker = true }.padding(4.dp)
                             )
                         }
                     }
@@ -346,15 +364,16 @@ fun ProviderScreen(vm: AppVm) {
                     Text(it, fontSize = 11.sp, lineHeight = 17.sp, color = Color(0xFF8E3B26))
                     Text(
                         "重试", fontSize = 11.sp, color = Accent, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.clickableNoRipple { pull() }.padding(top = 6.dp)
+                        modifier = Modifier.tjClickable { pull() }.padding(top = 6.dp)
                     )
                 }
             }
 
             Spacer(Modifier.height(16.dp))
             Box(
-                Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp)).background(SurfaceAlt)
-                    .clickableNoRipple {
+                Modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(14.dp)).background(CardBg)
+                    .border(1.dp, Accent, RoundedCornerShape(14.dp))
+                    .tjClickable {
                         if (!testing) {
                             testing = true; testError = null; testResult = null
                             scope.launch {
@@ -416,7 +435,7 @@ private val PRESETS = listOf(
 @Composable
 private fun FieldLabel(text: String) {
     Text(
-        text, fontSize = 9.5.sp, letterSpacing = 1.2.sp, color = Muted, fontWeight = FontWeight.SemiBold,
+        text, fontSize = 12.sp, color = Ink2, fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(bottom = 6.dp)
     )
 }
@@ -445,7 +464,7 @@ private fun ModelPickerSheet(
                 }
                 Text(
                     if (loading) "拉取中…" else "刷新", fontSize = 12.sp, color = Accent,
-                    modifier = Modifier.clickableNoRipple { if (!loading) onRefresh() }.padding(8.dp)
+                    modifier = Modifier.tjClickable { if (!loading) onRefresh() }.padding(8.dp)
                 )
             }
             Spacer(Modifier.height(10.dp))
@@ -464,7 +483,7 @@ private fun ModelPickerSheet(
                     Text(error, fontSize = 11.5.sp, lineHeight = 18.sp, color = Red)
                     Text(
                         "重试", fontSize = 12.sp, color = Accent, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.clickableNoRipple(onRefresh).padding(top = 10.dp)
+                        modifier = Modifier.tjClickable { onRefresh() }.padding(top = 10.dp)
                     )
                 }
                 filtered.isEmpty() -> Text(
@@ -474,17 +493,17 @@ private fun ModelPickerSheet(
                 else -> LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
                     items(filtered, key = { it }) { m ->
                         Row(
-                            Modifier.fillMaxWidth().clickableNoRipple { onPick(m) }
+                            Modifier.fillMaxWidth().tjClickable { onPick(m) }
                                 .padding(vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(Modifier.weight(1f)) {
                                 Text(m, fontSize = 12.5.sp, color = Ink, maxLines = 1)
-                                if (m == current) Text("当前使用", fontSize = 9.5.sp, color = Accent, modifier = Modifier.padding(top = 2.dp))
+                                if (m == current) Text("当前使用", fontSize = 11.sp, color = Accent, modifier = Modifier.padding(top = 2.dp))
                             }
                             if (m == current) Icon(Icons.Rounded.CheckCircle, null, tint = Accent, modifier = Modifier.size(17.dp))
                         }
-                        HorizontalDivider(color = Color(0xFFF2EDE3), thickness = 1.dp)
+                        HorizontalDivider(color = Line, thickness = 1.dp)
                     }
                 }
             }
@@ -511,7 +530,7 @@ fun UpdateDialog(vm: AppVm) {
                 if (downloading) {
                     Spacer(Modifier.height(12.dp))
                     LinearProgressIndicator(progress = { vm.updateProgress / 100f }, modifier = Modifier.fillMaxWidth(), color = Accent)
-                    Text("下载中 ${vm.updateProgress}%", fontSize = 10.sp, color = Muted, modifier = Modifier.padding(top = 6.dp))
+                    Text("下载中 ${vm.updateProgress}%", fontSize = 11.sp, color = Muted, modifier = Modifier.padding(top = 6.dp))
                 }
                 if (ready != null) {
                     Spacer(Modifier.height(10.dp))
