@@ -8,7 +8,7 @@ CODE="$(python - "$VER" <<'PY'
 import sys
 p=[int(x) for x in sys.argv[1].split('.')]
 while len(p)<3: p.append(0)
-print(p[0]*10000+p[1]*100+p[2])
+print(p[0]*1000000+p[1]*10000+p[2]*100)
 PY
 )"
 
