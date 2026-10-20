@@ -97,6 +97,12 @@ fun AppRoot(vm: AppVm = viewModel()) {
         // briefly show their empty initial layout. Pages outside the stack are
         // removed only after their exit animation completes.
         val pages = remember { androidx.compose.runtime.mutableStateMapOf<Route, Int>() }
+        // 三个一级 tab 常驻组合：切 tab 时不再触发布局/数据加载，直接参与淡入淡出。
+        if (pages.isEmpty()) {
+            pages[Route.Home] = 0
+            pages[Route.Library] = 0
+            pages[Route.Settings] = 0
+        }
         if (!pages.containsKey(vm.route)) pages[vm.route] = vm.navigationDepth()
 
         // 用一条显式的动画进度驱动页面切换：新页从 0 淡入并盖在旧页上，
@@ -126,7 +132,6 @@ fun AppRoot(vm: AppVm = viewModel()) {
             }
         }
         LaunchedEffect(navAnim.isRunning) { vm.navigating = navAnim.isRunning }
-        val peerAnimating = peerMove && navAnim.value < 1f
 
         Box(Modifier.fillMaxSize()) {
         pages.toMap().forEach { (route, depth) ->
@@ -148,8 +153,15 @@ fun AppRoot(vm: AppVm = viewModel()) {
                     var al = 1f
                     if (visible) {
                         if (peerMove) {
-                            // 同级 tab：只做淡入淡出
-                            al = if (isCurrent) (if (outgoingRoute == null) 1f else p) else 1f
+                            // 同级 tab 用 Material fade-through：旧页先在 30% 时长内
+                            // 完全淡出，新页再从 30% 处淡入。两页不同时可见，
+                            // 不会出现文字互相叠着的“重影/闪屏”。
+                            al = if (isCurrent) {
+                                if (outgoingRoute == null) 1f
+                                else ((p - 0.3f) / 0.7f).coerceIn(0f, 1f)
+                            } else {
+                                (1f - p / 0.3f).coerceIn(0f, 1f)
+                            }
                         } else if (navDir > 0f) {
                             // 进入：新页从右侧整屏推入；旧页左移半屏、缩到 0.7、淡出
                             if (isCurrent) {
@@ -195,19 +207,13 @@ fun AppRoot(vm: AppVm = viewModel()) {
                             is Route.Provider -> ProviderScreen(vm)
                         }
                     }
-                    if (isPeerRoute(route) && peerAnimating) Spacer(Modifier.height(65.dp))
-                    else if (isPeerRoute(route)) BottomBar(route,
+                    if (isPeerRoute(route)) BottomBar(route,
                         onHome = { vm.home() },
                         onLibrary = { vm.replace(Route.Library); vm.refresh() },
                         onSettings = { vm.replace(Route.Settings); vm.refresh() })
                 }
             }
         }
-        }
-        if (peerAnimating) Box(Modifier.align(Alignment.BottomCenter)) {
-            BottomBar(vm.route, onHome = { vm.home() },
-                onLibrary = { vm.replace(Route.Library); vm.refresh() },
-                onSettings = { vm.replace(Route.Settings); vm.refresh() })
         }
         }
         vm.toast?.let { msg ->
