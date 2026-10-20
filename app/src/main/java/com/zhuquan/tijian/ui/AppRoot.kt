@@ -118,7 +118,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
         LaunchedEffect(vm.route) {
             lastRoute = vm.route
             if (outgoingRoute != null) {
-                navAnim.animateTo(1f, tween(220, easing = FastOutSlowInEasing))
+                navAnim.animateTo(1f, tween(300, easing = FastOutSlowInEasing))
             }
             delay(80)
             pages.keys.toList().filter { !vm.retainsPage(it) }.forEach {
@@ -134,20 +134,49 @@ fun AppRoot(vm: AppVm = viewModel()) {
             val isCurrent = route == vm.route
             val isOutgoing = route == outgoingRoute && navAnim.value < 1f
             val visible = isCurrent || isOutgoing
-            Box(Modifier.fillMaxSize().zIndex(if (isCurrent) 1f else 0f)
+            val z = when {
+                !visible -> -2f
+                peerMove -> if (isCurrent) 1f else 0f
+                navDir > 0f -> if (isCurrent) 1f else 0f
+                else -> if (isOutgoing) 1f else 0f
+            }
+            Box(Modifier.fillMaxSize().zIndex(z)
                 .graphicsLayer {
                     val p = navAnim.value
-                    val off = when {
-                        peerMove -> 0f
-                        isCurrent -> (1f - p) * 0.04f * navDir
-                        isOutgoing -> -(1f - p) * 0.02f * navDir
-                        else -> 0f
+                    var x = 0f
+                    var sc = 1f
+                    var al = 1f
+                    if (visible) {
+                        if (peerMove) {
+                            // 同级 tab：只做淡入淡出
+                            al = if (isCurrent) (if (outgoingRoute == null) 1f else p) else 1f
+                        } else if (navDir > 0f) {
+                            // 进入：新页从右侧整屏推入；旧页左移半屏、缩到 0.7、淡出
+                            if (isCurrent) {
+                                x = (1f - p) * size.width
+                            } else {
+                                x = -p * size.width * 0.5f
+                                sc = 1f - 0.3f * p
+                                al = 1f - p
+                            }
+                        } else {
+                            // 返回：当前页整屏右移；上一页从左侧半屏、0.7 缩放淡入
+                            if (isCurrent) {
+                                x = -(1f - p) * size.width * 0.5f
+                                sc = 0.7f + 0.3f * p
+                                al = if (outgoingRoute == null) 1f else p
+                            } else {
+                                x = p * size.width
+                            }
+                        }
+                    } else {
+                        x = size.width * 2
+                        al = 0f
                     }
-                    translationX = if (visible) size.width * off else size.width * 2
-                    // 背景和内容一起淡：旧页保持 1，新页 0 → 1，不会出现空白帧。
-                    this.alpha = if (!visible) 0f else if (isCurrent) {
-                        if (outgoingRoute == null) 1f else p
-                    } else 1f
+                    translationX = x
+                    scaleX = sc
+                    scaleY = sc
+                    alpha = al
                     clip = true
                 }.then(if (!isCurrent) Modifier.clearAndSetSemantics {} else Modifier)) {
                 Column(Modifier.fillMaxSize().background(Bg)) {
