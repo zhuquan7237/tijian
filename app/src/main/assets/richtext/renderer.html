@@ -233,40 +233,75 @@
   document.addEventListener('visibilitychange', report);
   document.getElementById('out').addEventListener('load', report, true);
 
-  /* ---------- 长按选择：自己接管，避免系统弹出的“翻译/分享/全选”菜单 ---------- */
+  /* ---------- 长按选词 / 拖动扩选：只回传选中文字，不弹系统菜单 ---------- */
   if (window.__RT_SELECTABLE) {
     document.body.classList.add('rt-selectable');
-    var pressTimer = null, startX = 0, startY = 0, pressedEl = null;
+    var pressTimer = null, startX = 0, startY = 0;
+    var anchorNode = null, anchorOffset = 0, selecting = false, lastText = '';
 
-    function blockAt(x, y) {
-      var node = null;
-      if (document.caretRangeFromPoint) {
-        var r = document.caretRangeFromPoint(x, y);
-        node = r && r.startContainer;
-      } else if (document.elementFromPoint) {
-        node = document.elementFromPoint(x, y);
+    function caretAt(x, y) {
+      if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+      if (document.caretPositionFromPoint) {
+        var p = document.caretPositionFromPoint(x, y);
+        if (!p) return null;
+        var r = document.createRange();
+        r.setStart(p.offsetNode, p.offset);
+        r.collapse(true);
+        return r;
       }
-      if (!node) return null;
-      var el = node.nodeType === 1 ? node : node.parentElement;
-      if (!el) return null;
-      return el.closest('p,li,td,th,h1,h2,h3,h4,h5,blockquote,pre,div.math-display') || el;
+      return null;
     }
 
-    function clearPress() {
-      if (pressedEl) { pressedEl.classList.remove('rt-press'); pressedEl = null; }
+    function isWordChar(ch) { return /[A-Za-z0-9\u4e00-\u9fff]/.test(ch); }
+
+  
+  function resolveText(range) {
+    if (!range || !range.startContainer) return null;
+    var n = range.startContainer;
+    if (n.nodeType === 3) return { node: n, offset: range.startOffset };
+    var el = n;
+    var child = el.childNodes[Math.min(range.startOffset, el.childNodes.length - 1)];
+    while (child) {
+      if (child.nodeType === 3) return { node: child, offset: 0 };
+      if (child.firstChild) { child = child.firstChild; continue; }
+      break;
+    }
+    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    var t = walker.nextNode();
+    return t ? { node: t, offset: 0 } : null;
+  }
+
+  function wordRange(node, offset) {
+      var text = node.data || '';
+      var s = Math.min(offset, text.length);
+      var e = s;
+      while (s > 0 && isWordChar(text[s - 1])) s--;
+      while (e < text.length && isWordChar(text[e])) e++;
+      if (s === e) {
+        s = Math.max(0, Math.min(offset, text.length - 1));
+        e = Math.min(text.length, s + 1);
+      }
+      var r = document.createRange();
+      r.setStart(node, s);
+      r.setEnd(node, e);
+      return r;
     }
 
-    function fire() {
-      var el = blockAt(startX, startY);
-      if (!el) return;
-      var text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-      if (!text) return;
-      clearPress();
-      pressedEl = el;
-      el.classList.add('rt-press');
-      if (window.AndroidRichText && window.AndroidRichText.select) {
-        window.AndroidRichText.select(text);
+    function pushSelection(text) {
+      text = (text || '').replace(/\s+/g, ' ').trim();
+      if (text === lastText) return;
+      lastText = text;
+      if (window.AndroidRichText) {
+        if (text && window.AndroidRichText.select) window.AndroidRichText.select(text);
+        else if (!text && window.AndroidRichText.clearSelection) window.AndroidRichText.clearSelection();
       }
+    }
+
+    function applySelection(range) {
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      pushSelection(range.toString());
     }
 
     document.addEventListener('touchstart', function (e) {
@@ -274,23 +309,50 @@
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
       clearTimeout(pressTimer);
-      pressTimer = setTimeout(fire, 420);
+      selecting = false;
+      pressTimer = setTimeout(function () {
+        var r = caretAt(startX, startY);
+        if (!r || !r.startContainer || r.startContainer.nodeType !== 3) return;
+        anchorNode = r.startContainer;
+        anchorOffset = r.startOffset;
+        selecting = true;
+        applySelection(wordRange(anchorNode, anchorOffset));
+        if (navigator.vibrate) navigator.vibrate(8);
+      }, 380);
     }, { passive: true });
 
     document.addEventListener('touchmove', function (e) {
       if (!e.touches.length) return;
-      var dx = e.touches[0].clientX - startX;
-      var dy = e.touches[0].clientY - startY;
-      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearTimeout(pressTimer);
+      if (!selecting) {
+        var dx = e.touches[0].clientX - startX;
+        var dy = e.touches[0].clientY - startY;
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearTimeout(pressTimer);
+        return;
+      }
+      e.preventDefault();
+      var r = caretAt(e.touches[0].clientX, e.touches[0].clientY);
+      var hit = resolveText(r);
+      if (!hit) return;
+      var range = document.createRange();
+      try {
+        range.setStart(anchorNode, anchorOffset);
+        if (hit.node === anchorNode) range.setEnd(anchorNode, hit.offset);
+        else range.setEnd(hit.node, hit.offset);
+        applySelection(range);
+      } catch (err) {}
+    }, { passive: false });
+
+    document.addEventListener('touchend', function () {
+      clearTimeout(pressTimer);
+      selecting = false;
+    }, { passive: true });
+    document.addEventListener('touchcancel', function () {
+      clearTimeout(pressTimer);
+      selecting = false;
     }, { passive: true });
 
-    document.addEventListener('touchend', function () { clearTimeout(pressTimer); }, { passive: true });
-    document.addEventListener('touchcancel', function () { clearTimeout(pressTimer); }, { passive: true });
-
-    // 让 WebView 不弹系统上下文菜单（翻译 / 全选 / 网页搜索）
     document.addEventListener('contextmenu', function (e) { e.preventDefault(); return false; });
     document.addEventListener('selectstart', function (e) { e.preventDefault(); });
-    window.__rtClearPress = clearPress;
   }
 
   document.title = 'richtext-' + RENDER_ID;

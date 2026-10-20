@@ -1,5 +1,7 @@
 package com.zhuquan.tijian.ui
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -37,7 +39,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,23 +46,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
- * 全局追问入口：可拖动悬浮球 + 基于当前题目的对话面板。
+ * 全局追问入口。
  *
- * 面板直接挂在 AppRoot 的 Box 里（不是 Dialog），复用它已经留好的
- * WindowInsets.safeDrawing，键盘 / 导航栏都不会盖住输入框。
+ * 对话内容渲染在**一个** WebView 里（chat.html），滚动完全交给 WebView 原生处理：
+ * 长公式左右滑、消息上下滑都不会再和 Compose 的滚动互相抢手势。
+ * 长按选词走 JS 自己的逻辑，只弹应用内的「复制 / 追问」，不弹系统菜单。
  */
 @Composable
 fun ChatOverlay(vm: AppVm) {
@@ -118,17 +123,7 @@ private fun ChatFab(vm: AppVm) {
 private fun ChatPanel(vm: AppVm) {
     val q = vm.chatQuestion
     var input by remember { mutableStateOf("") }
-    val scroll = rememberScrollState()
-    val hasThread = vm.chatMessages.isNotEmpty() || vm.chatBusy || vm.chatError != null
-
-    LaunchedEffect(vm.chatMessages.size, vm.chatBusy) {
-        if (hasThread) {
-            repeat(5) {
-                delay(90)
-                scroll.animateScrollTo(scroll.maxValue)
-            }
-        }
-    }
+    val hasThread = vm.chatMessages.isNotEmpty()
 
     BoxWithConstraints(
         Modifier.fillMaxSize()
@@ -146,28 +141,31 @@ private fun ChatPanel(vm: AppVm) {
                 .pointerInput(Unit) { detectTapGestures { } }
         ) {
             ChatHeader(vm, q)
-
-            QuestionContext(q)
-
             Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
 
             if (hasThread) {
-                Column(
-                    Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    vm.chatMessages.forEach { (role, text) ->
-                        if (role == "user") UserBubble(text) else AiBubble(text)
-                    }
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    ChatTranscript(
+                        messages = vm.chatMessages,
+                        modifier = Modifier.fillMaxSize(),
+                        onSelect = { vm.updateChatQuote(it) }
+                    )
                     if (vm.chatBusy) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(Modifier.size(16.dp), color = Accent, strokeWidth = 2.dp)
-                            Text("正在结合你的掌握情况思考…", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(start = 8.dp))
+                        Row(
+                            Modifier.align(Alignment.BottomStart)
+                                .padding(start = 16.dp, bottom = 10.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(SurfaceAlt)
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(Modifier.size(13.dp), color = Accent, strokeWidth = 2.dp)
+                            Text("正在思考…", fontSize = 11.sp, color = Muted, modifier = Modifier.padding(start = 6.dp))
                         }
                     }
-                    vm.chatError?.let { Text(it, fontSize = 12.sp, lineHeight = 18.sp, color = Red) }
-                    Spacer(Modifier.height(2.dp))
+                }
+                vm.chatError?.let {
+                    Text(it, fontSize = 12.sp, color = Red, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                 }
             } else {
                 ChatHints(q) { input = it }
@@ -198,80 +196,63 @@ private fun ChatPanel(vm: AppVm) {
 @Composable
 private fun ChatHeader(vm: AppVm, q: com.zhuquan.tijian.data.QuestionRow?) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 18.dp, end = 8.dp, top = 12.dp, bottom = 8.dp),
+        Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(Modifier.weight(1f)) {
-            Text("追问这道题", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Ink)
+        QuestionThumb(q)
+        Column(Modifier.weight(1f).padding(start = 10.dp)) {
+            Text("追问这道题", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
             Text(
                 buildString {
                     append(q?.type?.ifBlank { "题目" } ?: "未选择题")
                     q?.categoryName?.takeIf { it.isNotBlank() }?.let { append(" · ").append(it) }
                     q?.let { append(" · 掌握度 ").append(it.mastery).append("/5") }
                 },
-                fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 2.dp)
+                fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 2.dp)
             )
         }
         if (vm.chatMessages.isNotEmpty()) {
             Box(
-                Modifier.size(44.dp).clip(CircleShape)
+                Modifier.size(42.dp).clip(CircleShape)
                     .tjClickable(label = "清空这道题的对话") { vm.clearChat() },
                 contentAlignment = Alignment.Center
-            ) { Icon(Icons.Rounded.DeleteOutline, null, tint = Muted, modifier = Modifier.size(20.dp)) }
+            ) { Icon(Icons.Rounded.DeleteOutline, null, tint = Muted, modifier = Modifier.size(19.dp)) }
         }
         Box(
-            Modifier.size(44.dp).clip(CircleShape)
+            Modifier.size(42.dp).clip(CircleShape)
                 .tjClickable(label = "关闭") { vm.closeChat() },
             contentAlignment = Alignment.Center
-        ) { Icon(Icons.Rounded.Close, null, tint = Ink2, modifier = Modifier.size(22.dp)) }
+        ) { Icon(Icons.Rounded.Close, null, tint = Ink2, modifier = Modifier.size(21.dp)) }
     }
 }
 
-/** 当前对话属于哪道题：题干按渲染结果展示，最多 4 行，超出裁掉。 */
+/** 题目缩略图：和列表里一样，让人一眼认出这是哪道题；没有原图时退回题干首行。 */
 @Composable
-private fun QuestionContext(q: com.zhuquan.tijian.data.QuestionRow?) {
-    val stem = q?.stem?.trim().orEmpty()
-    if (stem.isBlank()) return
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)
-            .clip(RoundedCornerShape(10.dp)).background(SurfaceAlt)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-    ) {
-        Text("当前题目", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = Muted)
-        Box(
-            Modifier.fillMaxWidth().heightIn(max = 96.dp).clipToBounds().padding(top = 4.dp)
-        ) {
-            RichText(stem, fontSize = 13, selectable = false, interactive = false)
+private fun QuestionThumb(q: com.zhuquan.tijian.data.QuestionRow?) {
+    val path = q?.imagePath
+    var bmp by remember(path) { mutableStateOf<ImageBitmap?>(null) }
+    androidx.compose.runtime.LaunchedEffect(path) {
+        bmp = withContext(Dispatchers.IO) {
+            path?.let { runCatching { BitmapFactory.decodeFile(it)?.asImageBitmap() }.getOrNull() }
         }
     }
-}
-
-@Composable
-private fun UserBubble(text: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        Box(
-            Modifier.widthIn(max = 310.dp)
-                .clip(RoundedCornerShape(14.dp, 14.dp, 4.dp, 14.dp))
-                .background(AccentSoft)
-                .padding(horizontal = 12.dp, vertical = 9.dp)
-        ) {
-            RichText(text, fontSize = 14, selectable = false, interactive = false)
-        }
-    }
-}
-
-@Composable
-private fun AiBubble(text: String) {
-    Column(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp, 14.dp, 14.dp, 4.dp))
-            .background(CardBg)
-            .border(1.dp, Line, RoundedCornerShape(14.dp, 14.dp, 14.dp, 4.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp)
+    Box(
+        Modifier.size(56.dp).clip(RoundedCornerShape(9.dp))
+            .background(SurfaceAlt)
+            .border(1.dp, Line, RoundedCornerShape(9.dp)),
+        contentAlignment = Alignment.Center
     ) {
-        Text("题笺 AI", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Accent)
-        Spacer(Modifier.height(5.dp))
-        RichText(text, fontSize = 14, selectable = false, interactive = false)
+        if (bmp != null) {
+            Image(
+                bitmap = bmp!!, contentDescription = "题目缩略图",
+                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+            )
+        } else {
+            Text(
+                (q?.type ?: "题").take(2),
+                fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Muted
+            )
+        }
     }
 }
 
@@ -279,7 +260,7 @@ private fun AiBubble(text: String) {
 private fun ChatHints(q: com.zhuquan.tijian.data.QuestionRow?, onPick: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
         Text(
-            if (q == null) "先打开一道题，再来追问。" else "可以问解析里的任何一步，也可以长按解析中的文字选择「追问」。",
+            if (q == null) "先打开一道题，再来追问。" else "可以问解析里的任何一步，也可以长按对话里的文字选择「追问」。",
             fontSize = 13.sp, lineHeight = 21.sp, color = Ink2
         )
         Spacer(Modifier.height(10.dp))
@@ -303,12 +284,7 @@ private fun ChatHints(q: com.zhuquan.tijian.data.QuestionRow?, onPick: (String) 
 /** 输入框上方的快捷追问：点一下直接发送。 */
 @Composable
 private fun QuickChips(enabled: Boolean, onSend: (String) -> Unit) {
-    val chips = listOf(
-        "再讲细一点",
-        "这步为什么成立？",
-        "用到的公式列一下",
-        "有没有更快的解法？"
-    )
+    val chips = listOf("再讲细一点", "这步为什么成立？", "用到的公式列一下", "有没有更快的解法？")
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
             .padding(horizontal = 14.dp, vertical = 2.dp),
@@ -325,7 +301,7 @@ private fun QuickChips(enabled: Boolean, onSend: (String) -> Unit) {
     }
 }
 
-/** 引用块：保留解析原本的排版（公式、表格），最多 150dp，可滚动。 */
+/** 引用块：保留原排版（公式、表格），最多 150dp，可滚动。 */
 @Composable
 private fun QuoteBlock(quote: String, onClear: () -> Unit) {
     Column(
@@ -335,7 +311,7 @@ private fun QuoteBlock(quote: String, onClear: () -> Unit) {
             .padding(start = 10.dp, top = 6.dp, bottom = 8.dp, end = 4.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("引用解析", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+            Text("引用", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
             Spacer(Modifier.weight(1f))
             Box(
                 Modifier.size(32.dp).clip(CircleShape)
@@ -343,7 +319,7 @@ private fun QuoteBlock(quote: String, onClear: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) { Icon(Icons.Rounded.Close, null, tint = Muted, modifier = Modifier.size(16.dp)) }
         }
-        Box(Modifier.fillMaxWidth().heightIn(max = 150.dp).verticalScroll(rememberScrollState())) {
+        Box(Modifier.fillMaxWidth().heightIn(max = 120.dp).verticalScroll(rememberScrollState())) {
             RichText(quote, fontSize = 13, selectable = false, interactive = false)
         }
     }
