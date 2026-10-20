@@ -110,13 +110,14 @@ fun AppRoot(vm: AppVm = viewModel()) {
         Box(Modifier.fillMaxSize()) {
         pages.toMap().forEach { (route, depth) ->
         androidx.compose.runtime.key(route) {
+            // 页面切换一律硬切：WebView 在 translate/alpha 动画期间会留下上一帧，
+            // 看起来就是重影。这里不做位移动画，旧页在下一帧直接隐藏。
             val offset by transition.animateFloat(
-                transitionSpec = { tween(if (reducedMotion || peerChange) 0 else if (vm.navForward) 250 else 230, easing = FastOutSlowInEasing) },
-                label = "page-position"
+                transitionSpec = { tween(0) }, label = "page-position"
             ) { target -> if (target == route || peerChange) 0f else if (depth < (pages[target] ?: 0)) -0.3f else 1f }
             val alpha by transition.animateFloat(
-                transitionSpec = { tween(if (reducedMotion) 0 else if (peerChange) 140 else 0) }, label = "peer-opacity"
-            ) { target -> if (target == route || !peerChange) 1f else 0.96f }
+                transitionSpec = { tween(0) }, label = "peer-opacity"
+            ) { target -> if (target == route || !peerChange) 1f else 0f }
             val active = route == transition.currentState || route == transition.targetState
             val front = if (peerChange || vm.navForward) route == transition.targetState else route == transition.currentState
             Box(Modifier.fillMaxSize().zIndex(if (!active) -2f else if (front) 1f else 0f)

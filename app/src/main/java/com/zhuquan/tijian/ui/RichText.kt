@@ -3,6 +3,9 @@ package com.zhuquan.tijian.ui
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
+import android.view.ActionMode
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -56,6 +59,82 @@ object RichTextRenderer {
             .replace("__RENDER_ID__", renderId.toString())
             .replace("__SELECTABLE__", if (selectable) "true" else "false")
             .replace("__CONTENT__", JSONObject.quote(markdown))
+    }
+}
+
+/**
+ * 原生长按选词 + 拖手柄扩选，但把系统的「翻译 / 网页搜索 / 全选」菜单
+ * 换成应用自己的「复制 / 追问」。选区手柄保留，菜单只出现两项。
+ */
+private class TjWebView(ctx: Context) : WebView(ctx) {
+    var selectionEnabled: Boolean = false
+    var onCopyText: ((String) -> Unit)? = null
+    var onAskText: ((String) -> Unit)? = null
+
+    override fun startActionMode(callback: ActionMode.Callback?, type: Int): ActionMode? {
+        if (!selectionEnabled) return super.startActionMode(callback, type)
+        return super.startActionMode(SelectionMenu(), type)
+    }
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun startActionMode(callback: ActionMode.Callback?): ActionMode? {
+        if (!selectionEnabled) return super.startActionMode(callback)
+        return super.startActionMode(SelectionMenu())
+    }
+
+    private inner class SelectionMenu : ActionMode.Callback {
+        private fun build(menu: Menu) {
+            menu.clear()
+            menu.add(Menu.NONE, MENU_COPY, 0, "复制")
+                .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+            menu.add(Menu.NONE, MENU_ASK, 1, "追问")
+                .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        }
+
+        override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+            build(menu)
+            return true
+        }
+
+        override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
+            build(menu)
+            return true
+        }
+
+        override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+            if (item.itemId != MENU_COPY && item.itemId != MENU_ASK) return false
+            evaluateJavascript(
+                "(function(){var s=window.getSelection();return window.__rtSelText||(s?s.toString():'');})()"
+            ) { raw ->
+                val text = decodeJsString(raw)
+                if (text.isNotBlank()) {
+                    if (item.itemId == MENU_COPY) onCopyText?.invoke(text)
+                    else onAskText?.invoke(text)
+                }
+                mode.finish()
+            }
+            return true
+        }
+
+        override fun onDestroyActionMode(mode: ActionMode) {
+            evaluateJavascript(
+                "(function(){if(window.__rtClearSel)window.__rtClearSel();else{var s=window.getSelection();if(s)s.removeAllRanges();}})()", null
+            )
+        }
+    }
+
+    companion object {
+        const val MENU_COPY = 1
+        const val MENU_ASK = 2
+    }
+}
+
+private fun decodeJsString(raw: String?): String {
+    if (raw.isNullOrBlank() || raw == "null") return ""
+    return try {
+        org.json.JSONArray("[$raw]").optString(0, "")
+    } catch (e: Exception) {
+        raw.trim('"')
     }
 }
 
@@ -123,8 +202,15 @@ fun RichText(
 
     AndroidView(
         factory = { ctx ->
-            WebView(ctx).apply {
+            TjWebView(ctx).apply {
                 webReference[0] = this
+                selectionEnabled = selectable && interactive
+                onCopyText = { text ->
+                    val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("题笺", text))
+                    android.widget.Toast.makeText(ctx, "已复制", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                onAskText = { text -> askCallback.value(text) }
                 if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, url: String?) {
@@ -153,8 +239,8 @@ fun RichText(
                 isVerticalScrollBarEnabled = false
                 isHorizontalScrollBarEnabled = false
                 overScrollMode = View.OVER_SCROLL_NEVER
-                isFocusable = false
-                isFocusableInTouchMode = false
+                isFocusable = selectable && interactive
+                isFocusableInTouchMode = selectable && interactive
                 isLongClickable = selectable && interactive
                 isEnabled = interactive
                 isNestedScrollingEnabled = false

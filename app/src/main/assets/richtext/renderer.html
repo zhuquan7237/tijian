@@ -73,10 +73,14 @@
   .rt-error { color: #C34D55; font-family: monospace; font-size: 0.9em; background: #FFF1F2; border-radius: 6px; padding: 2px 5px; }
   /* 任务列表 */
   input[type="checkbox"] { margin-right: 6px; }
-  /* 长按选择：只有详情/复习页会打开 selectable，其它页面保持不可选 */
+  /* 长按选择：保留浏览器原生的选区与拖拽手柄，只把系统菜单换成应用自己的两项。
+     非 selectable 页面仍然完全不可选，避免列表/聊天里误触。 */
   html, body { -webkit-user-select: none; user-select: none; }
-  body.rt-selectable { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-  body.rt-selectable * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  body.rt-selectable, body.rt-selectable * {
+    -webkit-user-select: text; user-select: text;
+    -webkit-touch-callout: none;
+  }
+  body.rt-selectable ::selection { background: rgba(47,75,216,.24); }
   .rt-press { background: rgba(47,75,216,.10); border-radius: 4px; }
   #rt-menu {
     position: fixed; z-index: 99999; display: none; align-items: center;
@@ -233,126 +237,25 @@
   document.addEventListener('visibilitychange', report);
   document.getElementById('out').addEventListener('load', report, true);
 
-  /* ---------- 长按选词 / 拖动扩选：只回传选中文字，不弹系统菜单 ---------- */
+  /* ---------- 原生选区 ----------
+     长按由 WebView 自己选词并显示左右手柄，用户可以拖手柄精确扩选；
+     系统 ActionMode 菜单在 Android 侧被替换成「复制 / 追问」两项。 */
   if (window.__RT_SELECTABLE) {
     document.body.classList.add('rt-selectable');
-    var pressTimer = null, startX = 0, startY = 0;
-    var anchorNode = null, anchorOffset = 0, selecting = false, lastText = '';
-
-    function caretAt(x, y) {
-      if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
-      if (document.caretPositionFromPoint) {
-        var p = document.caretPositionFromPoint(x, y);
-        if (!p) return null;
-        var r = document.createRange();
-        r.setStart(p.offsetNode, p.offset);
-        r.collapse(true);
-        return r;
-      }
-      return null;
-    }
-
-    function isWordChar(ch) { return /[A-Za-z0-9\u4e00-\u9fff]/.test(ch); }
-
-  
-  function resolveText(range) {
-    if (!range || !range.startContainer) return null;
-    var n = range.startContainer;
-    if (n.nodeType === 3) return { node: n, offset: range.startOffset };
-    var el = n;
-    var child = el.childNodes[Math.min(range.startOffset, el.childNodes.length - 1)];
-    while (child) {
-      if (child.nodeType === 3) return { node: child, offset: 0 };
-      if (child.firstChild) { child = child.firstChild; continue; }
-      break;
-    }
-    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-    var t = walker.nextNode();
-    return t ? { node: t, offset: 0 } : null;
-  }
-
-  function wordRange(node, offset) {
-      var text = node.data || '';
-      var s = Math.min(offset, text.length);
-      var e = s;
-      while (s > 0 && isWordChar(text[s - 1])) s--;
-      while (e < text.length && isWordChar(text[e])) e++;
-      if (s === e) {
-        s = Math.max(0, Math.min(offset, text.length - 1));
-        e = Math.min(text.length, s + 1);
-      }
-      var r = document.createRange();
-      r.setStart(node, s);
-      r.setEnd(node, e);
-      return r;
-    }
-
-    function pushSelection(text) {
-      text = (text || '').replace(/\s+/g, ' ').trim();
-      if (text === lastText) return;
-      lastText = text;
-      if (window.AndroidRichText) {
-        if (text && window.AndroidRichText.select) window.AndroidRichText.select(text);
-        else if (!text && window.AndroidRichText.clearSelection) window.AndroidRichText.clearSelection();
-      }
-    }
-
-    function applySelection(range) {
-      var sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-      pushSelection(range.toString());
-    }
-
-    document.addEventListener('touchstart', function (e) {
-      if (e.touches.length !== 1) return;
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      clearTimeout(pressTimer);
-      selecting = false;
-      pressTimer = setTimeout(function () {
-        var r = caretAt(startX, startY);
-        if (!r || !r.startContainer || r.startContainer.nodeType !== 3) return;
-        anchorNode = r.startContainer;
-        anchorOffset = r.startOffset;
-        selecting = true;
-        applySelection(wordRange(anchorNode, anchorOffset));
-        if (navigator.vibrate) navigator.vibrate(8);
-      }, 380);
-    }, { passive: true });
-
-    document.addEventListener('touchmove', function (e) {
-      if (!e.touches.length) return;
-      if (!selecting) {
-        var dx = e.touches[0].clientX - startX;
-        var dy = e.touches[0].clientY - startY;
-        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearTimeout(pressTimer);
-        return;
-      }
-      e.preventDefault();
-      var r = caretAt(e.touches[0].clientX, e.touches[0].clientY);
-      var hit = resolveText(r);
-      if (!hit) return;
-      var range = document.createRange();
-      try {
-        range.setStart(anchorNode, anchorOffset);
-        if (hit.node === anchorNode) range.setEnd(anchorNode, hit.offset);
-        else range.setEnd(hit.node, hit.offset);
-        applySelection(range);
-      } catch (err) {}
-    }, { passive: false });
-
-    document.addEventListener('touchend', function () {
-      clearTimeout(pressTimer);
-      selecting = false;
-    }, { passive: true });
-    document.addEventListener('touchcancel', function () {
-      clearTimeout(pressTimer);
-      selecting = false;
-    }, { passive: true });
-
-    document.addEventListener('contextmenu', function (e) { e.preventDefault(); return false; });
-    document.addEventListener('selectstart', function (e) { e.preventDefault(); });
+    // 点浮动菜单时 WebView 可能先失去焦点、选区塌缩，只剩最后一个字符。
+    // 这里在选区变化时就把非空文本记下来，菜单动作读缓存，保证拿到完整选区。
+    window.__rtSelText = '';
+    document.addEventListener('selectionchange', function () {
+      var s = window.getSelection();
+      if (!s) return;
+      var t = s.toString();
+      if (t && t.trim()) window.__rtSelText = t;
+    });
+    window.__rtClearSel = function () {
+      window.__rtSelText = '';
+      var s = window.getSelection();
+      if (s) s.removeAllRanges();
+    };
   }
 
   document.title = 'richtext-' + RENDER_ID;

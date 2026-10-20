@@ -427,8 +427,8 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                 CardBox(Modifier.padding(horizontal = Space.page).fillMaxWidth().weight(1f)) {
             Column {
                 Row(Modifier.fillMaxWidth().background(SurfaceAlt).padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    Text(if (selecting) "" else "题目", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(48.dp))
-                    Spacer(Modifier.width(12.dp))
+                    Text(if (selecting) "" else "题目", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(56.dp))
+                    Spacer(Modifier.width(14.dp))
                     Text("题型", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(64.dp))
                     Text("知识点", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                     Text("掌握", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(56.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
@@ -437,21 +437,21 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                     items(rows, key = { it.id }) { q ->
                         val isSel = selected.value.contains(q.id)
                         Row(
-                            Modifier.fillMaxWidth().heightIn(min = 80.dp).tjClickable {
+                            Modifier.fillMaxWidth().heightIn(min = 88.dp).tjClickable {
                                 if (selecting) {
                                     selected.value = if (isSel) selected.value - q.id else selected.value + q.id
                                 } else vm.go(Route.Detail(q.id))
                             }.padding(horizontal = 14.dp, vertical = 9.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(Modifier.width(48.dp)) {
+                            Box(Modifier.width(56.dp)) {
                                 if (selecting) {
                                     Checkbox(checked = isSel, onCheckedChange = null, modifier = Modifier.size(22.dp))
                                 } else {
-                                    Thumb(q.imagePath, Modifier.width(48.dp).height(60.dp))
+                                    Thumb(q.imagePath, Modifier.width(56.dp).height(70.dp))
                                 }
                             }
-                            Spacer(Modifier.width(12.dp))
+                            Spacer(Modifier.width(14.dp))
                             Text(q.type.ifBlank { "—" }, fontSize = 12.sp, color = Ink2, modifier = Modifier.width(64.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             val tags = parseKnowledgeTags(q.tags)
                             if (tags.isEmpty()) {
@@ -792,51 +792,6 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
         }
     }
 
-        if (selection.isNotBlank()) {
-            Row(
-                Modifier.align(Alignment.BottomCenter)
-                    .padding(horizontal = Space.page, vertical = 16.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Ink)
-                    .padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("已选中", fontSize = 10.5.sp, color = OnHeroKicker)
-                    Text(
-                        selection.replace("\n", " ").take(28) + if (selection.length > 28) "…" else "",
-                        fontSize = 12.5.sp, color = Color.White, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Box(
-                    Modifier.heightIn(min = 48.dp).clip(CircleShape)
-                        .background(Color(0x14FFFFFF))
-                        .tjClickable(label = "复制选中内容") {
-                            val cm = vm.getApplication<android.app.Application>()
-                                .getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                            cm.setPrimaryClip(android.content.ClipData.newPlainText("题笺", selection))
-                            vm.toast = "已复制"
-                            selection = ""
-                        }
-                        .padding(horizontal = 12.dp),
-                    contentAlignment = Alignment.Center
-                ) { Text("复制", fontSize = 12.5.sp, color = Color.White) }
-                Spacer(Modifier.width(6.dp))
-                Box(
-                    Modifier.heightIn(min = 48.dp).clip(CircleShape)
-                        .background(Accent)
-                        .tjClickable(label = "追问选中内容") { vm.openChat(selection); selection = "" }
-                        .padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.Center
-                ) { Text("追问", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Color.White) }
-                Box(
-                    Modifier.size(40.dp).clip(CircleShape)
-                        .tjClickable(label = "取消选中") { selection = "" },
-                    contentAlignment = Alignment.Center
-                ) { Icon(Icons.Rounded.Close, null, tint = OnHeroMuted, modifier = Modifier.size(18.dp)) }
-            }
-        }
     }
     viewingImage?.let { path ->
         ImageEditorDialog(Uri.fromFile(File(path)), onDismiss = { viewingImage = null }, onSaved = { uri ->

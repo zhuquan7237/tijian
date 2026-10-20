@@ -1,0 +1,266 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=360, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="stylesheet" href="katex.min.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: transparent;
+    color: #151A2A;
+    font-family: -apple-system, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+    font-size: 16px;
+    line-height: 1.82;
+    -webkit-text-size-adjust: 100%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  /* Measure this intrinsic content box only, never the WebView viewport. */
+  #out { display: flow-root; width: 100%; padding: 0; }
+  #out > :first-child { margin-top: 0; }
+  p { margin: 0 0 12px; line-height: 1.85; }
+  p:last-child { margin-bottom: 0; }
+  p, li, td, th { word-break: break-word; overflow-wrap: anywhere; }
+  h1 { font-size: 1.5em; line-height: 1.35; margin: 6px 0 14px; font-weight: 700; }
+  h2 { font-size: 1.22em; line-height: 1.4; margin: 22px 0 9px; font-weight: 700; }
+  h3 { font-size: 1.06em; line-height: 1.45; margin: 18px 0 7px; font-weight: 700; }
+  h4 { display: inline-block; font-size: 0.72em; letter-spacing: 0.12em; color: #4D5CEB; background: #EEF0FF; border-radius: 999px; padding: 4px 9px; margin: 18px 0 9px; font-weight: 700; }
+  h5, h6 { font-size: 1em; margin: 12px 0 6px; font-weight: 600; }
+  ul, ol { margin: 6px 0 10px; padding-left: 22px; }
+  li { margin: 3px 0; line-height: 1.9; }
+  li > p { margin: 0; }
+  strong { font-weight: 700; color: #151A2A; }
+  em { font-style: italic; }
+  a { color: #4D5CEB; text-decoration: none; }
+  blockquote {
+    margin: 12px 0; padding: 9px 12px;
+    border-left: 3px solid #4D5CEB; background: #F4F5FF; color: #59627A; border-radius: 0 10px 10px 0;
+  }
+  hr { border: 0; border-top: 1px solid #E6DFD2; margin: 16px 0; }
+  code {
+    font-family: "JetBrains Mono", "Roboto Mono", monospace;
+    font-size: 0.86em; background: #F0F2F7; color: #39425A;
+    padding: 1px 5px; border-radius: 4px;
+  }
+  pre {
+    background: #F4F5F8; border: 1px solid #E3E7F0; border-radius: 10px;
+    padding: 10px 12px; overflow-x: auto; margin: 10px 0;
+    line-height: 1.6;
+  }
+  pre code { background: transparent; color: #332F28; padding: 0; font-size: 0.84em; }
+  .table-wrap { width: 100%; overflow-x: auto; margin: 10px 0; }
+  table {
+    border-collapse: collapse; width: 100%; margin: 0;
+    font-size: 0.88em; table-layout: auto;
+  }
+  table th, table td {
+    border: 1px solid #E3E7F0; padding: 8px 10px; text-align: left;
+    vertical-align: top;
+  }
+  table th { background: #F0F2F7; font-weight: 700; color: #3E465A; }
+  table tr:nth-child(even) td { background: #FAFBFD; }
+  img { max-width: 100%; height: auto; border-radius: 8px; }
+  .katex { font-size: 1.04em; word-break: normal; overflow-wrap: normal; }
+  /* An inline-block contributes tall fractions/roots to the paragraph line box.
+     Scrolling belongs to these formula boxes, not to the whole document. */
+  .math-inline { display: inline-block; vertical-align: middle; max-width: 100%; overflow-x: auto; }
+  .math-inline > .katex { display: inline-block; padding: .2em 0; }
+  .math-display { display: block; max-width: 100%; overflow-x: auto; margin: 12px 0; }
+  .math-display .katex-display { margin: 0; padding: .2em 0; }
+  .math-display .katex-display > .katex { text-align: left; }
+  .math-display .katex-display > .katex > .katex-html { min-width: min-content; }
+  .rt-error { color: #C34D55; font-family: monospace; font-size: 0.9em; background: #FFF1F2; border-radius: 6px; padding: 2px 5px; }
+  /* 任务列表 */
+  input[type="checkbox"] { margin-right: 6px; }
+  /* 长按选择：保留浏览器原生的选区与拖拽手柄，只把系统菜单换成应用自己的两项。
+     非 selectable 页面仍然完全不可选，避免列表/聊天里误触。 */
+  html, body { -webkit-user-select: none; user-select: none; }
+  body.rt-selectable, body.rt-selectable * {
+    -webkit-user-select: text; user-select: text;
+    -webkit-touch-callout: none;
+  }
+  body.rt-selectable ::selection { background: rgba(47,75,216,.24); }
+  .rt-press { background: rgba(47,75,216,.10); border-radius: 4px; }
+  #rt-menu {
+    position: fixed; z-index: 99999; display: none; align-items: center;
+    background: #12161C; border-radius: 10px; padding: 2px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.28);
+    -webkit-user-select: none; user-select: none;
+  }
+  #rt-menu button {
+    appearance: none; border: 0; background: transparent; color: #fff;
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    padding: 9px 14px; border-radius: 8px; margin: 0;
+  }
+  #rt-menu button + button { border-left: 1px solid rgba(255,255,255,.20); border-radius: 0 8px 8px 0; }
+</style>
+</head>
+<body>
+<div id="out"></div>
+
+<script>window.__RT_SELECTABLE = true;</script>
+<script src="katex.min.js"></script>
+<script src="mhchem.min.js"></script>
+<script src="markdown-it.min.js"></script>
+<script>
+(function () {
+  var RENDER_ID = 1;
+  var RAW = "\u5df2\u77e5\u51fd\u6570 $f(x)=x^3-3x$\uff0c\u5219\uff08 \uff09\n\nA. $(-\\infty,-1)$";
+  var blocks = [];
+
+  function stash(tex, display) {
+    blocks.push({ tex: tex, display: display });
+    return '@@M' + (blocks.length - 1) + '@@';
+  }
+
+  function isCjk(ch) {
+    var c = ch.charCodeAt(0);
+    return c >= 0x4e00 && c <= 0x9fff;
+  }
+
+  // 1) 没有 $ 定界符的裸 LaTeX：只包裹不含中文的片段
+  function wrapBare(line) {
+    if (line.indexOf('$') !== -1) return line;
+    if (line.indexOf('\\') === -1) return line;
+    return line.replace(/[^\u4e00-\u9fff]+/g, function (seg) {
+      if (!/\\[a-zA-Z]+/.test(seg)) return seg;
+      if (/^\s*$/.test(seg)) return seg;
+      // markdown 结构行不包
+      if (/^\s*(#{1,6}\s|>|\||```)/.test(line)) return seg;
+      return '$' + seg + '$';
+    });
+  }
+
+  var src = RAW.split('\n').map(wrapBare).join('\n');
+
+  // 2) 保护各种定界符，避免 markdown 把 _ ^ 吃掉
+  // 2) 保护各种定界符，避免 markdown 把 _ ^ \ 吃掉
+  src = src.replace(/\$\$([\s\S]+?)\$\$/g, function (m, p1) { return stash(p1, true); });
+  src = src.replace(/\\\[([\s\S]+?)\\\]/g, function (m, p1) { return stash(p1, true); });
+  src = src.replace(/\\\(([\s\S]+?)\\\)/g, function (m, p1) { return stash(p1, false); });
+  src = src.replace(/(^|[^\\$])\$(?!\$)([^\n$]+?)\$/g, function (m, pre, p1) {
+    return pre + stash(p1, false);
+  });
+
+  // 3) 截断的回答常留下未闭合的 $$ / \[ / \(：把剩下的整段按公式处理，
+  //    这样用户看到的是渲染结果或 [公式]，而不是裸露的 LaTeX 源码。
+  src = src.replace(/\$\$([\s\S]*)$/g, function (m, p1) { return stash(p1, true); });
+  src = src.replace(/\\\[([\s\S]*)$/g, function (m, p1) { return stash(p1, true); });
+  src = src.replace(/\\\(([\s\S]*)$/g, function (m, p1) { return stash(p1, false); });
+  src = src.replace(/\$/g, '');
+
+  var md = window.markdownit({
+    html: false,
+    linkify: true,
+    breaks: false,
+    typographer: false
+  });
+
+  var html = md.render(src);
+
+  html = html.replace(/@@M(\d+)@@/g, function (m, idx) {
+    var b = blocks[+idx];
+    if (!b) return m;
+    try {
+      var rendered = katex.renderToString(b.tex, {
+        displayMode: b.display,
+        throwOnError: false,
+        strict: false,
+        trust: false,
+        output: 'html'
+      });
+      return '<span class="' + (b.display ? 'math-display' : 'math-inline') + '">' + rendered + '</span>';
+    } catch (e) {
+      // A first-pass failure can be caused by a macro (\\ce, \\pu) not yet
+      // registered. Retry after mhchem has initialized; if it still fails, show
+      // a compact marker instead of leaking raw TeX into the document.
+      try {
+        var retried = katex.renderToString(b.tex, {
+          displayMode: b.display, throwOnError: true, strict: false, trust: false, output: 'html',
+          macros: (window.__rtMacros || {})
+        });
+        return '<span class="' + (b.display ? 'math-display' : 'math-inline') + '">' + retried + '</span>';
+      } catch (e2) {
+        return '<span class="rt-error" title="' + escapeHtml(String(e2)) + '">[公式]</span>';
+      }
+    }
+  });
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  html = html.replace(/<table>/g, '<div class="table-wrap"><table>')
+             .replace(/<\/table>/g, '</table></div>');
+  document.getElementById('out').innerHTML = html;
+
+  // CSS px are dp at the measured viewport width. Neither body nor document
+  // scrollHeight may be used here: they are at least the current viewport height,
+  // creating an unbounded feedback loop when the native view grows.
+  function measure() {
+    var el = document.getElementById('out');
+    return Math.ceil(Math.max(el.getBoundingClientRect().height, el.scrollHeight));
+  }
+  window.__measureRichText = measure;
+  var scheduled = false;
+  var lastHeight = -1;
+  function report() {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(function () {
+    scheduled = false;
+    var h = measure();
+    if (h === lastHeight) return;
+    lastHeight = h;
+    if (window.AndroidRichText && window.AndroidRichText.height) {
+      window.AndroidRichText.height(h, RENDER_ID);
+    }
+    });
+  }
+  window.__report = report;
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(report);
+    document.fonts.addEventListener('loadingdone', report);
+  }
+  if (window.ResizeObserver) {
+    new ResizeObserver(report).observe(document.getElementById('out'));
+  }
+  if (window.MutationObserver) {
+    new MutationObserver(report).observe(document.getElementById('out'), {
+      childList: true, subtree: true, characterData: true
+    });
+  }
+  window.addEventListener('load', report);
+  window.addEventListener('pageshow', report);
+  window.addEventListener('resize', report);
+  document.addEventListener('visibilitychange', report);
+  document.getElementById('out').addEventListener('load', report, true);
+
+  /* ---------- 原生选区 ----------
+     长按由 WebView 自己选词并显示左右手柄，用户可以拖手柄精确扩选；
+     系统 ActionMode 菜单在 Android 侧被替换成「复制 / 追问」两项。 */
+  if (window.__RT_SELECTABLE) {
+    document.body.classList.add('rt-selectable');
+    // 点浮动菜单时 WebView 可能先失去焦点、选区塌缩，只剩最后一个字符。
+    // 这里在选区变化时就把非空文本记下来，菜单动作读缓存，保证拿到完整选区。
+    window.__rtSelText = '';
+    document.addEventListener('selectionchange', function () {
+      var s = window.getSelection();
+      if (!s) return;
+      var t = s.toString();
+      if (t && t.trim()) window.__rtSelText = t;
+    });
+    window.__rtClearSel = function () {
+      window.__rtSelText = '';
+      var s = window.getSelection();
+      if (s) s.removeAllRanges();
+    };
+  }
+
+  document.title = 'richtext-' + RENDER_ID;
+  report();
+})();
+</script>
+</body>
+</html>

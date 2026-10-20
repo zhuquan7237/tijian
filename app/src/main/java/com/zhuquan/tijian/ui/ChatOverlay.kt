@@ -240,11 +240,17 @@ private fun ChatHeader(vm: AppVm, q: com.zhuquan.tijian.data.QuestionRow?) {
 /** 题目缩略图：和列表里一样，让人一眼认出这是哪道题；没有原图时退回题干首行。 */
 @Composable
 private fun QuestionThumb(q: com.zhuquan.tijian.data.QuestionRow?) {
-    Box(Modifier.size(56.dp).clip(InnerShape).background(SurfaceAlt), contentAlignment = Alignment.Center) {
-        if (q?.imagePath != null) {
-            coil.compose.AsyncImage(model = java.io.File(q.imagePath), contentDescription = "题目缩略图",
+    val path = q?.imagePath?.takeIf { it.isNotBlank() }
+    val file = path?.let { java.io.File(it) }?.takeIf { it.exists() }
+    Box(
+        Modifier.size(64.dp).clip(InnerShape).background(SurfaceAlt)
+            .border(1.dp, Line, InnerShape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (file != null) {
+            coil.compose.AsyncImage(model = file, contentDescription = "题目缩略图",
                 modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        } else Text((q?.type ?: "题").take(2), fontSize = 12.sp, color = Muted)
+        } else Text((q?.type ?: "题").take(2), fontSize = 13.sp, color = Muted)
     }
 }
 
