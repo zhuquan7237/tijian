@@ -36,6 +36,7 @@ fun ChatTranscript(
         arr.toString()
     }
     val selectCallback = rememberUpdatedState(onSelect)
+    val latestJson = rememberUpdatedState(json)
 
     AndroidView(
         modifier = modifier,
@@ -67,7 +68,7 @@ fun ChatTranscript(
                     override fun onPageFinished(view: WebView, url: String?) {
                         android.util.Log.d("ChatJS", "page finished: $url")
                         view.evaluateJavascript(
-                            "window.__setMessages(" + JSONObject.quote(json) + ")", null
+                            "window.__setMessages(" + JSONObject.quote(latestJson.value) + ")", null
                         )
                     }
                 }
@@ -85,6 +86,7 @@ fun ChatTranscript(
                 loadUrl("file:///android_asset/richtext/chat.html")
             }
         },
+        onRelease = { view -> view.removeJavascriptInterface("AndroidChat"); view.destroy() },
         update = { view ->
             view.evaluateJavascript("window.__setMessages(" + JSONObject.quote(json) + ")", null)
         }

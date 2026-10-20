@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -105,13 +107,13 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
             title = "错题本",
             subtitle = "${vm.stats.total} 道错题",
             actions = {
-                IconCircle(Icons.Rounded.Search, "搜索") { searchOpen = !searchOpen }
+                IconCircle(Icons.Rounded.Search, "搜索") { searchOpen = !searchOpen; if (!searchOpen) query = "" }
                 IconCircle(Icons.Rounded.Add, "导入错题", tint = Color.White, filled = true) { onImport() }
             }
         )
 
         if (searchOpen) {
-            OutlinedTextField(
+            TjTextField(
                 value = query, onValueChange = { query = it },
                 placeholder = { Text("搜索题干、知识点", fontSize = 12.sp, color = Muted) },
                 singleLine = true,
@@ -135,9 +137,11 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
         }
 
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 132.dp)
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = Space.xl)
         ) {
-            ReviewHero(vm.stats.due, vm.stats.total, vm.stats.mastered) { vm.startReview() }
+            ReviewHero(vm.stats.due, vm.stats.total, vm.stats.mastered) {
+                if (vm.stats.total == 0) onImport() else vm.startReview(includeAll = vm.stats.due == 0)
+            }
 
             SectionLabel("学科", Modifier.padding(horizontal = Space.page))
 
@@ -198,7 +202,7 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
 private fun ReviewHero(due: Int, total: Int, mastered: Int, onClick: () -> Unit) {
     Column(
         Modifier.padding(horizontal = Space.page).fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp)).background(Color(0xFF252F40))
+            .clip(CardShape).background(Ink)
             .padding(20.dp)
     ) {
         Row(verticalAlignment = Alignment.Top) {
@@ -230,13 +234,13 @@ private fun ReviewHero(due: Int, total: Int, mastered: Int, onClick: () -> Unit)
         }
         Spacer(Modifier.height(16.dp))
         Box(
-            Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(12.dp))
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(CircleShape)
                 .background(if (due > 0) AccentSoft else Color(0xFF3A4454))
-                .tjClickable(label = if (due > 0) "开始复习" else "查看全部错题") { onClick() },
+                .tjClickable(label = if (due > 0) "开始复习" else if (total > 0) "自由复习" else "导入第一道题") { onClick() },
             contentAlignment = Alignment.Center
         ) {
             Text(
-                if (due > 0) "开始复习" else "查看全部错题",
+                if (due > 0) "开始复习" else if (total > 0) "自由复习" else "导入第一道题",
                 fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 color = if (due > 0) Color(0xFF2449AE) else Color.White
             )
@@ -257,9 +261,9 @@ private fun SubjectTile(name: String, count: Int, mastered: Int, modifier: Modif
     val hasQuestions = count > 0
     Column(
         modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(CardShape)
             .background(CardBg)
-            .border(1.dp, Line, RoundedCornerShape(12.dp))
+            .border(1.dp, Line, CardShape)
             .bounceClick(label = name, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 11.dp)
     ) {
@@ -307,9 +311,9 @@ private fun SubjectWideRow(name: String, count: Int, mastered: Int, onClick: () 
     val hasQuestions = count > 0
     Row(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(CardShape)
             .background(CardBg)
-            .border(1.dp, Line, RoundedCornerShape(12.dp))
+            .border(1.dp, Line, CardShape)
             .bounceClick(label = name, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -362,6 +366,9 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
     LaunchedEffect(id, filter, vm.dataRevision) {
         rows = withContext(Dispatchers.IO) { vm.db.questions(id, filter) }
     }
+
+    LaunchedEffect(filter) { selected.value = emptySet() }
+    LaunchedEffect(rows) { selected.value = selected.value.intersect(rows.map { it.id }.toSet()) }
 
     val createPdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri: Uri? ->
         val f = pendingFile
@@ -417,7 +424,7 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
 
         Spacer(Modifier.height(12.dp))
 
-                CardBox(Modifier.padding(horizontal = Space.page).fillMaxWidth()) {
+                CardBox(Modifier.padding(horizontal = Space.page).fillMaxWidth().weight(1f)) {
             Column {
                 Row(Modifier.fillMaxWidth().background(SurfaceAlt).padding(horizontal = 14.dp, vertical = 10.dp)) {
                     Text(if (selecting) "" else "题目", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(48.dp))
@@ -426,12 +433,11 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                     Text("知识点", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                     Text("掌握", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(56.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
                 }
-                val tableHeight = ((rows.size * 80 + 44).coerceIn(96, 520)).dp
-                LazyColumn(Modifier.height(tableHeight), state = listState) {
+                LazyColumn(Modifier.weight(1f), state = listState) {
                     items(rows, key = { it.id }) { q ->
                         val isSel = selected.value.contains(q.id)
                         Row(
-                            Modifier.fillMaxWidth().height(80.dp).tjClickable {
+                            Modifier.fillMaxWidth().heightIn(min = 80.dp).tjClickable {
                                 if (selecting) {
                                     selected.value = if (isSel) selected.value - q.id else selected.value + q.id
                                 } else vm.go(Route.Detail(q.id))
@@ -504,7 +510,7 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
             ) { Text("开始", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Ink) }
         }
 
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(12.dp))
 
         if (selecting && selected.value.isNotEmpty()) {
             Row(
@@ -514,15 +520,15 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                 Text("已选 ${selected.value.size} 题", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.weight(1f))
                 Box(
-                    Modifier.height(38.dp).clip(RoundedCornerShape(9.dp))
-                        .border(1.dp, Color(0x59FF8A8A), RoundedCornerShape(9.dp))
+                    Modifier.heightIn(min = 48.dp).clip(CircleShape)
+                        .border(1.dp, Color(0x59FF8A8A), CircleShape)
                         .tjClickable(label = "删除所选") { pendingBatchDelete = true }
                         .padding(horizontal = 14.dp),
                     contentAlignment = Alignment.Center
                 ) { Text("删除", fontSize = 12.sp, color = Color(0xFFFF9B9B), fontWeight = FontWeight.SemiBold) }
                 Spacer(Modifier.width(8.dp))
                 Box(
-                    Modifier.height(38.dp).clip(RoundedCornerShape(9.dp)).background(Color.White)
+                    Modifier.heightIn(min = 48.dp).clip(CircleShape).background(Color.White)
                         .tjClickable { showExport = true }.padding(horizontal = 14.dp),
                     contentAlignment = Alignment.Center
                 ) { Text("导出 PDF", fontSize = 11.5.sp, color = Ink, fontWeight = FontWeight.SemiBold) }
@@ -560,12 +566,11 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                 val list = rows.filter { selected.value.contains(it.id) }
                 showExport = false
                 scope.launch {
-                    vm.busy = true
-                    vm.busyLabel = "排版 PDF"
-                    val f = vm.buildPdf(list, cat?.name ?: "错题导出", opts)
-                    vm.busy = false; vm.busyLabel = ""
-                    if (share) shareFile(vm.getApplication(), f)
-                    else { pendingFile = f; createPdf.launch("${cat?.name ?: "错题"}_${dateStamp()}.pdf") }
+                    vm.withBusy("排版 PDF") {
+                        val f = vm.buildPdf(list, cat?.name ?: "错题导出", opts)
+                        if (share) shareFile(vm.getApplication(), f)
+                        else { pendingFile = f; createPdf.launch("${cat?.name ?: "错题"}_${dateStamp()}.pdf") }
+                    }
                 }
             }
         )
@@ -696,7 +701,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                         )
                         Spacer(Modifier.height(10.dp))
                         Box(
-                            Modifier.height(42.dp).clip(RoundedCornerShape(10.dp))
+                            Modifier.heightIn(min = 48.dp).clip(CircleShape)
                                 .background(AccentSoft)
                                 .tjClickable(label = "让 AI 补全知识点") { vm.fillNeeds(question.id) }
                                 .padding(horizontal = 14.dp),
@@ -760,7 +765,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                     repeat(6) { i ->
                         val on = i == question.mastery
                         Box(
-                            Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(10.dp))
+                            Modifier.weight(1f).heightIn(min = 48.dp).clip(SmallShape)
                                 .background(if (on) Accent else SurfaceAlt)
                                 .border(1.dp, if (on) Accent else FieldBorder.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
                                 .tjClickable(label = "掌握度 $i") {
@@ -783,7 +788,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                 Spacer(Modifier.height(16.dp))
                 LabelValue("笔记", question.note)
             }
-            Spacer(Modifier.height(80.dp))
+            Spacer(Modifier.height(24.dp))
         }
     }
 
@@ -805,7 +810,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                     )
                 }
                 Box(
-                    Modifier.height(40.dp).clip(RoundedCornerShape(9.dp))
+                    Modifier.heightIn(min = 48.dp).clip(CircleShape)
                         .background(Color(0x14FFFFFF))
                         .tjClickable(label = "复制选中内容") {
                             val cm = vm.getApplication<android.app.Application>()
@@ -819,7 +824,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                 ) { Text("复制", fontSize = 12.5.sp, color = Color.White) }
                 Spacer(Modifier.width(6.dp))
                 Box(
-                    Modifier.height(40.dp).clip(RoundedCornerShape(9.dp))
+                    Modifier.heightIn(min = 48.dp).clip(CircleShape)
                         .background(Accent)
                         .tjClickable(label = "追问选中内容") { vm.openChat(selection); selection = "" }
                         .padding(horizontal = 14.dp),
@@ -920,15 +925,15 @@ fun EditQuestionDialog(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
         title = { Text("编辑题目", fontSize = 16.sp) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(value = stem, onValueChange = { stem = it }, label = { Text("题干", fontSize = 12.sp) }, minLines = 3, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = stem, onValueChange = { stem = it }, label = { Text("题干", fontSize = 12.sp) }, minLines = 3, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = answer, onValueChange = { answer = it }, label = { Text("答案", fontSize = 12.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = answer, onValueChange = { answer = it }, label = { Text("答案", fontSize = 12.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = analysis, onValueChange = { analysis = it }, label = { Text("解析", fontSize = 12.sp) }, minLines = 2, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = analysis, onValueChange = { analysis = it }, label = { Text("解析", fontSize = 12.sp) }, minLines = 2, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = note, onValueChange = { note = it }, label = { Text("笔记", fontSize = 12.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = note, onValueChange = { note = it }, label = { Text("笔记", fontSize = 12.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = type, onValueChange = { type = it }, label = { Text("题型", fontSize = 12.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = type, onValueChange = { type = it }, label = { Text("题型", fontSize = 12.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(10.dp))
                 Text("分类", fontSize = 11.sp, color = Muted)
                 Column {
@@ -1016,16 +1021,15 @@ fun LabelValue(label: String, value: String) {
 }
 
 @Composable
-fun BigButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(
-        modifier.height(52.dp).clip(RoundedCornerShape(14.dp)).background(Accent)
-            .bounceClick(label = text) { onClick() }, contentAlignment = Alignment.Center
-    ) { Text(text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White) }
+fun BigButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    TjButton(text, modifier, enabled = enabled, onClick = onClick)
 }
 
 @Composable
 fun BusyOverlay(label: String) {
-            Box(Modifier.fillMaxSize().background(Color(0x66000000)), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize().background(Color(0x66000000)).pointerInput(Unit) {
+                awaitPointerEventScope { while (true) { awaitPointerEvent().changes.forEach { it.consume() } } }
+            }, contentAlignment = Alignment.Center) {
         Column(
             Modifier.clip(RoundedCornerShape(14.dp)).background(Color.White).padding(horizontal = 24.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -1051,17 +1055,13 @@ fun ExportSheet(count: Int, onDismiss: () -> Unit, onExport: (PdfExporter.Option
             OptRow("解析", if (analysis) "包含" else "不包含") { analysis = !analysis }
             OptRow("知识点标签", if (tags) "包含" else "不包含") { tags = !tags }
             Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(
-                    Modifier.weight(1f).height(50.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceAlt)
-                        .tjClickable { onExport(PdfExporter.Options(answer, analysis, tags, onePerPage), true) },
-                    contentAlignment = Alignment.Center
-                ) { Text("生成并分享", fontSize = 14.sp, color = Ink2, fontWeight = FontWeight.Medium) }
-                Box(
-                    Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(11.dp)).background(Accent)
-                        .tjClickable { onExport(PdfExporter.Options(answer, analysis, tags, onePerPage), false) },
-                    contentAlignment = Alignment.Center
-                ) { Text("保存 PDF", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold) }
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TjButton("生成并分享", Modifier.weight(1f).fillMaxHeight(), style = ActionStyle.Secondary) {
+                    onExport(PdfExporter.Options(answer, analysis, tags, onePerPage), true)
+                }
+                TjButton("保存 PDF", Modifier.weight(1f).fillMaxHeight()) {
+                    onExport(PdfExporter.Options(answer, analysis, tags, onePerPage), false)
+                }
             }
         }
     }

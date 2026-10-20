@@ -12,10 +12,20 @@ android {
         applicationId = "com.zhuquan.tijian"
         minSdk = 26
         targetSdk = 35
-        versionCode = 80000
-        versionName = "0.8.0"
+        versionCode = 8010000
+        versionName = "8.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resourceConfigurations += listOf("zh", "en")
+    }
+
+    val signingStore = System.getenv("TIJIAN_KEYSTORE")
+    if (!signingStore.isNullOrBlank()) {
+        signingConfigs.create("original") {
+            storeFile = file(signingStore)
+            storePassword = System.getenv("TIJIAN_STORE_PASSWORD")?.takeIf { it.isNotBlank() } ?: "android"
+            keyAlias = System.getenv("TIJIAN_KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "androiddebugkey"
+            keyPassword = System.getenv("TIJIAN_KEY_PASSWORD")?.takeIf { it.isNotBlank() } ?: "android"
+        }
     }
 
     buildTypes {
@@ -23,7 +33,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             // 与 debug 同签名：方便直接覆盖安装与自更新
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (signingStore.isNullOrBlank()) "debug" else "original")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

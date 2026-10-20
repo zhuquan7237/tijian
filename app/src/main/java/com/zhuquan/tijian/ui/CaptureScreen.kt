@@ -7,6 +7,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,7 +55,7 @@ import java.io.File
 fun CaptureScreen(vm: AppVm) {
     val ctx = LocalContext.current
     var editingUri by remember { mutableStateOf<Uri?>(null) }
-    var pendingUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingUri by rememberSaveable { mutableStateOf<Uri?>(null) }
 
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         if (ok) pendingUri?.let { vm.addCapture(it); editingUri = it }
@@ -66,7 +69,9 @@ fun CaptureScreen(vm: AppVm) {
         val f = File(dir, "cap_${System.currentTimeMillis()}.jpg")
         val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", f)
         pendingUri = uri
-        takePicture.launch(uri)
+        runCatching { takePicture.launch(uri) }.onFailure {
+            f.delete(); pendingUri = null; vm.toast = "无法打开相机，请从相册添加"
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -125,11 +130,11 @@ fun CaptureScreen(vm: AppVm) {
                             contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().tjClickable { editingUri = uri }
                         )
                         Box(
-                            Modifier.align(Alignment.TopEnd).padding(7.dp).size(26.dp)
+                            Modifier.align(Alignment.TopEnd).padding(7.dp).size(48.dp)
                                 .clip(CircleShape).background(Color(0xCC232220))
                                 .tjClickable { vm.removeCapture(uri) },
                             contentAlignment = Alignment.Center
-                        ) { Icon(Icons.Rounded.Close, "删除", tint = Color.White, modifier = Modifier.size(14.dp)) }
+                        ) { Icon(Icons.Rounded.Close, "删除", tint = Color.White, modifier = Modifier.size(20.dp)) }
                         Text(
                             "${vm.captureUris.indexOf(uri) + 1}",
                             fontSize = 11.sp, color = Color.White,
@@ -142,48 +147,19 @@ fun CaptureScreen(vm: AppVm) {
             }
         }
 
-        Column(Modifier.padding(horizontal = 20.dp).padding(top = 12.dp, bottom = 30.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(
-                    Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(14.dp)).background(CardBg)
-                        .tjClickable {
-                            pickMore.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.PhotoLibrary, null, tint = Ink2, modifier = Modifier.size(18.dp))
-                        Text("从相册添加", fontSize = 12.5.sp, color = Ink2, modifier = Modifier.padding(start = 6.dp))
-                    }
+        Column(Modifier.padding(horizontal = Space.page, vertical = 16.dp)) {
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TjButton("从相册添加", Modifier.weight(1f).fillMaxHeight(), style = ActionStyle.Secondary) {
+                    pickMore.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 }
-                Box(
-                    Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(14.dp)).background(Accent)
-                        .tjClickable { shoot() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.CameraAlt, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        Text(
-                            if (vm.captureUris.isEmpty()) "拍照" else "继续拍",
-                            fontSize = 12.5.sp, color = Color.White, fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(start = 6.dp)
-                        )
-                    }
-                }
+                TjButton(if (vm.captureUris.isEmpty()) "拍照" else "继续拍", Modifier.weight(1f).fillMaxHeight(),
+                    style = ActionStyle.Secondary, enabled = vm.captureUris.size < 9) { shoot() }
             }
-            Spacer(Modifier.height(10.dp))
-            Box(
-                Modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(14.dp))
-                    .background(if (vm.captureUris.isEmpty()) SurfaceAlt else Ink)
-                    .tjClickable { if (vm.captureUris.isNotEmpty()) vm.importCapture() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    if (vm.captureUris.isEmpty()) "拍一张后开始识别" else "开始识别（${vm.captureUris.size} 张）",
-                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                    color = if (vm.captureUris.isEmpty()) Muted else Color.White
-                )
-            }
+            Spacer(Modifier.height(8.dp))
+            TjButton(
+                if (vm.captureUris.isEmpty()) "拍一张后开始识别" else "开始识别（${vm.captureUris.size} 张）",
+                Modifier.fillMaxWidth(), enabled = vm.captureUris.isNotEmpty() && !vm.importing,
+            ) { vm.importCapture() }
         }
     }
     editingUri?.let { source -> ImageEditorDialog(source, onDismiss = { editingUri = null }, onSaved = { edited ->
