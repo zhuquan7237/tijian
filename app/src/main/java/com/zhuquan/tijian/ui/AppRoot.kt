@@ -98,55 +98,60 @@ fun AppRoot(vm: AppVm = viewModel()) {
         // removed only after their exit animation completes.
         val pages = remember { androidx.compose.runtime.mutableStateMapOf<Route, Int>() }
         if (!pages.containsKey(vm.route)) pages[vm.route] = vm.navigationDepth()
-        var visualRoute by remember { mutableStateOf(vm.route) }
-        if (vm.canDisplay(vm.route)) visualRoute = vm.route
-        val transition = updateTransition(visualRoute, label = "navigation")
-        LaunchedEffect(vm.route, transition.currentState, transition.targetState, transition.isRunning) {
-            if (!transition.isRunning && transition.currentState == transition.targetState) {
-                pages.keys.toList().filter { !vm.retainsPage(it) }.forEach { pages.remove(it); vm.forgetPage(it) }
+
+        // 用一条显式的动画进度驱动页面切换：新页从 0 淡入并盖在旧页上，
+        // 旧页始终保持不透明。这样任何一帧都至少有一页可见，返回时不会闪白。
+        // 之前用 updateTransition + 每页 animateFloat，部分页面在切换时会直接拿到
+        // 终值（alpha 恒为 1），所以看起来像硬切。
+        // 动画状态在 route 变化的那一次 composition 里同步初始化：
+        // remember(vm.route) 会让新页的进度从 0 开始，而不是先以 1 画一帧再回跳。
+        var lastRoute by remember { mutableStateOf<Route?>(null) }
+        val outgoingRoute = remember(vm.route) { lastRoute }
+        val peerMove = remember(vm.route) {
+            val from = outgoingRoute
+            from != null && isPeerRoute(from) && isPeerRoute(vm.route)
+        }
+        val navDir = remember(vm.route) { if (vm.navForward) 1f else -1f }
+        val navAnim = remember(vm.route) {
+            androidx.compose.animation.core.Animatable(if (outgoingRoute == null) 1f else 0f)
+        }
+        LaunchedEffect(vm.route) {
+            lastRoute = vm.route
+            if (outgoingRoute != null) {
+                navAnim.animateTo(1f, tween(220, easing = FastOutSlowInEasing))
+            }
+            delay(80)
+            pages.keys.toList().filter { !vm.retainsPage(it) }.forEach {
+                pages.remove(it); vm.forgetPage(it)
             }
         }
-        LaunchedEffect(vm.route, visualRoute, transition.isRunning, transition.currentState) {
-            vm.navigating = vm.route != visualRoute || transition.isRunning || transition.currentState != visualRoute
-        }
-        val peerChange = isPeerRoute(transition.currentState) && isPeerRoute(transition.targetState)
+        LaunchedEffect(navAnim.isRunning) { vm.navigating = navAnim.isRunning }
+        val peerAnimating = peerMove && navAnim.value < 1f
+
         Box(Modifier.fillMaxSize()) {
         pages.toMap().forEach { (route, depth) ->
         androidx.compose.runtime.key(route) {
-            // Material Motion：同级 tab 用 fade-through（只淡入淡出、不横向位移）；
-            // 进入/返回详情用 shared-axis X（约 14dp 位移 + 依次淡出/淡入）。
-            // 旧版重影来自两页同时以 0.96 alpha 叠着，现在旧页会完整淡到 0。
-            val dir = when {
-                peerChange -> 0f
-                vm.navForward -> 1f
-                else -> -1f
-            }
-            val offset by transition.animateFloat(
-                transitionSpec = { tween(300, easing = FastOutSlowInEasing) },
-                label = "page-position"
-            ) { target ->
-                if (target == route || peerChange) 0f
-                else if (transition.targetState == route) 0.04f * dir
-                else -0.04f * dir
-            }
-            val alpha by transition.animateFloat(
-                transitionSpec = {
-                    if (transition.targetState == route)
-                        tween(220, delayMillis = 90, easing = FastOutSlowInEasing)
-                    else tween(100, easing = LinearOutSlowInEasing)
-                },
-                label = "page-opacity"
-            ) { target -> if (target == route) 1f else 0f }
-            val active = route == transition.currentState || route == transition.targetState
-            val front = if (peerChange || vm.navForward) route == transition.targetState else route == transition.currentState
-            Box(Modifier.fillMaxSize().zIndex(if (!active) -2f else if (front) 1f else 0f)
+            val isCurrent = route == vm.route
+            val isOutgoing = route == outgoingRoute && navAnim.value < 1f
+            val visible = isCurrent || isOutgoing
+            Box(Modifier.fillMaxSize().zIndex(if (isCurrent) 1f else 0f)
                 .graphicsLayer {
-                    translationX = if (active) size.width * offset else size.width * 2
-                    this.alpha = if (active) 1f else 0f
+                    val p = navAnim.value
+                    val off = when {
+                        peerMove -> 0f
+                        isCurrent -> (1f - p) * 0.04f * navDir
+                        isOutgoing -> -(1f - p) * 0.02f * navDir
+                        else -> 0f
+                    }
+                    translationX = if (visible) size.width * off else size.width * 2
+                    // 背景和内容一起淡：旧页保持 1，新页 0 → 1，不会出现空白帧。
+                    this.alpha = if (!visible) 0f else if (isCurrent) {
+                        if (outgoingRoute == null) 1f else p
+                    } else 1f
                     clip = true
-                }.then(if (route != visualRoute) Modifier.clearAndSetSemantics {} else Modifier).background(Bg)) {
-                Column(Modifier.fillMaxSize()) {
-                    Box(Modifier.weight(1f).graphicsLayer { this.alpha = alpha }) {
+                }.then(if (!isCurrent) Modifier.clearAndSetSemantics {} else Modifier)) {
+                Column(Modifier.fillMaxSize().background(Bg)) {
+                    Box(Modifier.weight(1f)) {
                         when (route) {
                             is Route.Home -> HomeScreen(vm) { showImport = true }
                             is Route.Subject -> SubjectScreen(vm, route)
@@ -161,7 +166,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
                             is Route.Provider -> ProviderScreen(vm)
                         }
                     }
-                    if (isPeerRoute(route) && peerChange) Spacer(Modifier.height(65.dp))
+                    if (isPeerRoute(route) && peerAnimating) Spacer(Modifier.height(65.dp))
                     else if (isPeerRoute(route)) BottomBar(route,
                         onHome = { vm.home() },
                         onLibrary = { vm.replace(Route.Library); vm.refresh() },
@@ -169,23 +174,12 @@ fun AppRoot(vm: AppVm = viewModel()) {
                 }
             }
         }
-
         }
-        }
-        // A single stationary bar for peer changes; the page surface stays opaque
-        // while only incoming content fades, so outgoing text cannot bleed through.
-        if (peerChange) Box(Modifier.align(Alignment.BottomCenter)) {
-            BottomBar(visualRoute, onHome = { vm.home() },
+        if (peerAnimating) Box(Modifier.align(Alignment.BottomCenter)) {
+            BottomBar(vm.route, onHome = { vm.home() },
                 onLibrary = { vm.replace(Route.Library); vm.refresh() },
                 onSettings = { vm.replace(Route.Settings); vm.refresh() })
         }
-        if (visualRoute != vm.route) {
-            Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp)
-                .clip(RoundedCornerShape(12.dp)).background(CardBg).padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                Text("正在排版题目…", color = Ink2, fontSize = 12.sp)
-            }
         }
         vm.toast?.let { msg ->
             LaunchedEffect(msg) {

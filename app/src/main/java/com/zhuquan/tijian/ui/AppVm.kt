@@ -492,6 +492,11 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     /** 最近一次打开过的题目，用于离开详情页后悬浮球仍能追问同一题。 */
     var lastQuestionId by androidx.compose.runtime.mutableStateOf<String?>(null)
 
+    /** 题目详情的内存缓存：返回/重进同一题时直接出内容，不再闪“正在读取题目…”。 */
+    private val questionCache = HashMap<String, QuestionRow>()
+    fun cachedQuestion(id: String): QuestionRow? = questionCache[id]
+    fun cacheQuestion(q: QuestionRow) { questionCache[q.id] = q }
+
     fun rememberQuestion(id: String) { lastQuestionId = id }
 
     fun openChat(quote: String = "") {

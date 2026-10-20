@@ -610,7 +610,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
             wasScrolling = scrolling
         }
     }
-    var q by remember(id) { mutableStateOf<QuestionRow?>(null) }
+    var q by remember(id) { mutableStateOf(vm.cachedQuestion(id)) }
     var loadError by remember(id) { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -620,7 +620,8 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
     LaunchedEffect(id, vm.dataRevision) {
         vm.rememberQuestion(id)
         runCatching { withContext(Dispatchers.IO) { vm.db.question(id) ?: error("题目不存在或已删除") } }
-            .onSuccess { q = it }.onFailure { loadError = it.message ?: "题目读取失败"; vm.pageReady(Route.Detail(id)) }
+            .onSuccess { q = it; vm.cacheQuestion(it) }
+            .onFailure { loadError = it.message ?: "题目读取失败"; vm.pageReady(Route.Detail(id)) }
     }
 
     val question = q ?: run {
@@ -770,6 +771,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                                 .tjClickable(label = "掌握度 $i") {
                                     vm.db.setMastery(question.id, i)
                                     q = question.copy(mastery = i)
+                                    vm.cacheQuestion(question.copy(mastery = i))
                                     vm.refresh()
                                 },
                             contentAlignment = Alignment.Center
@@ -804,6 +806,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
         EditQuestionDialog(vm, question, vm.categories) { updated ->
             editing = false
             q = updated
+            vm.cacheQuestion(updated)
             vm.refresh()
         }
     }
