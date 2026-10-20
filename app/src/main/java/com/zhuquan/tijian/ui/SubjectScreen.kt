@@ -93,10 +93,10 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
 private fun SubjectChildCard(cat: CategoryRow, onOpen: () -> Unit, onDelete: () -> Unit) {
     Row(
         Modifier.fillMaxWidth()
+            .bounceClick(label = cat.name, onClick = onOpen)
             .clip(CardShape)
             .background(CardBg)
             .border(1.dp, Line, CardShape)
-            .bounceClick(label = cat.name, onClick = onOpen)
             .padding(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
