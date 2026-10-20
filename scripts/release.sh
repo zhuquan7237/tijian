@@ -34,7 +34,7 @@ else
   bash ./gradlew assembleRelease lintRelease --console=plain
 fi
 SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)"
+APKSIGNER="$(find "$SDK_ROOT/build-tools" \( -name apksigner -o -name apksigner.bat \) -type f | sort -V | tail -1)"
 EXPECTED_CERT="b304c3bf17ed5acb3c622c460de2db919d81d38f1763a6a104bcf079cb0fcf46"
 ACTUAL_CERT="$("$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
 if [[ "$ACTUAL_CERT" != "$EXPECTED_CERT" ]]; then
