@@ -6,6 +6,7 @@ import android.net.Uri
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -334,17 +335,17 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
                     },
                     fontSize = 11.sp, color = Ink2
                 )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ToolChip("裁剪", cropping, enabled = !saving && !brushing) { cropping = !cropping }
                     ToolChip("画笔", brushing, enabled = !saving && !cropping) { brushing = !brushing }
                     ToolChip("撤销", false, enabled = !saving && brushing) { view?.undoStroke() }
                     ToolChip("清空", false, enabled = !saving && brushing && (view?.strokes?.isNotEmpty() == true)) { view?.clearStrokes() }
                 }
                 if (brushing) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(0xFFE74C3C, 0xFF2D7FF9, 0xFF16A34A, 0xFF111827).map { it.toInt() }.forEach { c ->
                             Box(
-                                Modifier.size(25.dp).clip(CircleShape).background(ComposeColor(c))
+                                Modifier.size(48.dp).clip(CircleShape).background(ComposeColor(c))
                                     .border(if (brushColor == c) 2.5.dp else 1.dp, if (brushColor == c) Accent else Line, CircleShape)
                                     .tjClickable { brushColor = c; view?.brushColor = c }
                             )
@@ -352,7 +353,7 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
                         Spacer(Modifier.weight(1f))
                         listOf(0.003f, 0.006f, 0.011f).zip(listOf("细", "中", "粗")).forEach { (w, label) ->
                             Box(
-                                Modifier.height(30.dp).clip(RoundedCornerShape(9.dp))
+                                Modifier.heightIn(min = 48.dp).clip(CircleShape)
                                     .background(if (brushWidth == w) AccentSoft else SurfaceAlt)
                                     .tjClickable { brushWidth = w; view?.brushWidth = w }
                                     .padding(horizontal = 11.dp), contentAlignment = Alignment.Center
@@ -362,7 +363,7 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(
-                        enabled = !saving && !brushing, onClick = { view?.resetCrop() }, modifier = Modifier.height(46.dp),
+                        enabled = !saving && !brushing, onClick = { view?.resetCrop() }, modifier = Modifier.heightIn(min = 48.dp), shape = CircleShape,
                         border = androidx.compose.foundation.BorderStroke(1.dp, Line)
                     ) { Text("重置", color = Ink2) }
                     Button(
@@ -385,7 +386,7 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
                                 catch (failure: Exception) { error = failure.message ?: "保存失败，请重试" }
                                 finally { output?.delete(); saving = false; editRevision++ }
                             } else scope.launch { saving = true; try { onSaved(Uri.fromFile(source)) } finally { saving = false } }
-                        }, modifier = Modifier.weight(1f).height(46.dp)
+                        }, modifier = Modifier.weight(1f).heightIn(min = 48.dp), shape = CircleShape
                     ) { Text(if (saving) "保存中" else "保存副本", fontWeight = FontWeight.SemiBold) }
                 }
                 error?.let { Text(it, color = Red, fontSize = 11.5.sp) }
@@ -397,9 +398,9 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
 @Composable
 private fun ToolChip(label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.height(38.dp).clip(RoundedCornerShape(10.dp))
+        Modifier.heightIn(min = 48.dp).clip(CircleShape)
             .background(if (selected) Accent else SurfaceAlt)
-            .border(1.dp, if (selected) Accent else Line, RoundedCornerShape(10.dp))
+            .border(1.dp, if (selected) Accent else Line, CircleShape)
             .tjClickable(enabled = enabled) { onClick() }.padding(horizontal = 13.dp),
         contentAlignment = Alignment.Center
     ) { Text(label, fontSize = 12.sp, color = if (!enabled) Muted.copy(alpha = .45f) else if (selected) androidx.compose.ui.graphics.Color.White else Ink, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) }

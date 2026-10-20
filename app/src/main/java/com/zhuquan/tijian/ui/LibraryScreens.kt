@@ -7,6 +7,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +35,6 @@ import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -56,6 +57,7 @@ import com.zhuquan.tijian.data.fullName
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.window.Dialog
 import androidx.compose.material3.Checkbox
@@ -113,19 +115,20 @@ fun LibraryScreen(vm: AppVm) {
                         onPdf = {
                             pendingDoc = doc
                             scope.launch {
-                                vm.busy = true; vm.busyLabel = "生成 PDF"
-                                val f = vm.buildDocPdf(doc)
-                                vm.busy = false; vm.busyLabel = ""
-                                pendingFile = f
-                                createPdf.launch("${doc.title}_${dateStamp()}.pdf")
+                                vm.withBusy("生成 PDF") {
+                                    pendingFile = vm.buildDocPdf(doc)
+                                    createPdf.launch("${doc.title}_${dateStamp()}.pdf")
+                                }
                             }
                         })
                     HorizontalDivider(color = Line, thickness = 1.dp)
                 }
             }
-            item { Spacer(Modifier.height(80.dp)) }
+            item { Spacer(Modifier.height(24.dp)) }
         }
     }
+
+    if (vm.busy) BusyOverlay(vm.busyLabel)
 
     editingDoc?.let { doc ->
         DocEditDialog(
@@ -183,7 +186,7 @@ fun LibraryScreen(vm: AppVm) {
 @Composable
 private fun GenerateCard(categoryCount: Int, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+        Modifier.fillMaxWidth().clip(CardShape)
             .background(Ink)
             .tjClickable { onClick() }.padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -197,7 +200,7 @@ private fun GenerateCard(categoryCount: Int, onClick: () -> Unit) {
             Text("从 $categoryCount 个分类里提炼要点与易错点", fontSize = 12.sp, color = OnHeroMuted, modifier = Modifier.padding(top = 3.dp))
         }
         Box(
-            Modifier.height(36.dp).clip(RoundedCornerShape(999.dp)).background(Color.White)
+            Modifier.heightIn(min = 48.dp).clip(CircleShape).background(Color.White)
                 .tjClickable(label = "选择分类") { onClick() }
                 .padding(horizontal = 14.dp),
             contentAlignment = Alignment.Center
@@ -226,7 +229,7 @@ private fun DocRowItem(
         }
         Box {
             Box(
-                Modifier.size(44.dp).clip(RoundedCornerShape(10.dp))
+                Modifier.size(48.dp).clip(RoundedCornerShape(10.dp))
                     .tjClickable(label = "更多操作") { menu = true },
                 contentAlignment = Alignment.Center
             ) { Icon(Icons.Rounded.MoreVert, null, tint = Muted, modifier = Modifier.size(20.dp)) }
@@ -249,7 +252,7 @@ private fun DocRowItem(
                 )
             }
         }
-        Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).tjClickable(label = "导出 PDF") { onPdf() }, contentAlignment = Alignment.Center) {
+        Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).tjClickable(label = "导出 PDF") { onPdf() }, contentAlignment = Alignment.Center) {
             androidx.compose.material3.Icon(Icons.Rounded.PictureAsPdf, "导出 PDF", tint = Muted, modifier = Modifier.size(19.dp))
         }
     }
@@ -269,7 +272,7 @@ private fun DocEditDialog(
             usePlatformDefaultWidth = false, decorFitsSystemWindows = false
         )
     ) {
-        Column(Modifier.fillMaxSize().background(Bg).padding(bottom = systemNavBarHeight()).imePadding()) {
+        Column(Modifier.fillMaxSize().background(Bg).safeDrawingPadding().imePadding()) {
             Row(
                 Modifier.fillMaxWidth().padding(start = Space.page, end = 10.dp, top = 12.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -279,19 +282,19 @@ private fun DocEditDialog(
                     Text("支持 Markdown 与 LaTeX（$...$）", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
                 }
                 Box(
-                    Modifier.size(44.dp).clip(CircleShape).tjClickable(label = "取消") { onDismiss() },
+                    Modifier.size(48.dp).clip(CircleShape).tjClickable(label = "取消") { onDismiss() },
                     contentAlignment = Alignment.Center
                 ) { Icon(Icons.Rounded.Close, null, tint = Ink2, modifier = Modifier.size(22.dp)) }
             }
             Column(Modifier.weight(1f).padding(horizontal = Space.page)) {
-                OutlinedTextField(
+                TjTextField(
                     value = title, onValueChange = { title = it },
                     label = { Text("标题", fontSize = 12.sp) },
                     singleLine = true, colors = tjFieldColors(),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(10.dp))
-                OutlinedTextField(
+                TjTextField(
                     value = content, onValueChange = { content = it },
                     label = { Text("正文", fontSize = 12.sp) },
                     textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink),
@@ -305,15 +308,11 @@ private fun DocEditDialog(
                 )
             }
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = Space.page, vertical = 12.dp),
+                Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = Space.page, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Box(
-                    Modifier.weight(0.38f).height(50.dp).clip(RoundedCornerShape(12.dp))
-                        .background(SurfaceAlt).tjClickable { onDismiss() },
-                    contentAlignment = Alignment.Center
-                ) { Text("取消", fontSize = 14.sp, color = Ink2) }
-                BigButton("保存", Modifier.weight(0.62f)) {
+                TjButton("取消", Modifier.weight(1f).fillMaxHeight(), style = ActionStyle.Secondary) { onDismiss() }
+                BigButton("保存", Modifier.weight(1f).fillMaxHeight(), enabled = title.isNotBlank()) {
                     if (title.isNotBlank()) onSave(title.trim(), content)
                 }
             }
@@ -344,11 +343,10 @@ fun DocScreen(vm: AppVm, route: Route.Doc? = vm.route as? Route.Doc) {
             actions = {
                 IconCircle(Icons.Rounded.PictureAsPdf, "导出") {
                     scope.launch {
-                        vm.busy = true; vm.busyLabel = "排版 PDF"
-                        val f = vm.buildDocPdf(d)
-                        vm.busy = false; vm.busyLabel = ""
-                        pendingFile = f
-                        createPdf.launch("${d.title}_${dateStamp()}.pdf")
+                        vm.withBusy("排版 PDF") {
+                            pendingFile = vm.buildDocPdf(d)
+                            createPdf.launch("${d.title}_${dateStamp()}.pdf")
+                        }
                     }
                 }
             }
@@ -356,37 +354,23 @@ fun DocScreen(vm: AppVm, route: Route.Doc? = vm.route as? Route.Doc) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.page)) {
             RichText(d.contentMd, fontSize = 14)
             Spacer(Modifier.height(18.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(
-                    Modifier.weight(1f).height(50.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceAlt)
-                        .tjClickable {
-                            scope.launch {
-                                vm.busy = true; vm.busyLabel = "排版 PDF"
-                                val f = vm.buildDocPdf(d)
-                                vm.busy = false; vm.busyLabel = ""
-                                shareFile(vm.getApplication(), f)
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) { Text("生成并分享", fontSize = 14.sp, color = Ink2, fontWeight = FontWeight.Medium) }
-                Box(
-                    Modifier.weight(1f).height(50.dp).clip(RoundedCornerShape(12.dp)).background(Accent)
-                        .tjClickable {
-                            scope.launch {
-                                vm.busy = true; vm.busyLabel = "排版 PDF"
-                                val f = vm.buildDocPdf(d)
-                                vm.busy = false; vm.busyLabel = ""
-                                pendingFile = f
-                                createPdf.launch("${d.title}_${dateStamp()}.pdf")
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) { Text("保存 PDF", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.SemiBold) }
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TjButton("生成并分享", Modifier.weight(1f).fillMaxHeight(), style = ActionStyle.Secondary, enabled = !vm.busy) {
+                    scope.launch { vm.withBusy("排版 PDF") { shareFile(vm.getApplication(), vm.buildDocPdf(d)) } }
+                }
+                TjButton("保存 PDF", Modifier.weight(1f).fillMaxHeight(), enabled = !vm.busy) {
+                    scope.launch { vm.withBusy("排版 PDF") {
+                        pendingFile = vm.buildDocPdf(d)
+                        createPdf.launch("${d.title}_${dateStamp()}.pdf")
+                    } }
+                }
             }
             Spacer(Modifier.height(60.dp))
         }
     }
+    if (vm.busy) BusyOverlay(vm.busyLabel)
 }
+
 
 @Composable
 fun MarkdownText(md: String) {
@@ -429,7 +413,7 @@ fun CategoryMultiPicker(
                 "可多选 · 已选 ${chosen.value.size} 个",
                 fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp)
             )
-            OutlinedTextField(
+            TjTextField(
                 value = query, onValueChange = { query = it },
                 placeholder = { Text("搜索分类", fontSize = 12.sp, color = Muted) },
                 singleLine = true, colors = tjFieldColors(), modifier = Modifier.fillMaxWidth()
@@ -455,20 +439,10 @@ fun CategoryMultiPicker(
                 if (filtered.isEmpty()) Text("没有匹配的分类", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 16.dp))
             }
             Spacer(Modifier.height(12.dp))
-            Box(
-                Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(12.dp))
-                    .background(if (chosen.value.isEmpty()) SurfaceAlt else Accent)
-                    .tjClickable(enabled = chosen.value.isNotEmpty()) {
-                        onConfirm(categories.filter { chosen.value.contains(it.id) })
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    if (chosen.value.isEmpty()) "选择分类后生成" else "$confirmText（${chosen.value.size} 个分类）",
-                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                    color = if (chosen.value.isEmpty()) Muted else Color.White
-                )
-            }
+            TjButton(
+                if (chosen.value.isEmpty()) "选择分类后生成" else "$confirmText（${chosen.value.size} 个分类）",
+                Modifier.fillMaxWidth(), enabled = chosen.value.isNotEmpty(),
+            ) { onConfirm(categories.filter { it.id in chosen.value }) }
         }
     }
 }

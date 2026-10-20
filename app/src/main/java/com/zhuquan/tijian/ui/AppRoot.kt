@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -86,7 +87,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
         ActivityResultContracts.PickVisualMedia()
     ) { uri -> if (uri != null) vm.addManual(uri) }
 
-    BackHandler(enabled = vm.route != Route.Home) { if (!vm.back()) vm.home() }
+    BackHandler(enabled = !vm.chatOpen && vm.route != Route.Home) { if (!vm.back()) vm.home() }
 
     Box(Modifier.fillMaxSize().background(Bg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         // Keep live page compositions: returning must not recreate WebViews or
@@ -123,7 +124,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
                     translationX = if (active) size.width * offset else size.width * 2
                     this.alpha = if (active) 1f else 0f
                     clip = true
-                }.then(if (!active) Modifier.clearAndSetSemantics {} else Modifier).background(Bg)) {
+                }.then(if (route != visualRoute) Modifier.clearAndSetSemantics {} else Modifier).background(Bg)) {
                 Column(Modifier.fillMaxSize()) {
                     Box(Modifier.weight(1f).graphicsLayer { this.alpha = if (peerChange) alpha else 1f }) {
                         when (route) {
@@ -140,7 +141,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
                             is Route.Provider -> ProviderScreen(vm)
                         }
                     }
-                    if (isPeerRoute(route) && peerChange) Spacer(Modifier.height(86.dp))
+                    if (isPeerRoute(route) && peerChange) Spacer(Modifier.height(65.dp))
                     else if (isPeerRoute(route)) BottomBar(route,
                         onHome = { vm.home() },
                         onLibrary = { vm.replace(Route.Library); vm.refresh() },
@@ -252,7 +253,7 @@ private fun ImportOption(
 private fun BottomBar(route: Route, onHome: () -> Unit, onLibrary: () -> Unit, onSettings: () -> Unit) {
     Column(Modifier.fillMaxWidth().background(Color(0xFAFFFFFF))) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
-        Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp), verticalAlignment = Alignment.CenterVertically) {
             TabItem(Icons.Rounded.MenuBook, "错题本", route is Route.Home, Modifier.weight(1f), onHome)
             TabItem(Icons.Rounded.AutoStories, "知识库", route is Route.Library, Modifier.weight(1f), onLibrary)
             TabItem(Icons.Rounded.Person, "我的", route is Route.Settings, Modifier.weight(1f), onSettings)
@@ -269,7 +270,7 @@ private fun TabItem(
     onClick: () -> Unit,
 ) {
     Column(
-        modifier.fillMaxHeight().tjClickable(label = label, onClick = onClick).padding(vertical = 6.dp),
+        modifier.heightIn(min = 64.dp).tjClickable(label = label, onClick = onClick).padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {

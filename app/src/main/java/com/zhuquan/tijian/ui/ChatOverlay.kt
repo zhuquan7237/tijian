@@ -1,6 +1,7 @@
 package com.zhuquan.tijian.ui
 
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -70,6 +71,7 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun ChatOverlay(vm: AppVm) {
+    BackHandler(enabled = vm.chatOpen) { vm.closeChat() }
     if (vm.chatOpen) ChatPanel(vm) else ChatFab(vm)
 }
 
@@ -89,23 +91,27 @@ private fun ChatFab(vm: AppVm) {
                 )
             )
         }
+        androidx.compose.runtime.LaunchedEffect(maxW, maxH) {
+            pos = IntOffset(pos.x.coerceIn(0, (maxW - sizePx).coerceAtLeast(0f).toInt()),
+                pos.y.coerceIn(0, (maxH - sizePx).coerceAtLeast(0f).toInt()))
+        }
         Box(
             Modifier
                 .offset { pos }
                 .size(size)
                 .shadow(10.dp, CircleShape, ambientColor = Color(0x33000000), spotColor = Color(0x33000000))
                 .clip(CircleShape)
-                .background(Accent)
+                .background(Ink)
+                .tjClickable(label = "追问 AI") { vm.openChat() }
                 .pointerInput(maxW, maxH, sizePx) {
                     detectDragGestures { change, drag ->
                         change.consume()
                         pos = IntOffset(
-                            (pos.x + drag.x).coerceIn(0f, maxW - sizePx).toInt(),
-                            (pos.y + drag.y).coerceIn(0f, maxH - sizePx).toInt()
+                            (pos.x + drag.x).coerceIn(0f, (maxW - sizePx).coerceAtLeast(0f)).toInt(),
+                            (pos.y + drag.y).coerceIn(0f, (maxH - sizePx).coerceAtLeast(0f)).toInt()
                         )
                     }
-                }
-                .pointerInput(Unit) { detectTapGestures { vm.openChat() } },
+                },
             contentAlignment = Alignment.Center
         ) {
             Icon(Icons.Rounded.Forum, "追问 AI", tint = Color.White, modifier = Modifier.size(24.dp))
@@ -122,7 +128,7 @@ private fun ChatFab(vm: AppVm) {
 @Composable
 private fun ChatPanel(vm: AppVm) {
     val q = vm.chatQuestion
-    var input by remember { mutableStateOf("") }
+    var input by androidx.compose.runtime.saveable.rememberSaveable(q?.id) { mutableStateOf("") }
     val hasThread = vm.chatMessages.isNotEmpty()
 
     BoxWithConstraints(
@@ -130,16 +136,17 @@ private fun ChatPanel(vm: AppVm) {
             .background(Color(0x5C000000))
             .pointerInput(Unit) { detectTapGestures { vm.closeChat() } }
     ) {
-        val panelMax = (maxHeight - 88.dp).coerceAtLeast(320.dp)
+        val panelMax = (maxHeight - 24.dp).coerceAtLeast(0.dp)
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .then(if (hasThread) Modifier.height(panelMax) else Modifier.wrapContentHeight())
+                .height(panelMax)
                 .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(CardBg)
                 .pointerInput(Unit) { detectTapGestures { } }
         ) {
+            val compact = panelMax < 360.dp
             ChatHeader(vm, q)
             Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
 
@@ -164,22 +171,25 @@ private fun ChatPanel(vm: AppVm) {
                         }
                     }
                 }
-                vm.chatError?.let {
-                    Text(it, fontSize = 12.sp, color = Red, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-                }
             } else {
-                ChatHints(q) { input = it }
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    ChatHints(q) { input = it }
+                }
             }
 
+            vm.chatError?.let {
+                Text(it, fontSize = 12.sp, color = Red, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            }
             if (vm.chatQuote.isNotBlank()) {
-                QuoteBlock(vm.chatQuote) { vm.updateChatQuote("") }
+                QuoteBlock(vm.chatQuote, compact = compact) { vm.updateChatQuote("") }
             }
 
-            QuickChips(enabled = !vm.chatBusy) { vm.sendChat(it) }
+            if (!compact) QuickChips(enabled = !vm.chatBusy) { vm.sendChat(it) }
 
             ChatInput(
                 input = input,
                 busy = vm.chatBusy,
+                compact = compact,
                 onInput = { input = it },
                 onSend = {
                     val text = input
@@ -208,18 +218,19 @@ private fun ChatHeader(vm: AppVm, q: com.zhuquan.tijian.data.QuestionRow?) {
                     q?.categoryName?.takeIf { it.isNotBlank() }?.let { append(" · ").append(it) }
                     q?.let { append(" · 掌握度 ").append(it.mastery).append("/5") }
                 },
-                fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 2.dp)
+                fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 2.dp),
+                maxLines = 2, overflow = TextOverflow.Ellipsis
             )
         }
         if (vm.chatMessages.isNotEmpty()) {
             Box(
-                Modifier.size(42.dp).clip(CircleShape)
+                Modifier.size(48.dp).clip(CircleShape)
                     .tjClickable(label = "清空这道题的对话") { vm.clearChat() },
                 contentAlignment = Alignment.Center
             ) { Icon(Icons.Rounded.DeleteOutline, null, tint = Muted, modifier = Modifier.size(19.dp)) }
         }
         Box(
-            Modifier.size(42.dp).clip(CircleShape)
+            Modifier.size(48.dp).clip(CircleShape)
                 .tjClickable(label = "关闭") { vm.closeChat() },
             contentAlignment = Alignment.Center
         ) { Icon(Icons.Rounded.Close, null, tint = Ink2, modifier = Modifier.size(21.dp)) }
@@ -229,30 +240,11 @@ private fun ChatHeader(vm: AppVm, q: com.zhuquan.tijian.data.QuestionRow?) {
 /** 题目缩略图：和列表里一样，让人一眼认出这是哪道题；没有原图时退回题干首行。 */
 @Composable
 private fun QuestionThumb(q: com.zhuquan.tijian.data.QuestionRow?) {
-    val path = q?.imagePath
-    var bmp by remember(path) { mutableStateOf<ImageBitmap?>(null) }
-    androidx.compose.runtime.LaunchedEffect(path) {
-        bmp = withContext(Dispatchers.IO) {
-            path?.let { runCatching { BitmapFactory.decodeFile(it)?.asImageBitmap() }.getOrNull() }
-        }
-    }
-    Box(
-        Modifier.size(56.dp).clip(RoundedCornerShape(9.dp))
-            .background(SurfaceAlt)
-            .border(1.dp, Line, RoundedCornerShape(9.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        if (bmp != null) {
-            Image(
-                bitmap = bmp!!, contentDescription = "题目缩略图",
-                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
-            )
-        } else {
-            Text(
-                (q?.type ?: "题").take(2),
-                fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Muted
-            )
-        }
+    Box(Modifier.size(56.dp).clip(InnerShape).background(SurfaceAlt), contentAlignment = Alignment.Center) {
+        if (q?.imagePath != null) {
+            coil.compose.AsyncImage(model = java.io.File(q.imagePath), contentDescription = "题目缩略图",
+                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } else Text((q?.type ?: "题").take(2), fontSize = 12.sp, color = Muted)
     }
 }
 
@@ -303,7 +295,16 @@ private fun QuickChips(enabled: Boolean, onSend: (String) -> Unit) {
 
 /** 引用块：保留原排版（公式、表格），最多 150dp，可滚动。 */
 @Composable
-private fun QuoteBlock(quote: String, onClear: () -> Unit) {
+private fun QuoteBlock(quote: String, compact: Boolean = false, onClear: () -> Unit) {
+    if (compact) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(InnerShape).background(SurfaceAlt),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text("引用：$quote", Modifier.weight(1f).padding(start = 12.dp), color = Ink2,
+                fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            IconCircle(Icons.Rounded.Close, "取消引用") { onClear() }
+        }
+        return
+    }
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
             .clip(RoundedCornerShape(10.dp))
@@ -314,7 +315,7 @@ private fun QuoteBlock(quote: String, onClear: () -> Unit) {
             Text("引用", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
             Spacer(Modifier.weight(1f))
             Box(
-                Modifier.size(32.dp).clip(CircleShape)
+                Modifier.size(48.dp).clip(CircleShape)
                     .tjClickable(label = "取消引用") { onClear() },
                 contentAlignment = Alignment.Center
             ) { Icon(Icons.Rounded.Close, null, tint = Muted, modifier = Modifier.size(16.dp)) }
@@ -326,26 +327,26 @@ private fun QuoteBlock(quote: String, onClear: () -> Unit) {
 }
 
 @Composable
-private fun ChatInput(input: String, busy: Boolean, onInput: (String) -> Unit, onSend: () -> Unit) {
+private fun ChatInput(input: String, busy: Boolean, compact: Boolean = false, onInput: (String) -> Unit, onSend: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 10.dp),
         verticalAlignment = Alignment.Bottom
     ) {
-        OutlinedTextField(
+        TjTextField(
             value = input,
             onValueChange = onInput,
             placeholder = { Text("继续追问这道题…", fontSize = 13.sp, color = Muted) },
-            maxLines = 4,
+            maxLines = if (compact) 2 else 4,
             colors = tjFieldColors(),
-            shape = RoundedCornerShape(14.dp),
+            shape = CardShape,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = { onSend() }),
             modifier = Modifier.weight(1f)
         )
         Spacer(Modifier.width(8.dp))
         Box(
-            Modifier.size(52.dp).clip(RoundedCornerShape(14.dp))
-                .background(if (input.isBlank() || busy) SurfaceAlt else Accent)
+            Modifier.size(48.dp).clip(CircleShape)
+                .background(if (input.isBlank() || busy) SurfaceAlt else Ink)
                 .tjClickable(enabled = input.isNotBlank() && !busy, label = "发送") { onSend() },
             contentAlignment = Alignment.Center
         ) {

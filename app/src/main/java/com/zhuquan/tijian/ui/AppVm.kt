@@ -179,7 +179,11 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         captureUris = captureUris.map { if (it == source) Uri.fromFile(File(copy.path)) else it }
     }
 
-    fun addCapture(uri: Uri) { captureUris = captureUris + uri }
+    fun addCapture(uri: Uri) {
+        if (uri in captureUris) return
+        if (captureUris.size >= 9) { toast = "一次最多导入 9 张图片"; return }
+        captureUris = captureUris + uri
+    }
 
     fun removeCapture(uri: Uri) { captureUris = captureUris - uri }
 
@@ -304,9 +308,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     // ---------- review ----------
 
-    fun startReview() {
+    fun startReview(includeAll: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
-            val list = db.dueQuestions(40)
+            val list = if (includeAll) db.questions().take(40) else db.dueQuestions(40)
             withContext(Dispatchers.Main) {
                 reviewQueue = list
                 reviewIndex = 0
@@ -598,6 +602,15 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     // ---------- pdf ----------
 
+    suspend fun withBusy(label: String, action: suspend () -> Unit) {
+        if (busy) return
+        busy = true; busyLabel = label
+        try { action() }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (failure: Exception) { toast = failure.message ?: "操作失败，请重试" }
+        finally { busy = false; busyLabel = "" }
+    }
+
     suspend fun buildPdf(questions: List<QuestionRow>, title: String, opts: PdfExporter.Options): File =
         withContext(Dispatchers.IO) {
             val f = File(getApplication<Application>().cacheDir, "export/${safe(title)}_${System.currentTimeMillis()}.pdf")
@@ -617,7 +630,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val ctx = getApplication<Application>()
-                ctx.contentResolver.openOutputStream(uri)?.use { out ->
+                (ctx.contentResolver.openOutputStream(uri) ?: error("无法写入所选文件")).use { out ->
                     file.inputStream().use { it.copyTo(out) }
                 }
                 withContext(Dispatchers.Main) { toast = "已保存到文件" }
@@ -643,7 +656,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val ctx = getApplication<Application>()
-                ctx.contentResolver.openOutputStream(uri)?.use { out ->
+                (ctx.contentResolver.openOutputStream(uri) ?: error("无法写入所选文件")).use { out ->
                     val n = com.zhuquan.tijian.data.Backup.export(ctx, db, out)
                     withContext(Dispatchers.Main) { toast = "备份完成（$n 个文件）" }
                 }

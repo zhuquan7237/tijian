@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -49,23 +50,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /* ------------------------------------------------------------------
- * 题笺 · 墨白 Editorial（0.5.0）
+ * 题笺 · Neutral rounded（8.1.0）
  *
- * 冷白纸底 + 近黑墨字 + 单一靛蓝强调。层级靠字号/字重/留白，不靠
+ * 中性白底 + 石墨主操作 + 靛蓝状态强调。层级靠字号/字重/留白，不靠
  * 装饰符号；所有正文 ≥ 7:1，次要文字 ≥ 4.5:1，功能边框 ≥ 3:1。
  * 实测值见 docs/ui/contrast.py 与 docs/ui/DESIGN-0.5.md。
  * ------------------------------------------------------------------ */
 
-val Bg = Color(0xFFF5F6F8)
+val Bg = Color(0xFFF9F9F9)
 val CardBg = Color(0xFFFFFFFF)
-val SurfaceAlt = Color(0xFFEDF0F5)
-val Ink = Color(0xFF202733)
-val Ink2 = Color(0xFF46505F)
-val Muted = Color(0xFF596372)
+val SurfaceAlt = Color(0xFFF0F0F0)
+val Ink = Color(0xFF212121)
+val Ink2 = Color(0xFF444444)
+val Muted = Color(0xFF606060)
 /** 装饰性 hairline：只用于分组，不承担可点击边界。 */
-val Line = Color(0xFFE0E4EA)
-/** 输入框/可选控件的功能边框：4.7:1，强光下也能看见。 */
-val FieldBorder = Color(0xFF6B7789)
+val Line = Color(0xFFE5E5E5)
+/** 输入框/可选控件的功能边框：保持可辨识的中性灰描边。 */
+val FieldBorder = Color(0xFF767676)
 val Accent = Color(0xFF355CCE)
 val AccentSoft = Color(0xFFEDF2FF)
 val AccentPressed = Color(0xFF2449AE)
@@ -78,9 +79,9 @@ val RedSoft = Color(0xFFFBEBEC)
 val OnHeroMuted = Color(0xFFC3CBDA)
 val OnHeroKicker = Color(0xFFAEB8C8)
 
-val CardShape = RoundedCornerShape(18.dp)
-val SmallShape = RoundedCornerShape(12.dp)
-val InnerShape = RoundedCornerShape(10.dp)
+val CardShape = RoundedCornerShape(24.dp)
+val SmallShape = RoundedCornerShape(16.dp)
+val InnerShape = RoundedCornerShape(12.dp)
 
 /** 4/8 栅格：同一屏只用这几档间距。 */
 object Space {
@@ -97,11 +98,15 @@ object Space {
 @Composable
 fun TijianTheme(content: @Composable () -> Unit) {
     MaterialTheme(
+        shapes = androidx.compose.material3.Shapes(
+            extraSmall = InnerShape, small = SmallShape, medium = SmallShape,
+            large = CardShape, extraLarge = RoundedCornerShape(28.dp),
+        ),
         colorScheme = lightColorScheme(
-            primary = Accent,
+            primary = Ink,
             onPrimary = Color.White,
             primaryContainer = AccentSoft,
-            onPrimaryContainer = Color(0xFF1B2A8A),
+            onPrimaryContainer = Ink,
             secondary = Green,
             onSecondary = Color.White,
             secondaryContainer = GreenSoft,
@@ -155,10 +160,10 @@ fun tjFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedContainerColor = CardBg,
     unfocusedContainerColor = CardBg,
     cursorColor = Accent,
-    focusedBorderColor = Accent,
+    focusedBorderColor = Ink,
     unfocusedBorderColor = FieldBorder,
     disabledBorderColor = Line,
-    focusedLabelColor = Accent,
+    focusedLabelColor = Ink,
     unfocusedLabelColor = Ink2,
     focusedPlaceholderColor = Muted,
     unfocusedPlaceholderColor = Muted,
@@ -230,7 +235,7 @@ fun Modifier.bounceClick(
         .clickable(interactionSource = src, indication = LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick)
 }
 
-/** 圆角图标按钮：视觉 44dp，触控 48dp。 */
+/** 圆角图标按钮：视觉与触控统一 48dp。 */
 @Composable
 fun IconCircle(
     icon: ImageVector,
@@ -239,11 +244,11 @@ fun IconCircle(
     filled: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val bg = if (filled) Accent else CardBg
+    val bg = if (filled) Ink else SurfaceAlt
     val fg = if (filled) Color.White else tint
     Box(
         modifier = Modifier
-            .size(44.dp)
+            .size(48.dp)
             .clip(CircleShape)
             .background(bg)
             .then(if (filled) Modifier else Modifier.border(1.dp, Line, CircleShape))
@@ -279,8 +284,8 @@ fun TjTopBar(
         Column(Modifier.weight(1f).padding(start = if (onBack != null) 4.dp else 0.dp)) {
             Text(
                 title,
-                fontSize = if (onBack != null) 19.sp else 30.sp,
-                lineHeight = if (onBack != null) 26.sp else 38.sp,
+                fontSize = if (onBack != null) 19.sp else 26.sp,
+                lineHeight = if (onBack != null) 26.sp else 34.sp,
                 fontWeight = if (onBack != null) FontWeight.SemiBold else FontWeight.Bold,
                 letterSpacing = if (onBack != null) (-0.3).sp else (-1.0).sp,
                 color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis
@@ -311,20 +316,16 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, trailing: (@Compos
 /** 筛选 chip：选中=实心靛蓝白字，未选中=白底可辨边框。 */
 @Composable
 fun TjChip(text: String, selected: Boolean = false, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(if (selected) Accent else CardBg)
-            .border(1.dp, if (selected) Accent else FieldBorder.copy(alpha = 0.8f), RoundedCornerShape(999.dp))
-            .tjClickable(label = text) { onClick() }
-            .padding(horizontal = 14.dp, vertical = 8.dp)
-    ) {
-        Text(
-            text, fontSize = 12.sp, lineHeight = 16.sp,
-            color = if (selected) Color.White else Ink2,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
-        )
-    }
+    androidx.compose.material3.FilterChip(
+        selected = selected, onClick = onClick,
+        label = { Text(text, fontSize = 13.sp, fontWeight = FontWeight.Medium) },
+        shape = CircleShape,
+        modifier = Modifier.heightIn(min = 48.dp),
+        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+            containerColor = CardBg, labelColor = Ink2,
+            selectedContainerColor = Ink, selectedLabelColor = Color.White,
+        ),
+    )
 }
 
 /** 白卡：1dp 可见边框 + 极轻阴影，替代“描边糊成一片”的旧观感。 */
@@ -394,14 +395,4 @@ fun parseOptions(json: String): List<String> = try {
 @Composable
 fun DividerSoft() {
     Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
-}
-
-
-/** 对话框窗口里 navigationBarsPadding 往往拿不到 inset，这里直接读系统尺寸兜底。 */
-@Composable
-fun systemNavBarHeight(): androidx.compose.ui.unit.Dp {
-    val res = androidx.compose.ui.platform.LocalContext.current.resources
-    val id = res.getIdentifier("navigation_bar_height", "dimen", "android")
-    val px = if (id > 0) res.getDimensionPixelSize(id) else 0
-    return with(androidx.compose.ui.platform.LocalDensity.current) { px.toDp() }
 }

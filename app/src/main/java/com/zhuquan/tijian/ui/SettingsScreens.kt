@@ -74,13 +74,14 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(vm: AppVm) {
     var showAbout by remember { mutableStateOf(false) }
     var showBackup by remember { mutableStateOf(false) }
+    var restoreUri by remember { mutableStateOf<Uri?>(null) }
     val ctx = LocalContext.current
 
     val exportZip = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri: Uri? ->
         if (uri != null) vm.exportBackup(uri)
     }
     val importZip = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri != null) vm.importBackup(uri)
+        if (uri != null) restoreUri = uri
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -137,7 +138,7 @@ fun SettingsScreen(vm: AppVm) {
                 "题笺 v${Updater.currentName()} · 全部数据保存在本机\n识别与分类由你配置的模型完成，请自行评估隐私与费用。",
                 fontSize = 12.sp, lineHeight = 19.sp, color = Muted
             )
-            Spacer(Modifier.height(80.dp))
+            Spacer(Modifier.height(24.dp))
         }
     }
 
@@ -159,6 +160,14 @@ fun SettingsScreen(vm: AppVm) {
                 }) { Text("恢复备份", color = Red) }
             }
         )
+    }
+
+    restoreUri?.let { uri ->
+        AlertDialog(onDismissRequest = { restoreUri = null },
+            title = { Text("恢复并覆盖当前数据？") },
+            text = { Text("恢复会替换本机错题、图片及设置。请确认已导出当前备份。") },
+            confirmButton = { TextButton(onClick = { restoreUri = null; vm.importBackup(uri) }) { Text("恢复", color = Red) } },
+            dismissButton = { TextButton(onClick = { restoreUri = null }) { Text("取消") } })
     }
 
     if (showAbout) {
@@ -233,6 +242,7 @@ fun ProviderScreen(vm: AppVm) {
 
     fun pull() {
         if (baseUrl.isBlank()) { fetchError = "先填 Base URL"; return }
+        if (loading) return
         loading = true
         fetchError = null
         scope.launch {
@@ -254,14 +264,10 @@ fun ProviderScreen(vm: AppVm) {
             subtitle = if (vm.provider.ready()) "当前 ${vm.provider.model}" else "填一个 OpenAI 兼容接口即可开始",
             onBack = { vm.back() },
             actions = {
-                Box(
-                    Modifier.height(40.dp).clip(RoundedCornerShape(10.dp)).background(Accent)
-                        .tjClickable(label = "保存") {
-                            vm.saveProvider(ProviderConfig(baseUrl, apiKey, model, protocol, models))
-                            vm.back()
-                        }.padding(horizontal = 16.dp),
-                    contentAlignment = Alignment.Center
-                ) { Text("保存", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.SemiBold) }
+                TjButton("保存", enabled = cfg().ready()) {
+                    vm.saveProvider(cfg().copy(baseUrl = baseUrl.trim(), apiKey = apiKey.trim(), model = model.trim()))
+                    vm.back()
+                }
             }
         )
 
@@ -280,7 +286,7 @@ fun ProviderScreen(vm: AppVm) {
             ) {
                 PRESETS.forEach { (name, url) ->
                     TjChip(name, selected = baseUrl.trim() == url) {
-                        baseUrl = url
+                        baseUrl = url; models = emptyList(); fetchError = null; testResult = null; testError = null
                         if (protocol.isBlank()) protocol = "chat"
                     }
                 }
@@ -290,42 +296,34 @@ fun ProviderScreen(vm: AppVm) {
             CardBox(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     FieldLabel("接口地址")
-                    OutlinedTextField(
-                        value = baseUrl, onValueChange = { baseUrl = it },
+                    TjTextField(
+                        value = baseUrl, onValueChange = { baseUrl = it; models = emptyList(); fetchError = null; testResult = null; testError = null },
                         placeholder = { Text("https://api.example.com/v1", fontSize = 12.5.sp, color = Muted) },
                         singleLine = true, modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = SmallShape
                     )
                     Spacer(Modifier.height(12.dp))
                     FieldLabel("API Key")
-                    OutlinedTextField(
+                    TjTextField(
                         value = apiKey, onValueChange = { apiKey = it },
                         placeholder = { Text("sk-…", fontSize = 12.5.sp, color = Muted) },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true, modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = SmallShape
                     )
                     Spacer(Modifier.height(12.dp))
                     FieldLabel("模型")
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(
+                        TjTextField(
                             value = model, onValueChange = { model = it },
                             placeholder = { Text("点右侧拉取，或手动输入", fontSize = 12.sp, color = Muted) },
                             singleLine = true, modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = SmallShape
                         )
                         Spacer(Modifier.width(10.dp))
-                        Box(
-                            Modifier.height(56.dp).clip(RoundedCornerShape(12.dp)).background(Accent)
-                                .tjClickable {
-                                    if (models.isEmpty()) { showPicker = true; pull() }
-                                    else showPicker = true
-                                }
-                                .padding(horizontal = 14.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (loading) CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                            else Text("拉取", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+                        TjButton("拉取", loading = loading, style = ActionStyle.Secondary) {
+                            showPicker = true
+                            if (models.isEmpty()) pull()
                         }
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 9.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -370,27 +368,15 @@ fun ProviderScreen(vm: AppVm) {
             }
 
             Spacer(Modifier.height(16.dp))
-            Box(
-                Modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(14.dp)).background(CardBg)
-                    .border(1.dp, Accent, RoundedCornerShape(14.dp))
-                    .tjClickable {
-                        if (!testing) {
-                            testing = true; testError = null; testResult = null
-                            scope.launch {
-                                try {
-                                    testResult = vm.testProvider(cfg())
-                                } catch (e: Exception) {
-                                    testError = e.message ?: "连接失败"
-                                } finally { testing = false }
-                            }
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                if (testing) Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(15.dp), color = Accent, strokeWidth = 2.dp)
-                    Text("测试中…", fontSize = 12.sp, color = Ink2, modifier = Modifier.padding(start = 8.dp))
-                } else Text("测试连接（用当前模型发一句话）", fontSize = 12.sp, color = Ink2)
+            TjButton("测试连接", Modifier.fillMaxWidth(), enabled = cfg().ready(),
+                loading = testing, style = ActionStyle.Secondary) {
+                testing = true; testError = null; testResult = null
+                scope.launch {
+                    try { testResult = vm.testProvider(cfg()) }
+                    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (e: Exception) { testError = e.message ?: "连接失败" }
+                    finally { testing = false }
+                }
             }
             testResult?.let {
                 Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -468,11 +454,11 @@ private fun ModelPickerSheet(
                 )
             }
             Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
+            TjTextField(
                 value = query, onValueChange = { query = it },
                 placeholder = { Text("搜索模型", fontSize = 12.sp, color = Muted) },
                 singleLine = true, modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
+                shape = SmallShape
             )
             Spacer(Modifier.height(8.dp))
             when {
@@ -549,7 +535,7 @@ fun UpdateDialog(vm: AppVm) {
                         Updater.install(ctx, ready)
                     }
                 }) { Text("安装") }
-                downloading -> TextButton(onClick = {}) { Text("下载中…", color = Muted) }
+                downloading -> TextButton(onClick = {}, enabled = false) { Text("下载中…", color = Muted) }
                 else -> TextButton(onClick = { vm.downloadUpdate() }) { Text("下载并安装") }
             }
         },

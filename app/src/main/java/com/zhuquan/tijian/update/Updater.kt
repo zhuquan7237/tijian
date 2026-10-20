@@ -119,7 +119,7 @@ object Updater {
         val a = parts.getOrElse(0) { 0 }
         val b = parts.getOrElse(1) { 0 }
         val c = parts.getOrElse(2) { 0 }
-        return a * 10000 + b * 100 + c
+        return a * 1000000 + b * 10000 + c * 100
     }
 
     suspend fun download(ctx: Context, info: Info, onProgress: (Int) -> Unit): File =

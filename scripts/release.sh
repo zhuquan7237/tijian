@@ -27,9 +27,20 @@ s=re.sub(r'versionName = "[^"]*"', f'versionName = "{ver}"', s)
 open(p,'w',encoding='utf-8').write(s)
 PY
 
-export JAVA_HOME="${JAVA_HOME:-C:/Program Files/Microsoft/jdk-17.0.20.101-hotspot}"
-export ANDROID_HOME="${ANDROID_HOME:-C:/Users/zhuquan/AppData/Local/Android/Sdk}"
-./gradlew.bat assembleRelease --console=plain
+# Use the existing installation identity. Never publish an APK with a new debug key.
+if [[ "${OS:-}" == "Windows_NT" ]]; then
+  ./gradlew.bat assembleRelease lintRelease --console=plain
+else
+  bash ./gradlew assembleRelease lintRelease --console=plain
+fi
+SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)"
+EXPECTED_CERT="b304c3bf17ed5acb3c622c460de2db919d81d38f1763a6a104bcf079cb0fcf46"
+ACTUAL_CERT="$("$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+if [[ "$ACTUAL_CERT" != "$EXPECTED_CERT" ]]; then
+  echo "Signing certificate differs from v0.8.1. Set TIJIAN_KEYSTORE to the original keystore before publishing." >&2
+  exit 1
+fi
 
 mkdir -p build
 APK="build/tijian-$VER.apk"
@@ -51,7 +62,7 @@ cat build/update.json
 if git rev-parse --git-dir >/dev/null 2>&1 && git remote get-url origin >/dev/null 2>&1; then
   echo "==> 创建 GitHub Release v$VER"
   gh release create "v$VER" "$APK" build/update.json \
-    --repo "$REPO" --title "题笺 $VER" --notes "$NOTES" --latest
+    --repo "$REPO" --target "$(git rev-parse HEAD)" --title "题笺 $VER" --notes "$NOTES" --latest
   echo "==> 校验远端资产"
   gh release view "v$VER" --repo "$REPO" --json assets \
     --jq '.assets[] | "\(.name) \(.size)"'

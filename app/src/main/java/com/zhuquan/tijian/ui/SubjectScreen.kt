@@ -63,7 +63,7 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
             onDismissRequest = { creating = false },
             title = { Text("新增子分类 · " + route.name, fontSize = 16.sp, color = Ink) },
             text = {
-                OutlinedTextField(
+                TjTextField(
                     value = name, onValueChange = { name = it }, label = { Text("子分类名称") },
                     placeholder = { Text("例如：晶体结构", color = Muted) },
                     singleLine = true, colors = tjFieldColors(), modifier = Modifier.fillMaxWidth()
@@ -93,9 +93,9 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
 private fun SubjectChildCard(cat: CategoryRow, onOpen: () -> Unit, onDelete: () -> Unit) {
     Row(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(CardShape)
             .background(CardBg)
-            .border(1.dp, Line, RoundedCornerShape(16.dp))
+            .border(1.dp, Line, CardShape)
             .bounceClick(label = cat.name, onClick = onOpen)
             .padding(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically

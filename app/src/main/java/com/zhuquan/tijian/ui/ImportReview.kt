@@ -6,6 +6,8 @@ import com.zhuquan.tijian.data.fullName
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -133,12 +136,10 @@ fun ImportScreen(vm: AppVm) {
             Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 22.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Box(
-                Modifier.weight(0.38f).height(46.dp).clip(RoundedCornerShape(12.dp))
-                    .background(SurfaceAlt).tjClickable { vm.autoClassify() },
-                contentAlignment = Alignment.Center
-            ) { Text("AI 重新分类", fontSize = 11.5.sp, color = Ink2) }
-            BigButton("确认入库 ${vm.pending.size} 题", Modifier.weight(0.62f)) { vm.confirmPending() }
+            TjButton("AI 重新分类", Modifier.weight(1f), style = ActionStyle.Secondary, enabled = !vm.busy) {
+                vm.autoClassify()
+            }
+            BigButton("确认入库 ${vm.pending.size} 题", Modifier.weight(1f)) { vm.confirmPending() }
         }
     }
 
@@ -212,10 +213,7 @@ private fun DraftCard(
                     modifier = Modifier.padding(top = 5.dp).tjClickable { onEdit() }
                 )
             }
-            Icon(
-                Icons.Rounded.Close, "移除", tint = Color(0xFFBDBDB6),
-                modifier = Modifier.size(18.dp).tjClickable { onRemove() }
-            )
+            IconCircle(Icons.Rounded.Close, "移除这道题", tint = Muted) { onRemove() }
         }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -262,7 +260,7 @@ private fun DraftPreviewDialog(draft: DraftQuestion, onDismiss: () -> Unit, onEd
             usePlatformDefaultWidth = false, decorFitsSystemWindows = false
         )
     ) {
-        Column(Modifier.fillMaxSize().background(Bg).padding(bottom = systemNavBarHeight()).imePadding()) {
+        Column(Modifier.fillMaxSize().background(Bg).safeDrawingPadding().imePadding()) {
             Row(
                 Modifier.fillMaxWidth().padding(start = Space.page, end = 10.dp, top = 12.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -276,7 +274,7 @@ private fun DraftPreviewDialog(draft: DraftQuestion, onDismiss: () -> Unit, onEd
                 }
                 Icon(
                     Icons.Rounded.Close, "关闭",
-                    tint = Ink2, modifier = Modifier.size(44.dp).clip(CircleShape)
+                    tint = Ink2, modifier = Modifier.size(48.dp).clip(CircleShape)
                         .tjClickable(label = "关闭预览") { onDismiss() }.padding(10.dp)
                 )
             }
@@ -324,15 +322,11 @@ private fun DraftPreviewDialog(draft: DraftQuestion, onDismiss: () -> Unit, onEd
                 }
             }
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = Space.page, vertical = 12.dp),
+                Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = Space.page, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Box(
-                    Modifier.weight(0.42f).height(50.dp).clip(RoundedCornerShape(12.dp))
-                        .background(SurfaceAlt).tjClickable { onEdit() },
-                    contentAlignment = Alignment.Center
-                ) { Text("修改", fontSize = 14.sp, color = Ink2, fontWeight = FontWeight.Medium) }
-                BigButton("看完了", Modifier.weight(0.58f)) { onDismiss() }
+                TjButton("修改", Modifier.weight(1f).fillMaxHeight(), style = ActionStyle.Secondary) { onEdit() }
+                BigButton("看完了", Modifier.weight(1f).fillMaxHeight()) { onDismiss() }
             }
         }
     }
@@ -383,21 +377,21 @@ private fun EditDraftDialog(draft: DraftQuestion, onDismiss: () -> Unit, onSave:
         title = { Text("补录 / 修改", fontSize = 16.sp) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(value = stem, onValueChange = { stem = it }, label = { Text("题干", fontSize = 12.sp) }, minLines = 3, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = stem, onValueChange = { stem = it }, label = { Text("题干", fontSize = 12.sp) }, minLines = 3, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = type, onValueChange = { type = it }, label = { Text("题型", fontSize = 12.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = type, onValueChange = { type = it }, label = { Text("题型", fontSize = 12.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = answer, onValueChange = { answer = it }, label = { Text("答案", fontSize = 12.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = answer, onValueChange = { answer = it }, label = { Text("答案", fontSize = 12.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = analysis, onValueChange = { analysis = it }, label = { Text("解析", fontSize = 12.sp) }, minLines = 2, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = analysis, onValueChange = { analysis = it }, label = { Text("解析", fontSize = 12.sp) }, minLines = 2, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
                 Text("要做出这题，需要掌握（用逗号分隔）", fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
                 Spacer(Modifier.height(4.dp))
-                OutlinedTextField(value = formulas, onValueChange = { formulas = it }, label = { Text("公式", fontSize = 12.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = formulas, onValueChange = { formulas = it }, label = { Text("公式", fontSize = 12.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = concepts, onValueChange = { concepts = it }, label = { Text("概念", fontSize = 12.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = concepts, onValueChange = { concepts = it }, label = { Text("概念", fontSize = 12.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = methods, onValueChange = { methods = it }, label = { Text("方法", fontSize = 12.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = methods, onValueChange = { methods = it }, label = { Text("方法", fontSize = 12.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
@@ -428,7 +422,7 @@ fun CategoryPicker(
         Column(Modifier.blockSheetDrag().padding(horizontal = Space.page).padding(bottom = 26.dp)) {
             Text("选择分类", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             Text("当前：${current.ifBlank { "未分类" }}", fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
-            OutlinedTextField(
+            TjTextField(
                 value = query, onValueChange = { query = it },
                 placeholder = { Text("搜索分类", fontSize = 12.sp, color = Muted) },
                 singleLine = true, modifier = Modifier.fillMaxWidth()
@@ -448,17 +442,13 @@ fun CategoryPicker(
             }
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
+                TjTextField(
                     value = newName, onValueChange = { newName = it },
                     placeholder = { Text("学科/子分类，如数学/积分", fontSize = 12.sp, color = Muted) },
                     singleLine = true, modifier = Modifier.weight(1f)
                 )
                 Spacer(Modifier.width(8.dp))
-                Box(
-                    Modifier.height(44.dp).clip(RoundedCornerShape(10.dp)).background(Accent)
-                        .tjClickable { if (newName.isNotBlank()) onPick(newName.trim()) }
-                        .padding(horizontal = 14.dp), contentAlignment = Alignment.Center
-                ) { Text("新建", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold) }
+                TjButton("新建", enabled = newName.isNotBlank(), style = ActionStyle.Secondary) { onPick(newName.trim()) }
             }
         }
     }
@@ -532,7 +522,7 @@ fun ReviewScreen(vm: AppVm) {
                         Text("这道题还没有答案与解析。", fontSize = 12.sp, color = Muted)
                     }
                 }
-                Spacer(Modifier.height(80.dp))
+                Spacer(Modifier.height(24.dp))
             }
 
             if (!vm.revealAnswer) {
@@ -557,11 +547,11 @@ fun ReviewScreen(vm: AppVm) {
 @Composable
 private fun RateButton(text: String, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        modifier.height(50.dp).clip(RoundedCornerShape(14.dp)).background(Color.White)
-            .border(1.dp, color.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+        modifier.heightIn(min = 48.dp).clip(CircleShape).background(Color.White)
+            .border(1.dp, color.copy(alpha = 0.45f), CircleShape)
             .tjClickable { onClick() },
         contentAlignment = Alignment.Center
-    ) { Text(text, fontSize = 12.5.sp, color = color, fontWeight = FontWeight.SemiBold) }
+    ) { Text(text, fontSize = 14.sp, color = color, fontWeight = FontWeight.SemiBold) }
 }
 
 
