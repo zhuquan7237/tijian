@@ -117,6 +117,13 @@ fun AppRoot(vm: AppVm = viewModel()) {
             val from = outgoingRoute
             from != null && isPeerRoute(from) && isPeerRoute(vm.route)
         }
+        // FlClash 的 tab 切换是横向 PageView：按 tab 顺序决定滑动方向。
+        val peerDir = remember(vm.route) {
+            val from = outgoingRoute
+            if (from != null && isPeerRoute(from) && isPeerRoute(vm.route)) {
+                if (peerIndex(vm.route) >= peerIndex(from)) 1f else -1f
+            } else 0f
+        }
         val navDir = remember(vm.route) { if (vm.navForward) 1f else -1f }
         val navAnim = remember(vm.route) {
             androidx.compose.animation.core.Animatable(if (outgoingRoute == null) 1f else 0f)
@@ -124,7 +131,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
         LaunchedEffect(vm.route) {
             lastRoute = vm.route
             if (outgoingRoute != null) {
-                navAnim.animateTo(1f, tween(Motion.Page, easing = Motion.Enter))
+                navAnim.animateTo(1f, tween(300, easing = FastOutSlowInEasing))
             }
             delay(80)
             pages.keys.toList().filter { !vm.retainsPage(it) }.forEach {
@@ -153,15 +160,14 @@ fun AppRoot(vm: AppVm = viewModel()) {
                     var al = 1f
                     if (visible) {
                         if (peerMove) {
-                            // 同级 tab 用 Material fade-through：旧页先在 30% 时长内
-                            // 完全淡出，新页再从 30% 处淡入。两页不同时可见，
-                            // 不会出现文字互相叠着的“重影/闪屏”。
-                            al = if (isCurrent) {
-                                if (outgoingRoute == null) 1f
-                                else ((p - 0.3f) / 0.7f).coerceIn(0f, 1f)
+                            // 照 FlClash 的 PageView：两页都不透明，整屏横向滑动，
+                            // 新页从对应方向推入、旧页同速退出，没有交叉淡化重影。
+                            if (isCurrent) {
+                                x = (1f - p) * size.width * peerDir
                             } else {
-                                (1f - p / 0.3f).coerceIn(0f, 1f)
+                                x = -p * size.width * peerDir
                             }
+                            al = 1f
                         } else if (navDir > 0f) {
                             // 进入：新页从右侧整屏推入；旧页左移半屏、缩到 0.7、淡出
                             if (isCurrent) {
@@ -215,6 +221,15 @@ fun AppRoot(vm: AppVm = viewModel()) {
             }
         }
         }
+        }
+        // tab 滑动时页面内的底栏会跟着横向移动；在顶层盖一条同样的底栏，
+        // 让底栏保持不动（FlClash 的 NavigationBar 在 PageView 外面）。
+        if (peerMove && navAnim.value < 1f) {
+            Box(Modifier.align(Alignment.BottomCenter).background(CardBg)) {
+                BottomBar(vm.route, onHome = { vm.home() },
+                    onLibrary = { vm.replace(Route.Library); vm.refresh() },
+                    onSettings = { vm.replace(Route.Settings); vm.refresh() })
+            }
         }
         vm.toast?.let { msg ->
             LaunchedEffect(msg) {
@@ -275,6 +290,13 @@ fun AppRoot(vm: AppVm = viewModel()) {
 }
 
 private fun isPeerRoute(route: Route): Boolean = route is Route.Home || route is Route.Library || route is Route.Settings
+
+private fun peerIndex(route: Route): Int = when (route) {
+    is Route.Home -> 0
+    is Route.Library -> 1
+    is Route.Settings -> 2
+    else -> 0
+}
 
 @Composable
 private fun ImportOption(
