@@ -54,6 +54,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -764,10 +765,26 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     repeat(6) { i ->
                         val on = i == question.mastery
+                        val segBg by androidx.compose.animation.animateColorAsState(
+                            targetValue = if (on) Accent else SurfaceAlt,
+                            animationSpec = androidx.compose.animation.core.tween(Motion.Base, easing = Motion.Enter),
+                            label = "mastery-bg"
+                        )
+                        val segFg by androidx.compose.animation.animateColorAsState(
+                            targetValue = if (on) Color.White else Ink2,
+                            animationSpec = androidx.compose.animation.core.tween(Motion.Fast),
+                            label = "mastery-fg"
+                        )
+                        val segScale by androidx.compose.animation.core.animateFloatAsState(
+                            targetValue = if (on) 1.04f else 1f,
+                            animationSpec = androidx.compose.animation.core.tween(Motion.Fast, easing = Motion.Enter),
+                            label = "mastery-scale"
+                        )
                         Box(
                             Modifier.weight(1f).heightIn(min = 48.dp).clip(SmallShape)
-                                .background(if (on) Accent else SurfaceAlt)
-                                .border(1.dp, if (on) Accent else FieldBorder.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                                .graphicsLayer { scaleX = segScale; scaleY = segScale }
+                                .background(segBg)
+                                .border(1.dp, segBg, RoundedCornerShape(10.dp))
                                 .tjClickable(label = "掌握度 $i") {
                                     vm.db.setMastery(question.id, i)
                                     q = question.copy(mastery = i)
@@ -779,7 +796,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                             Text(
                                 "$i", fontSize = 14.sp,
                                 fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
-                                color = if (on) Color.White else Ink2
+                                color = segFg
                             )
                         }
                     }

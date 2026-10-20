@@ -124,7 +124,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
         LaunchedEffect(vm.route) {
             lastRoute = vm.route
             if (outgoingRoute != null) {
-                navAnim.animateTo(1f, tween(300, easing = FastOutSlowInEasing))
+                navAnim.animateTo(1f, tween(Motion.Page, easing = Motion.Enter))
             }
             delay(80)
             pages.keys.toList().filter { !vm.retainsPage(it) }.forEach {

@@ -40,12 +40,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -87,7 +89,8 @@ private fun ChatFab(vm: AppVm) {
             mutableStateOf(
                 IntOffset(
                     (maxW - sizePx - 18.dp.value * density.density).toInt(),
-                    (maxH * 0.58f).toInt()
+                    // 默认贴近右下、在底部 tab 之上；用户仍可拖动到任意位置。
+                    (maxH - sizePx - 96.dp.value * density.density).toInt()
                 )
             )
         }
@@ -131,8 +134,14 @@ private fun ChatPanel(vm: AppVm) {
     var input by androidx.compose.runtime.saveable.rememberSaveable(q?.id) { mutableStateOf("") }
     val hasThread = vm.chatMessages.isNotEmpty()
 
+    // 面板从底部轻轻抬起并淡入（180ms），不用 scale(0) 那种“凭空出现”。
+    val appear = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) {
+        appear.animateTo(1f, androidx.compose.animation.core.tween(Motion.Base, easing = Motion.Enter))
+    }
     BoxWithConstraints(
         Modifier.fillMaxSize()
+            .graphicsLayer { alpha = appear.value }
             .background(Color(0x5C000000))
             .pointerInput(Unit) { detectTapGestures { vm.closeChat() } }
     ) {
@@ -142,6 +151,7 @@ private fun ChatPanel(vm: AppVm) {
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .height(panelMax)
+                .graphicsLayer { translationY = (1f - appear.value) * 24.dp.toPx() }
                 .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(CardBg)
                 .pointerInput(Unit) { detectTapGestures { } }
