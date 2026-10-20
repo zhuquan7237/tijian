@@ -125,7 +125,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     private val readyPages = androidx.compose.runtime.mutableStateMapOf<Route, Boolean>()
     fun pageReady(page: Route) { readyPages[page] = true }
-    fun canDisplay(page: Route): Boolean = page !is Route.Detail || readyPages[page] == true
+    // 详情页不再等 WebView 排版完成才显示：先出页面骨架，正文随后填入，
+    // 否则点进题目会有明显的「卡住一下」。
+    fun canDisplay(page: Route): Boolean = true
     fun forgetPage(page: Route) { readyPages.remove(page) }
 
     fun navigationDepth(): Int = stack.size

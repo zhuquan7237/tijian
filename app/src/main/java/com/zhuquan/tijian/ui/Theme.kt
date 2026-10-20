@@ -1,6 +1,7 @@
 package com.zhuquan.tijian.ui
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -224,15 +225,21 @@ fun Modifier.bounceClick(
 ): Modifier {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
+    // 按下要“立刻有反应”：0.95 的压缩 + 高刚度弹簧，松手回弹。
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.976f else 1f,
-        animationSpec = tween(110),
+        targetValue = if (pressed) 0.95f else 1f,
+        animationSpec = if (pressed) spring(dampingRatio = 0.55f, stiffness = 900f)
+        else spring(dampingRatio = 0.65f, stiffness = 420f),
         label = "press"
     )
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     return this
         .graphicsLayer { scaleX = scale; scaleY = scale }
         .then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)
-        .clickable(interactionSource = src, indication = LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick)
+        .clickable(interactionSource = src, indication = LocalIndication.current, enabled = enabled, role = Role.Button) {
+            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+            onClick()
+        }
 }
 
 /** 圆角图标按钮：视觉与触控统一 48dp。 */

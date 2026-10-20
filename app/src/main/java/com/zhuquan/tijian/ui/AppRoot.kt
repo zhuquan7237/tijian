@@ -13,8 +13,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -110,14 +113,30 @@ fun AppRoot(vm: AppVm = viewModel()) {
         Box(Modifier.fillMaxSize()) {
         pages.toMap().forEach { (route, depth) ->
         androidx.compose.runtime.key(route) {
-            // 页面切换一律硬切：WebView 在 translate/alpha 动画期间会留下上一帧，
-            // 看起来就是重影。这里不做位移动画，旧页在下一帧直接隐藏。
+            // Material Motion：同级 tab 用 fade-through（只淡入淡出、不横向位移）；
+            // 进入/返回详情用 shared-axis X（约 14dp 位移 + 依次淡出/淡入）。
+            // 旧版重影来自两页同时以 0.96 alpha 叠着，现在旧页会完整淡到 0。
+            val dir = when {
+                peerChange -> 0f
+                vm.navForward -> 1f
+                else -> -1f
+            }
             val offset by transition.animateFloat(
-                transitionSpec = { tween(0) }, label = "page-position"
-            ) { target -> if (target == route || peerChange) 0f else if (depth < (pages[target] ?: 0)) -0.3f else 1f }
+                transitionSpec = { tween(300, easing = FastOutSlowInEasing) },
+                label = "page-position"
+            ) { target ->
+                if (target == route || peerChange) 0f
+                else if (transition.targetState == route) 0.04f * dir
+                else -0.04f * dir
+            }
             val alpha by transition.animateFloat(
-                transitionSpec = { tween(0) }, label = "peer-opacity"
-            ) { target -> if (target == route || !peerChange) 1f else 0f }
+                transitionSpec = {
+                    if (transition.targetState == route)
+                        tween(220, delayMillis = 90, easing = FastOutSlowInEasing)
+                    else tween(100, easing = LinearOutSlowInEasing)
+                },
+                label = "page-opacity"
+            ) { target -> if (target == route) 1f else 0f }
             val active = route == transition.currentState || route == transition.targetState
             val front = if (peerChange || vm.navForward) route == transition.targetState else route == transition.currentState
             Box(Modifier.fillMaxSize().zIndex(if (!active) -2f else if (front) 1f else 0f)
@@ -127,7 +146,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
                     clip = true
                 }.then(if (route != visualRoute) Modifier.clearAndSetSemantics {} else Modifier).background(Bg)) {
                 Column(Modifier.fillMaxSize()) {
-                    Box(Modifier.weight(1f).graphicsLayer { this.alpha = if (peerChange) alpha else 1f }) {
+                    Box(Modifier.weight(1f).graphicsLayer { this.alpha = alpha }) {
                         when (route) {
                             is Route.Home -> HomeScreen(vm) { showImport = true }
                             is Route.Subject -> SubjectScreen(vm, route)
@@ -270,25 +289,45 @@ private fun TabItem(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (pressed) 0.90f else 1f,
+        animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.5f, stiffness = 820f),
+        label = "tab-press"
+    )
+    val tint by androidx.compose.animation.animateColorAsState(
+        targetValue = if (selected) Accent else Muted,
+        animationSpec = tween(160), label = "tab-tint"
+    )
+    val pill by androidx.compose.animation.animateColorAsState(
+        targetValue = if (selected) AccentSoft else Color.Transparent,
+        animationSpec = tween(160), label = "tab-pill"
+    )
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     Column(
-        modifier.heightIn(min = 64.dp).tjClickable(label = label, onClick = onClick).padding(vertical = 6.dp),
+        modifier.heightIn(min = 64.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clickable(
+                interactionSource = src,
+                indication = androidx.compose.foundation.LocalIndication.current,
+                role = androidx.compose.ui.semantics.Role.Tab,
+            ) {
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                onClick()
+            }
+            .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Box(
-            Modifier.clip(RoundedCornerShape(999.dp))
-                .background(if (selected) AccentSoft else Color.Transparent)
+            Modifier.clip(RoundedCornerShape(999.dp)).background(pill)
                 .padding(horizontal = 14.dp, vertical = 3.dp)
         ) {
-            Icon(
-                icon, null,
-                tint = if (selected) Accent else Muted,
-                modifier = Modifier.size(22.dp)
-            )
+            Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
         }
         Text(
-            label, fontSize = 11.sp,
-            color = if (selected) Accent else Muted,
+            label, fontSize = 11.sp, color = tint,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             modifier = Modifier.padding(top = 2.dp)
         )

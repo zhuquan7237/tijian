@@ -68,6 +68,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -362,12 +363,18 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
     androidx.compose.runtime.DisposableEffect(id) {
         onDispose { vm.categoryScroll[id] = listState.firstVisibleItemIndex }
     }
-    var rows by remember(id, filter) { mutableStateOf<List<QuestionRow>>(emptyList()) }
+    // 切换筛选时保留旧列表，等新结果回来再整体替换；否则 remember 以 filter
+    // 为 key 会先把 rows 置空，界面闪一下空白再填充。
+    var rows by remember(id) { mutableStateOf<List<QuestionRow>>(emptyList()) }
     LaunchedEffect(id, filter, vm.dataRevision) {
-        rows = withContext(Dispatchers.IO) { vm.db.questions(id, filter) }
+        val next = withContext(Dispatchers.IO) { vm.db.questions(id, filter) }
+        rows = next
     }
 
-    LaunchedEffect(filter) { selected.value = emptySet() }
+    LaunchedEffect(filter) {
+        selected.value = emptySet()
+        runCatching { listState.animateScrollToItem(0) }
+    }
     LaunchedEffect(rows) { selected.value = selected.value.intersect(rows.map { it.id }.toSet()) }
 
     val createPdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri: Uri? ->
@@ -579,6 +586,8 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
     if (vm.busy && (showExport || selecting)) BusyOverlay(vm.busyLabel)
 }
 
+private fun Color.toHexColor(): String = "#%06X".format(0xFFFFFF and toArgb())
+
 @Composable
 fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.Detail) {
     val id = route?.id ?: return
@@ -606,9 +615,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
     var editing by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var viewingImage by remember { mutableStateOf<String?>(null) }
-    var selection by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
-    val readySections = remember(id) { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
 
     LaunchedEffect(id, vm.dataRevision) {
         vm.rememberQuestion(id)
@@ -622,11 +629,6 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
             Text(loadError ?: "正在读取题目…", color = Muted, modifier = Modifier.padding(18.dp))
         }
         return
-    }
-    val expectedSections = listOf("stem" to (question.stem.isNotBlank() || parseOptions(question.options).isNotEmpty()),
-        "answer" to question.answer.isNotBlank(), "analysis" to question.analysis.isNotBlank()).filter { it.second }.map { it.first }
-    LaunchedEffect(id, readySections.toMap(), expectedSections) {
-        if (expectedSections.all { readySections[it] == true }) vm.pageReady(Route.Detail(id))
     }
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
@@ -663,25 +665,22 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
             }
             if (stem.isBlank()) {
                 Text("（未识别题干，点下方编辑按钮补录）", fontSize = 12.sp, color = Muted)
-            } else {
-                RichSection("题目", "题干与选项", Ink2) {
-                    RichText(stem, fontSize = 16, selectable = true,
-                        onSelect = { selection = it }, onAsk = { vm.openChat(it) }, onReady = { readySections["stem"] = true })
-                }
             }
-            if (question.answer.isNotBlank()) {
-                Spacer(Modifier.height(16.dp))
-                RichSection("答案", "先看结论，再对照解析", Green) {
-                    RichText(question.answer, fontSize = 15, selectable = true,
-                        onSelect = { selection = it }, onAsk = { vm.openChat(it) }, onReady = { readySections["answer"] = true })
-                }
+            // 题目 / 答案 / 解析合成一份 HTML：只加载一次 KaTeX，滚动时也只有一个
+            // WebView 参与测量，避免三四个 WebView 各测一遍导致的卡顿。
+            val docSections = buildList {
+                if (stem.isNotBlank()) add(RichSectionSpec("题目", stem, "题干与选项", Ink2.toHexColor(), 16))
+                if (question.answer.isNotBlank()) add(RichSectionSpec("答案", question.answer, "先看结论，再对照解析", Green.toHexColor(), 15))
+                if (question.analysis.isNotBlank()) add(RichSectionSpec("解析", question.analysis, "按步骤展开推理", Accent.toHexColor(), 15))
             }
-            if (question.analysis.isNotBlank()) {
-                Spacer(Modifier.height(16.dp))
-                RichSection("解析", "按步骤展开推理", Accent) {
-                    RichText(question.analysis, fontSize = 15, selectable = true,
-                        onSelect = { selection = it }, onAsk = { vm.openChat(it) }, onReady = { readySections["analysis"] = true })
-                }
+            if (docSections.isNotEmpty()) {
+                Spacer(Modifier.height(24.dp))
+                RichText(
+                    markdown = "",
+                    sections = docSections,
+                    selectable = true,
+                    onAsk = { vm.openChat(it) },
+                )
             }
             val needFormulas = parseKnowledgeTags(question.needFormulas)
             val needConcepts = parseKnowledgeTags(question.needConcepts)

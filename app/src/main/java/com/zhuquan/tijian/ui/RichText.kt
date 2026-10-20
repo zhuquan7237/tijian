@@ -37,11 +37,35 @@ import java.util.concurrent.atomic.AtomicInteger
  * 统一富文本渲染：Markdown + KaTeX + mhchem + GFM 表格 + 代码块。
  * 内容在本地 WebView 中渲染，高度回传给 Compose，父级滚动。
  */
+/** 详情页的一段富文本：标题、副标题、强调色、正文，最终渲染成一张 HTML 白卡。 */
+data class RichSectionSpec(
+    val title: String,
+    val markdown: String,
+    val subtitle: String = "",
+    val color: String = "#2F4BD8",
+    val fontSize: Int = 15,
+)
+
 object RichTextRenderer {
     private val generations = AtomicInteger()
     fun nextGeneration(): Int = generations.incrementAndGet()
     @Volatile
     private var template: String? = null
+
+    private fun sectionsJson(sections: List<RichSectionSpec>?): String {
+        if (sections == null) return "null"
+        val arr = org.json.JSONArray()
+        sections.forEach { sec ->
+            arr.put(JSONObject().apply {
+                put("title", sec.title)
+                put("subtitle", sec.subtitle)
+                put("color", sec.color)
+                put("markdown", sec.markdown)
+                put("fontSize", sec.fontSize)
+            })
+        }
+        return arr.toString()
+    }
 
     fun html(
         context: Context,
@@ -50,6 +74,7 @@ object RichTextRenderer {
         widthDp: Int = 360,
         renderId: Int = 0,
         selectable: Boolean = false,
+        sections: List<RichSectionSpec>? = null,
     ): String {
         val tpl = template ?: context.assets.open("richtext/renderer.html")
             .bufferedReader().use { it.readText() }.also { template = it }
@@ -58,6 +83,7 @@ object RichTextRenderer {
             .replace("__WIDTH__", widthDp.toString())
             .replace("__RENDER_ID__", renderId.toString())
             .replace("__SELECTABLE__", if (selectable) "true" else "false")
+            .replace("__SECTIONS__", sectionsJson(sections))
             .replace("__CONTENT__", JSONObject.quote(markdown))
     }
 }
@@ -111,15 +137,16 @@ private class TjWebView(ctx: Context) : WebView(ctx) {
                     if (item.itemId == MENU_COPY) onCopyText?.invoke(text)
                     else onAskText?.invoke(text)
                 }
+                evaluateJavascript("window.__rtClearSel && window.__rtClearSel()", null)
                 mode.finish()
             }
             return true
         }
 
         override fun onDestroyActionMode(mode: ActionMode) {
-            evaluateJavascript(
-                "(function(){if(window.__rtClearSel)window.__rtClearSel();else{var s=window.getSelection();if(s)s.removeAllRanges();}})()", null
-            )
+            // 不要在这里清空选区：拖动左右手柄时 WebView 会先销毁再重建
+            // ActionMode，清空会把正在调整的选区直接抹掉，手柄也随之消失。
+            // 选区交给系统在点击空白处时自行收起。
         }
     }
 
@@ -144,6 +171,7 @@ fun RichText(
     markdown: String,
     modifier: Modifier = Modifier,
     fontSize: Int = 15,
+    sections: List<RichSectionSpec>? = null,
     selectable: Boolean = false,
     /** false 时 WebView 不接管触摸，交给外层 Compose 滚动（聊天面板这种只读场景）。 */
     interactive: Boolean = true,
@@ -151,7 +179,7 @@ fun RichText(
     onAsk: (String) -> Unit = {},
     onReady: () -> Unit = {},
 ) {
-    if (markdown.isBlank()) return
+    if (sections == null && markdown.isBlank()) return
     val context = LocalContext.current
     val fontScale = LocalDensity.current.fontScale
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -159,12 +187,12 @@ fun RichText(
     val widthDp = maxWidth.value.roundToInt().coerceAtLeast(1)
     val scaledFontSize = (fontSize * fontScale).roundToInt().coerceAtLeast(1)
     val normalized = remember(markdown) { Normalize.text(markdown) }
-    val renderId = remember(normalized, scaledFontSize, widthDp, selectable) { RichTextRenderer.nextGeneration() }
+    val renderId = remember(normalized, scaledFontSize, widthDp, selectable, sections) { RichTextRenderer.nextGeneration() }
     val height = remember(renderId) {
         mutableIntStateOf(0)
     }
     val html = remember(normalized, scaledFontSize, widthDp, renderId) {
-        RichTextRenderer.html(context, normalized, scaledFontSize, widthDp, renderId, selectable)
+        RichTextRenderer.html(context, normalized, scaledFontSize, widthDp, renderId, selectable, sections)
     }
     // AndroidView factory lives longer than this document: always route callbacks
     // to the current state, and check the generation again on the UI thread.
