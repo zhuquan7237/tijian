@@ -263,10 +263,10 @@ private fun SubjectTile(name: String, count: Int, mastered: Int, modifier: Modif
     val hasQuestions = count > 0
     Column(
         modifier
+            .bounceClick(label = name, onClick = onClick)
             .clip(CardShape)
             .background(CardBg)
             .border(1.dp, Line, CardShape)
-            .bounceClick(label = name, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 11.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -313,10 +313,10 @@ private fun SubjectWideRow(name: String, count: Int, mastered: Int, onClick: () 
     val hasQuestions = count > 0
     Row(
         Modifier.fillMaxWidth()
+            .bounceClick(label = name, onClick = onClick)
             .clip(CardShape)
             .background(CardBg)
             .border(1.dp, Line, CardShape)
-            .bounceClick(label = name, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -444,12 +444,15 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                 LazyColumn(Modifier.weight(1f), state = listState) {
                     items(rows, key = { it.id }) { q ->
                         val isSel = selected.value.contains(q.id)
+                        val rowSrc = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
                         Row(
-                            Modifier.fillMaxWidth().heightIn(min = 88.dp).tjClickable {
-                                if (selecting) {
-                                    selected.value = if (isSel) selected.value - q.id else selected.value + q.id
-                                } else vm.go(Route.Detail(q.id))
-                            }.padding(horizontal = 14.dp, vertical = 9.dp),
+                            Modifier.pressScale(rowSrc)
+                                .fillMaxWidth().heightIn(min = 88.dp)
+                                .tjClickable(interactionSource = rowSrc) {
+                                    if (selecting) {
+                                        selected.value = if (isSel) selected.value - q.id else selected.value + q.id
+                                    } else vm.go(Route.Detail(q.id))
+                                }.padding(horizontal = 14.dp, vertical = 9.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(Modifier.width(56.dp)) {
@@ -1069,10 +1072,11 @@ fun dateStamp(): String = SimpleDateFormat("yyyyMMdd", Locale.CHINA).format(Date
 @Composable
 private fun RecentCard(q: QuestionRow, onClick: () -> Unit) {
     Column(
-        Modifier.width(148.dp).shadow(2.dp, RoundedCornerShape(16.dp), ambientColor = Color(0x0F0F1B3D), spotColor = Color(0x0F0F1B3D))
+        Modifier.width(148.dp)
+            .bounceClick(label = "打开错题", onClick = onClick)
+            .shadow(2.dp, RoundedCornerShape(16.dp), ambientColor = Color(0x0F0F1B3D), spotColor = Color(0x0F0F1B3D))
             .clip(RoundedCornerShape(16.dp)).background(CardBg)
             .border(1.dp, Line, RoundedCornerShape(16.dp))
-            .bounceClick(label = "打开错题", onClick = onClick)
     ) {
         Box(Modifier.fillMaxWidth().height(100.dp).background(SurfaceAlt)) {
             if (q.imagePath != null) {

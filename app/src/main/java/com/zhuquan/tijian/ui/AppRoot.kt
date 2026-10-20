@@ -157,44 +157,36 @@ fun AppRoot(vm: AppVm = viewModel()) {
                     val p = navAnim.value
                     var x = 0f
                     var sc = 1f
-                    var al = 1f
                     if (visible) {
                         if (peerMove) {
-                            // 照 FlClash 的 PageView：两页都不透明，整屏横向滑动，
-                            // 新页从对应方向推入、旧页同速退出，没有交叉淡化重影。
-                            if (isCurrent) {
-                                x = (1f - p) * size.width * peerDir
-                            } else {
-                                x = -p * size.width * peerDir
-                            }
-                            al = 1f
+                            // FlClash PageView：两页不透明，整屏横向滑动。
+                            x = if (isCurrent) (1f - p) * size.width * peerDir
+                            else -p * size.width * peerDir
                         } else if (navDir > 0f) {
-                            // 进入：新页从右侧整屏推入；旧页左移半屏、缩到 0.7、淡出
-                            if (isCurrent) {
-                                x = (1f - p) * size.width
-                            } else {
+                            // 进入：新页整屏推入；旧页左移半屏 + 缩到 0.7。
+                            if (isCurrent) x = (1f - p) * size.width
+                            else {
                                 x = -p * size.width * 0.5f
                                 sc = 1f - 0.3f * p
-                                al = 1f - p
                             }
                         } else {
-                            // 返回：当前页整屏右移；上一页从左侧半屏、0.7 缩放淡入
+                            // 返回：当前页整屏右移；上一页从左侧半屏放大回来。
                             if (isCurrent) {
                                 x = -(1f - p) * size.width * 0.5f
                                 sc = 0.7f + 0.3f * p
-                                al = if (outgoingRoute == null) 1f else p
                             } else {
                                 x = p * size.width
                             }
                         }
                     } else {
                         x = size.width * 2
-                        al = 0f
                     }
                     translationX = x
                     scaleX = sc
                     scaleY = sc
-                    alpha = al
+                    // 页面本身永远 alpha=1。图片/WebView 在 alpha 合成层里会残留
+                    // 上一帧，造成切换时的图片拖影；压暗改用下面的纯色遮罩。
+                    alpha = 1f
                     clip = true
                 }.then(if (!isCurrent) Modifier.clearAndSetSemantics {} else Modifier)) {
                 Column(Modifier.fillMaxSize().background(Bg)) {
@@ -217,6 +209,18 @@ fun AppRoot(vm: AppVm = viewModel()) {
                         onHome = { vm.home() },
                         onLibrary = { vm.replace(Route.Library); vm.refresh() },
                         onSettings = { vm.replace(Route.Settings); vm.refresh() })
+                }
+                if (!peerMove) {
+                    // 纯色遮罩只压暗，不改变页面的 alpha，图片不会留下幽灵帧。
+                    Box(Modifier.matchParentSize().graphicsLayer {
+                        val p = navAnim.value
+                        alpha = when {
+                            !visible -> 0f
+                            isCurrent && navDir < 0f -> 0.26f * (1f - p)
+                            isOutgoing && navDir > 0f -> 0.36f * p
+                            else -> 0f
+                        }
+                    }.background(Color.Black))
                 }
             }
         }

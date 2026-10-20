@@ -218,7 +218,13 @@ private fun DocRowItem(
     onPdf: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().tjClickable { onOpen() }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    val rowSrc = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Row(
+        Modifier.pressScale(rowSrc).fillMaxWidth()
+            .tjClickable(interactionSource = rowSrc) { onOpen() }
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Box(
             Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(SurfaceAlt),
             contentAlignment = Alignment.Center

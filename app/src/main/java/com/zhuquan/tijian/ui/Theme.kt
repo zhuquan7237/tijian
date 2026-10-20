@@ -184,20 +184,40 @@ fun Modifier.tjClickable(
     label: String? = null,
     role: Role = Role.Button,
     enabled: Boolean = true,
+    interactionSource: MutableInteractionSource? = null,
     onClick: () -> Unit,
 ): Modifier {
     val indication = LocalIndication.current
     var m = this
     if (enabled) m = m.minimumInteractiveComponentSize()
+    val src = interactionSource ?: remember { MutableInteractionSource() }
     return m
         .then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)
         .clickable(
-            interactionSource = remember { MutableInteractionSource() },
+            interactionSource = src,
             indication = indication,
             enabled = enabled,
             role = role,
             onClick = onClick,
         )
+}
+
+/**
+ * 全局按压反馈：必须放在组件 modifier 链的**最前面**，这样缩放才能包住
+ * 背景、图片和文字。配合 [tjClickable] 的 interactionSource 使用。
+ */
+@Composable
+fun Modifier.pressScale(
+    interactionSource: MutableInteractionSource,
+    pressedScale: Float = 0.985f,
+): Modifier {
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) pressedScale else 1f,
+        animationSpec = tween(Motion.Fast, easing = Motion.Enter),
+        label = "press-scale",
+    )
+    return this.graphicsLayer { scaleX = scale; scaleY = scale }
 }
 
 /**
@@ -253,13 +273,15 @@ fun IconCircle(
 ) {
     val bg = if (filled) Ink else SurfaceAlt
     val fg = if (filled) Color.White else tint
+    val src = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
+            .pressScale(src)
             .size(48.dp)
             .clip(CircleShape)
             .background(bg)
             .then(if (filled) Modifier else Modifier.border(1.dp, Line, CircleShape))
-            .tjClickable(label = label) { onClick() },
+            .tjClickable(label = label, interactionSource = src) { onClick() },
         contentAlignment = Alignment.Center
     ) { Icon(icon, label, tint = fg, modifier = Modifier.size(20.dp)) }
 }
@@ -323,11 +345,13 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, trailing: (@Compos
 /** 筛选 chip：选中=实心靛蓝白字，未选中=白底可辨边框。 */
 @Composable
 fun TjChip(text: String, selected: Boolean = false, onClick: () -> Unit) {
+    val src = remember { MutableInteractionSource() }
     androidx.compose.material3.FilterChip(
         selected = selected, onClick = onClick,
+        interactionSource = src,
         label = { Text(text, fontSize = 13.sp, fontWeight = FontWeight.Medium) },
         shape = CircleShape,
-        modifier = Modifier.heightIn(min = 48.dp),
+        modifier = Modifier.pressScale(src, pressedScale = 0.96f).heightIn(min = 48.dp),
         colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
             containerColor = CardBg, labelColor = Ink2,
             selectedContainerColor = Ink, selectedLabelColor = Color.White,

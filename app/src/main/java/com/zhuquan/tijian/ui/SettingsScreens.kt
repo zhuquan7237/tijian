@@ -207,8 +207,11 @@ private fun StatCell(value: String, label: String, modifier: Modifier = Modifier
 
 @Composable
 fun SettingRow(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    val rowSrc = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Row(
-        Modifier.fillMaxWidth().tjClickable { onClick() }.padding(horizontal = 16.dp, vertical = 14.dp),
+        Modifier.pressScale(rowSrc).fillMaxWidth()
+            .tjClickable(interactionSource = rowSrc) { onClick() }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
