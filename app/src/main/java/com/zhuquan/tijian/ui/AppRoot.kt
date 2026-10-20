@@ -64,6 +64,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.Image
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zhuquan.tijian.BuildConfig
@@ -128,19 +135,78 @@ fun AppRoot(vm: AppVm = viewModel()) {
         val navAnim = remember(vm.route) {
             androidx.compose.animation.core.Animatable(if (outgoingRoute == null) 1f else 0f)
         }
+        // 离场页不再作为活组件参与动画：切换开始时把整页录进一个 GraphicsLayer，
+        // 冻结成一张位图，只让位图做位移/缩放。这样 WebView / AsyncImage 不可能
+        // 在动画期间继续往屏幕上画旧帧，也就没有残影。
+        val pageLayer = rememberGraphicsLayer()
+        var captureArmed by remember { mutableStateOf(false) }
+        var exitSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
         LaunchedEffect(vm.route) {
             lastRoute = vm.route
             if (outgoingRoute != null) {
+                exitSnapshot = null
+                captureArmed = true
+                navAnim.snapTo(0f)
+                // 等两帧：让 p=0 的旧页面真正画完，再截这一帧。
+                withFrameNanos { }
+                withFrameNanos { }
+                exitSnapshot = runCatching { pageLayer.toImageBitmap() }.getOrNull()
+                captureArmed = false
                 navAnim.animateTo(1f, tween(300, easing = FastOutSlowInEasing))
             }
             delay(80)
             pages.keys.toList().filter { !vm.retainsPage(it) }.forEach {
                 pages.remove(it); vm.forgetPage(it)
             }
+            exitSnapshot = null
         }
         LaunchedEffect(navAnim.isRunning) { vm.navigating = navAnim.isRunning }
 
-        Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().drawWithContent {
+            if (captureArmed) {
+                pageLayer.record { this@drawWithContent.drawContent() }
+                drawLayer(pageLayer)
+            } else {
+                drawContent()
+            }
+        }) {
+        exitSnapshot?.let { snap ->
+            Image(
+                bitmap = snap,
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxSize()
+                    .zIndex(if (navDir < 0f) 2f else -1f)
+                    .graphicsLayer {
+                    val p = navAnim.value
+                    if (peerMove) {
+                        translationX = -p * size.width * peerDir
+                    } else if (navDir > 0f) {
+                        translationX = -p * size.width * 0.5f
+                        scaleX = 1f - 0.3f * p
+                        scaleY = scaleX
+                    } else {
+                        translationX = p * size.width
+                    }
+                }
+            )
+            Box(Modifier.fillMaxSize()
+                .zIndex(if (navDir < 0f) 2f else -1f)
+                .graphicsLayer {
+                val p = navAnim.value
+                if (peerMove) {
+                    translationX = -p * size.width * peerDir
+                } else if (navDir > 0f) {
+                    translationX = -p * size.width * 0.5f
+                    scaleX = 1f - 0.3f * p
+                    scaleY = scaleX
+                    alpha = 0.36f * p
+                } else {
+                    translationX = p * size.width
+                    alpha = 0f
+                }
+            }.background(Color.Black))
+        }
         pages.toMap().forEach { (route, depth) ->
         androidx.compose.runtime.key(route) {
             val isCurrent = route == vm.route
@@ -157,7 +223,8 @@ fun AppRoot(vm: AppVm = viewModel()) {
                     val p = navAnim.value
                     var x = 0f
                     var sc = 1f
-                    if (visible) {
+                    // 有冻结快照时，旧页不再由活组件绘制，避免任何残帧。
+                    if (visible && (exitSnapshot == null || isCurrent)) {
                         if (peerMove) {
                             // FlClash PageView：两页不透明，整屏横向滑动。
                             x = if (isCurrent) (1f - p) * size.width * peerDir
