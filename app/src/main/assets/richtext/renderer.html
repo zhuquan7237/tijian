@@ -75,8 +75,9 @@
   input[type="checkbox"] { margin-right: 6px; }
   /* 长按选择：只有详情/复习页会打开 selectable，其它页面保持不可选 */
   html, body { -webkit-user-select: none; user-select: none; }
-  body.rt-selectable { -webkit-user-select: text; user-select: text; }
-  body.rt-selectable * { -webkit-user-select: text; user-select: text; }
+  body.rt-selectable { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  body.rt-selectable * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .rt-press { background: rgba(47,75,216,.10); border-radius: 4px; }
   #rt-menu {
     position: fixed; z-index: 99999; display: none; align-items: center;
     background: #12161C; border-radius: 10px; padding: 2px;
@@ -130,12 +131,20 @@
   var src = RAW.split('\n').map(wrapBare).join('\n');
 
   // 2) 保护各种定界符，避免 markdown 把 _ ^ 吃掉
+  // 2) 保护各种定界符，避免 markdown 把 _ ^ \ 吃掉
   src = src.replace(/\$\$([\s\S]+?)\$\$/g, function (m, p1) { return stash(p1, true); });
   src = src.replace(/\\\[([\s\S]+?)\\\]/g, function (m, p1) { return stash(p1, true); });
   src = src.replace(/\\\(([\s\S]+?)\\\)/g, function (m, p1) { return stash(p1, false); });
   src = src.replace(/(^|[^\\$])\$(?!\$)([^\n$]+?)\$/g, function (m, pre, p1) {
     return pre + stash(p1, false);
   });
+
+  // 3) 截断的回答常留下未闭合的 $$ / \[ / \(：把剩下的整段按公式处理，
+  //    这样用户看到的是渲染结果或 [公式]，而不是裸露的 LaTeX 源码。
+  src = src.replace(/\$\$([\s\S]*)$/g, function (m, p1) { return stash(p1, true); });
+  src = src.replace(/\\\[([\s\S]*)$/g, function (m, p1) { return stash(p1, true); });
+  src = src.replace(/\\\(([\s\S]*)$/g, function (m, p1) { return stash(p1, false); });
+  src = src.replace(/\$/g, '');
 
   var md = window.markdownit({
     html: false,
@@ -224,24 +233,64 @@
   document.addEventListener('visibilitychange', report);
   document.getElementById('out').addEventListener('load', report, true);
 
-  /* ---------- 选中文本：把渲染后的文字回传给原生层 ---------- */
+  /* ---------- 长按选择：自己接管，避免系统弹出的“翻译/分享/全选”菜单 ---------- */
   if (window.__RT_SELECTABLE) {
     document.body.classList.add('rt-selectable');
-    var lastSel = '';
-    var selTimer = null;
-    document.addEventListener('selectionchange', function () {
-      clearTimeout(selTimer);
-      selTimer = setTimeout(function () {
-        var sel = window.getSelection();
-        var text = sel ? String(sel).trim() : '';
-        if (text === lastSel) return;
-        lastSel = text;
-        if (window.AndroidRichText) {
-          if (text && window.AndroidRichText.select) window.AndroidRichText.select(text);
-          else if (!text && window.AndroidRichText.clearSelection) window.AndroidRichText.clearSelection();
-        }
-      }, 140);
-    });
+    var pressTimer = null, startX = 0, startY = 0, pressedEl = null;
+
+    function blockAt(x, y) {
+      var node = null;
+      if (document.caretRangeFromPoint) {
+        var r = document.caretRangeFromPoint(x, y);
+        node = r && r.startContainer;
+      } else if (document.elementFromPoint) {
+        node = document.elementFromPoint(x, y);
+      }
+      if (!node) return null;
+      var el = node.nodeType === 1 ? node : node.parentElement;
+      if (!el) return null;
+      return el.closest('p,li,td,th,h1,h2,h3,h4,h5,blockquote,pre,div.math-display') || el;
+    }
+
+    function clearPress() {
+      if (pressedEl) { pressedEl.classList.remove('rt-press'); pressedEl = null; }
+    }
+
+    function fire() {
+      var el = blockAt(startX, startY);
+      if (!el) return;
+      var text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!text) return;
+      clearPress();
+      pressedEl = el;
+      el.classList.add('rt-press');
+      if (window.AndroidRichText && window.AndroidRichText.select) {
+        window.AndroidRichText.select(text);
+      }
+    }
+
+    document.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(fire, 420);
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function (e) {
+      if (!e.touches.length) return;
+      var dx = e.touches[0].clientX - startX;
+      var dy = e.touches[0].clientY - startY;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) clearTimeout(pressTimer);
+    }, { passive: true });
+
+    document.addEventListener('touchend', function () { clearTimeout(pressTimer); }, { passive: true });
+    document.addEventListener('touchcancel', function () { clearTimeout(pressTimer); }, { passive: true });
+
+    // 让 WebView 不弹系统上下文菜单（翻译 / 全选 / 网页搜索）
+    document.addEventListener('contextmenu', function (e) { e.preventDefault(); return false; });
+    document.addEventListener('selectstart', function (e) { e.preventDefault(); });
+    window.__rtClearPress = clearPress;
   }
 
   document.title = 'richtext-' + RENDER_ID;

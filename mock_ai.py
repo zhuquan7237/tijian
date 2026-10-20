@@ -99,6 +99,12 @@ def reply_for(text):
         items = [{"id": qid, "category": cats[i % len(cats)], "confidence": 0.9}
                  for i, qid in enumerate(ids)]
         return json.dumps({"assignments": items}, ensure_ascii=False)
+    if "错题教练" in text:
+        return json.dumps({
+            "formulas": ["$y'=3x^2-2$", "切线斜率 $k=f'(x_0)$"],
+            "concepts": ["导数的几何意义", "切点既在曲线上又在切线上"],
+            "methods": ["先求导再代点", "点斜式写切线方程"],
+        }, ensure_ascii=False)
     if "知识点整理助手" in text:
         return json.dumps(KNOWLEDGE, ensure_ascii=False)
     if "题目数字化助手" in text:
@@ -145,7 +151,7 @@ class H(BaseHTTPRequestHandler):
             payload = {"id": "resp_mock", "object": "response", "output_text": content,
                        "output": [{"type": "message", "content": [{"type": "output_text", "text": content}]}]}
         else:
-            payload = {"id": "chatcmpl-mock", "object": "chat.completion",
+            payload = {"id": "chatcmpl-mock", "debug_text": text[:60], "object": "chat.completion",
                        "choices": [{"index": 0, "message": {"role": "assistant", "content": content},
                                     "finish_reason": "stop"}],
                        "usage": {"prompt_tokens": 1800, "completion_tokens": 600}}
@@ -171,7 +177,7 @@ class H(BaseHTTPRequestHandler):
             return
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b'{"ok":true}')
+        self.wfile.write(b'{"ok":true,"v":"needs1"}')
 
 
 if __name__ == "__main__":

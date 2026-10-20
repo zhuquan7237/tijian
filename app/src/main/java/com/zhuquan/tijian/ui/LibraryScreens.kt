@@ -74,6 +74,7 @@ fun LibraryScreen(vm: AppVm) {
     var pickCategory by remember { mutableStateOf(false) }
     var editingDoc by remember { mutableStateOf<DocRow?>(null) }
     var deletingDoc by remember { mutableStateOf<DocRow?>(null) }
+    var regeneratingDoc by remember { mutableStateOf<DocRow?>(null) }
     var pendingFile by remember { mutableStateOf<File?>(null) }
     var pendingDoc by remember { mutableStateOf<DocRow?>(null) }
     val scope = rememberCoroutineScope()
@@ -107,6 +108,7 @@ fun LibraryScreen(vm: AppVm) {
                     DocRowItem(doc,
                         onOpen = { vm.go(Route.Doc(doc.id)) },
                         onEdit = { editingDoc = doc },
+                        onRegenerate = { regeneratingDoc = doc },
                         onDelete = { deletingDoc = doc },
                         onPdf = {
                             pendingDoc = doc
@@ -163,6 +165,19 @@ fun LibraryScreen(vm: AppVm) {
             }
         )
     }
+
+    regeneratingDoc?.let { doc ->
+        CategoryMultiPicker(
+            categories = vm.categories.filter { it.count > 0 },
+            preselected = setOfNotNull(doc.categoryId),
+            confirmText = "按这些分类重新生成",
+            onDismiss = { regeneratingDoc = null },
+            onConfirm = { selected ->
+                regeneratingDoc = null
+                if (selected.isNotEmpty()) vm.regenerateKnowledge(doc.id, selected)
+            }
+        )
+    }
 }
 
 @Composable
@@ -195,6 +210,7 @@ private fun DocRowItem(
     doc: DocRow,
     onOpen: () -> Unit,
     onEdit: () -> Unit,
+    onRegenerate: () -> Unit,
     onDelete: () -> Unit,
     onPdf: () -> Unit,
 ) {
@@ -216,7 +232,11 @@ private fun DocRowItem(
             ) { Icon(Icons.Rounded.MoreVert, null, tint = Muted, modifier = Modifier.size(20.dp)) }
             androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("编辑内容", fontSize = 14.sp) },
+                    text = { Text("重新选择分类生成", fontSize = 14.sp) },
+                    onClick = { menu = false; onRegenerate() }
+                )
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("编辑文字内容", fontSize = 14.sp) },
                     onClick = { menu = false; onEdit() }
                 )
                 androidx.compose.material3.DropdownMenuItem(
@@ -307,7 +327,7 @@ fun DocScreen(vm: AppVm, route: Route.Doc? = vm.route as? Route.Doc) {
     var doc by remember { mutableStateOf<DocRow?>(null) }
     var pendingFile by remember { mutableStateOf<File?>(null) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(id) { doc = withContext(Dispatchers.IO) { vm.db.doc(id) } }
+    LaunchedEffect(id, vm.dataRevision) { doc = withContext(Dispatchers.IO) { vm.db.doc(id) } }
 
     val createPdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri: Uri? ->
         val f = pendingFile
@@ -394,10 +414,12 @@ fun countPoints(md: String): Int = md.lineSequence().count { it.startsWith("## "
 @Composable
 fun CategoryMultiPicker(
     categories: List<CategoryRow>,
+    preselected: Set<String> = emptySet(),
+    confirmText: String = "生成知识文档",
     onDismiss: () -> Unit,
     onConfirm: (List<CategoryRow>) -> Unit,
 ) {
-    val chosen = remember { mutableStateOf<Set<String>>(emptySet()) }
+    val chosen = remember { mutableStateOf(preselected) }
     var query by remember { mutableStateOf("") }
     val filtered = categories.filter { it.fullName().contains(query.trim(), ignoreCase = true) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = CardBg) {
@@ -442,7 +464,7 @@ fun CategoryMultiPicker(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    if (chosen.value.isEmpty()) "选择分类后生成" else "生成知识文档（${chosen.value.size} 个分类）",
+                    if (chosen.value.isEmpty()) "选择分类后生成" else "$confirmText（${chosen.value.size} 个分类）",
                     fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                     color = if (chosen.value.isEmpty()) Muted else Color.White
                 )

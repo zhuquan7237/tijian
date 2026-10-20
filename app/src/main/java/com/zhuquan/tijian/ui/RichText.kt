@@ -66,6 +66,8 @@ fun RichText(
     modifier: Modifier = Modifier,
     fontSize: Int = 15,
     selectable: Boolean = false,
+    /** false 时 WebView 不接管触摸，交给外层 Compose 滚动（聊天面板这种只读场景）。 */
+    interactive: Boolean = true,
     onSelect: (String) -> Unit = {},
     onAsk: (String) -> Unit = {},
     onReady: () -> Unit = {},
@@ -153,8 +155,12 @@ fun RichText(
                 overScrollMode = View.OVER_SCROLL_NEVER
                 isFocusable = false
                 isFocusableInTouchMode = false
-                isLongClickable = selectable
+                isLongClickable = selectable && interactive
+                isEnabled = interactive
                 isNestedScrollingEnabled = false
+                if (!interactive) {
+                    setOnTouchListener { _, _ -> false }
+                }
                 addJavascriptInterface(object {
                     @JavascriptInterface
                     fun height(h: Int, callbackRenderId: Int) {

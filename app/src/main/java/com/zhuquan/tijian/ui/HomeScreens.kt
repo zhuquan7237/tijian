@@ -43,6 +43,7 @@ import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -604,7 +605,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
     val scope = rememberCoroutineScope()
     val readySections = remember(id) { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
 
-    LaunchedEffect(id) {
+    LaunchedEffect(id, vm.dataRevision) {
         vm.rememberQuestion(id)
         runCatching { withContext(Dispatchers.IO) { vm.db.question(id) ?: error("题目不存在或已删除") } }
             .onSuccess { q = it }.onFailure { loadError = it.message ?: "题目读取失败"; vm.pageReady(Route.Detail(id)) }
@@ -680,13 +681,36 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
             val needFormulas = parseKnowledgeTags(question.needFormulas)
             val needConcepts = parseKnowledgeTags(question.needConcepts)
             val needMethods = parseKnowledgeTags(question.needMethods)
-            if (needFormulas.isNotEmpty() || needConcepts.isNotEmpty() || needMethods.isNotEmpty()) {
-                Spacer(Modifier.height(16.dp))
-                RichSection("要做出这题，需要掌握", "公式 · 概念 · 方法", Amber) {
-                    Column {
+            val hasNeeds = needFormulas.isNotEmpty() || needConcepts.isNotEmpty() || needMethods.isNotEmpty()
+            Spacer(Modifier.height(16.dp))
+            RichSection("要做出这题，需要掌握", "公式 · 概念 · 方法", Amber) {
+                Column {
+                    if (hasNeeds) {
                         NeedLine("公式", needFormulas, Accent)
                         NeedLine("概念", needConcepts, Green)
                         NeedLine("方法", needMethods, Amber)
+                    } else {
+                        Text(
+                            "还缺这一块：做这道题需要哪些公式、概念和方法？",
+                            fontSize = 13.sp, lineHeight = 20.sp, color = Muted
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Box(
+                            Modifier.height(42.dp).clip(RoundedCornerShape(10.dp))
+                                .background(AccentSoft)
+                                .tjClickable(label = "让 AI 补全知识点") { vm.fillNeeds(question.id) }
+                                .padding(horizontal = 14.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (vm.needsBusyFor == question.id) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(Modifier.size(14.dp), color = Accent, strokeWidth = 2.dp)
+                                    Text("正在分析…", fontSize = 12.sp, color = Accent, modifier = Modifier.padding(start = 7.dp))
+                                }
+                            } else {
+                                Text("让 AI 分析这题需要掌握什么", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                            }
+                        }
                     }
                 }
             }

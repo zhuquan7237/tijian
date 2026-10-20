@@ -375,6 +375,9 @@ private fun EditDraftDialog(draft: DraftQuestion, onDismiss: () -> Unit, onSave:
     var answer by remember { mutableStateOf(draft.answer) }
     var analysis by remember { mutableStateOf(draft.analysis) }
     var type by remember { mutableStateOf(draft.type) }
+    var formulas by remember { mutableStateOf(parseKnowledgeTags(draft.needFormulas).joinToString("，")) }
+    var concepts by remember { mutableStateOf(parseKnowledgeTags(draft.needConcepts).joinToString("，")) }
+    var methods by remember { mutableStateOf(parseKnowledgeTags(draft.needMethods).joinToString("，")) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("补录 / 修改", fontSize = 16.sp) },
@@ -387,11 +390,24 @@ private fun EditDraftDialog(draft: DraftQuestion, onDismiss: () -> Unit, onSave:
                 OutlinedTextField(value = answer, onValueChange = { answer = it }, label = { Text("答案", fontSize = 12.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(value = analysis, onValueChange = { analysis = it }, label = { Text("解析", fontSize = 12.sp) }, minLines = 2, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                Text("要做出这题，需要掌握（用逗号分隔）", fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
+                Spacer(Modifier.height(4.dp))
+                OutlinedTextField(value = formulas, onValueChange = { formulas = it }, label = { Text("公式", fontSize = 12.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(value = concepts, onValueChange = { concepts = it }, label = { Text("概念", fontSize = 12.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(value = methods, onValueChange = { methods = it }, label = { Text("方法", fontSize = 12.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                onSave(draft.copy(stem = stem, answer = answer, analysis = analysis, type = type))
+                onSave(draft.copy(
+                    stem = stem, answer = answer, analysis = analysis, type = type,
+                    needFormulas = tagsToJson(formulas),
+                    needConcepts = tagsToJson(concepts),
+                    needMethods = tagsToJson(methods)
+                ))
             }) { Text("完成") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
@@ -546,4 +562,12 @@ private fun RateButton(text: String, color: Color, modifier: Modifier = Modifier
             .tjClickable { onClick() },
         contentAlignment = Alignment.Center
     ) { Text(text, fontSize = 12.5.sp, color = color, fontWeight = FontWeight.SemiBold) }
+}
+
+
+/** 逗号 / 换行 / 分号分隔的知识点文本 → JSON 字符串数组。 */
+private fun tagsToJson(raw: String): String {
+    val arr = org.json.JSONArray()
+    raw.split('，', ',', '；', ';', '\n').map { it.trim() }.filter { it.isNotEmpty() }.forEach { arr.put(it) }
+    return arr.toString()
 }

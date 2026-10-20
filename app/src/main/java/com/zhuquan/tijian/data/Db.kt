@@ -477,6 +477,12 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         arrayOf(title.trim(), content, System.currentTimeMillis(), id)
     )
 
+    fun updateDocSources(id: String, categoryId: String?, sourceRefs: String, title: String, content: String) =
+        writableDatabase.execSQL(
+            "UPDATE knowledge_doc SET category_id=?, source_refs=?, title=?, content_md=?, updated_at=? WHERE id=?",
+            arrayOf(categoryId, sourceRefs, title.trim(), content, System.currentTimeMillis(), id)
+        )
+
     // ---------- chat ----------
 
     fun chatMessages(questionId: String): List<Pair<String, String>> = read(

@@ -4,6 +4,7 @@ import com.zhuquan.tijian.data.fullName
 import com.zhuquan.tijian.data.CategoryRow
 import com.zhuquan.tijian.data.DraftQuestion
 import com.zhuquan.tijian.data.ProviderConfig
+import com.zhuquan.tijian.data.QuestionRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -287,7 +288,7 @@ ${material.take(9000)}
                 put("input", transcript)
                 put("instructions", TUTOR_SYSTEM)
                 put("temperature", 0.4)
-                put("max_output_tokens", 1600)
+                put("max_output_tokens", 3000)
             }
         } else {
             val messages = JSONArray()
@@ -308,11 +309,63 @@ ${material.take(9000)}
                 put("model", cfg.model)
                 put("messages", messages)
                 put("temperature", 0.4)
-                put("max_tokens", 1600)
+                put("max_tokens", 3000)
             }
         }
         call(cfg, body).trim()
     }
+
+    /**
+     * 只补「这道题需要掌握什么」：公式 / 概念 / 方法。
+     * 用于导入时模型漏字段、或旧题补全。
+     */
+    suspend fun analyzeNeeds(cfg: ProviderConfig, q: QuestionRow): Triple<List<String>, List<String>, List<String>> =
+        withContext(Dispatchers.IO) {
+            val prompt = """
+你是错题教练。学生做错了下面这道题，需要知道「要做出这道题，必须会哪些公式、概念、方法」。
+要求：
+1. 只列真正关键、缺了就做不出来的内容，不要泛泛而谈。
+2. formulas 写具体公式（LaTeX，$...$ 包裹）；concepts 写概念名；methods 写解题方法/步骤名。
+3. 每类 1~4 条，没有就返回空数组。
+4. 只输出 JSON，不要 markdown 代码块。
+
+题型：${q.type}
+题干：
+${q.stem.take(1200)}
+答案：${q.answer.take(400)}
+解析：
+${q.analysis.take(1600)}
+
+输出模板：
+{"formulas":[""],"concepts":[""],"methods":[""]}
+""".trimIndent()
+            val body = if (cfg.protocol == "responses") {
+                JSONObject().apply {
+                    put("model", cfg.model)
+                    put("input", prompt)
+                    put("instructions", "你是严谨的理科错题教练，只输出 JSON。")
+                    put("temperature", 0.2)
+                    put("max_output_tokens", 800)
+                }
+            } else {
+                JSONObject().apply {
+                    put("model", cfg.model)
+                    put("messages", JSONArray()
+                        .put(JSONObject().apply { put("role", "system"); put("content", "你是严谨的理科错题教练，只输出 JSON。") })
+                        .put(JSONObject().apply { put("role", "user"); put("content", prompt) }))
+                    put("temperature", 0.2)
+                    put("max_tokens", 800)
+                }
+            }
+            val raw = call(cfg, body)
+            val json = extractJson(raw) ?: throw AiException("模型没有返回 JSON：${raw.take(120)}")
+            val o = JSONObject(json)
+            fun arr(key: String): List<String> {
+                val a = o.optJSONArray(key) ?: return emptyList()
+                return (0 until a.length()).map { a.optString(it).trim() }.filter { it.isNotBlank() }
+            }
+            Triple(arr("formulas"), arr("concepts"), arr("methods"))
+        }
 
     // ---------------- transport ----------------
 

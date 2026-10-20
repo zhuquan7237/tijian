@@ -343,6 +343,32 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    var needsBusyFor by androidx.compose.runtime.mutableStateOf<String?>(null)
+        private set
+
+    /** 旧题 / 模型漏字段时，补全「需要掌握」的公式、概念、方法。 */
+    fun fillNeeds(id: String) {
+        if (needsBusyFor != null) return
+        if (!provider.ready()) { toast = "先在「我的 → AI 接入」配置模型"; return }
+        needsBusyFor = id
+        viewModelScope.launch {
+            try {
+                val q = withContext(Dispatchers.IO) { db.question(id) } ?: return@launch
+                val (f, c, m) = ai.analyzeNeeds(provider, q)
+                if (f.isEmpty() && c.isEmpty() && m.isEmpty()) { toast = "模型没有给出可用结果"; return@launch }
+                withContext(Dispatchers.IO) {
+                    db.updateQuestionNeeds(id, org.json.JSONArray(f).toString(), org.json.JSONArray(c).toString(), org.json.JSONArray(m).toString())
+                }
+                refresh()
+                toast = "已补全这题的知识点"
+            } catch (e: Exception) {
+                toast = "补全失败：${e.message}"
+            } finally {
+                needsBusyFor = null
+            }
+        }
+    }
+
     // ---------- knowledge ----------
 
     fun generateKnowledge(categories: List<CategoryRow>) {
@@ -377,6 +403,44 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 toast = "生成失败：${e.message}"
             } finally {
                 busy = false
+            }
+        }
+    }
+
+    /** 重新选分类，用新范围重新生成同一篇知识文档（覆盖原内容）。 */
+    fun regenerateKnowledge(docId: String, categories: List<CategoryRow>) {
+        val selected = categories.distinctBy { it.id }
+        if (selected.isEmpty()) { toast = "先选择至少一个分类"; return }
+        if (!provider.ready()) { toast = "先在「我的 → AI 接入」配置模型"; return }
+        viewModelScope.launch {
+            busy = true; busyLabel = "重新提炼知识点"
+            try {
+                val qs = withContext(Dispatchers.IO) {
+                    selected.flatMap { db.questions(it.id, "all") }.distinctBy { it.id }
+                }
+                if (qs.isEmpty()) { toast = "所选分类还没有题目"; return@launch }
+                val material = qs.take(20).joinToString("\n\n") { q ->
+                    buildString {
+                        append("题型：").append(q.type).append("\n")
+                        append("题干：").append(q.stem).append("\n")
+                        if (q.answer.isNotBlank()) append("答案：").append(q.answer).append("\n")
+                        if (q.analysis.isNotBlank()) append("解析：").append(q.analysis).append("\n")
+                        append("知识点：").append(q.tags)
+                    }
+                }
+                val md = ai.knowledge(provider, material)
+                val ids = JSONArray(qs.take(20).map { it.id }).toString()
+                val title = if (selected.size == 1) selected.first().name else selected.joinToString(" · ") { it.name }
+                withContext(Dispatchers.IO) {
+                    db.updateDocSources(docId, selected.first().id, ids, title.ifBlank { "知识点整理" }, md)
+                }
+                refresh()
+                toast = "已按 ${selected.size} 个分类重新生成"
+                go(Route.Doc(docId))
+            } catch (e: Exception) {
+                toast = "重新生成失败：${e.message}"
+            } finally {
+                busy = false; busyLabel = ""
             }
         }
     }
