@@ -280,6 +280,10 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
 
     fun allQuestions(): List<QuestionRow> = questions()
 
+    /** 首页「最近导入」只要前几道：交给 SQLite 截断，不把整张表读进内存再 take。 */
+    fun recentQuestions(limit: Int): List<QuestionRow> =
+        queryQuestions("q.deleted_at IS NULL", emptyArray(), "q.created_at DESC LIMIT $limit")
+
     fun dueQuestions(limit: Int = 30): List<QuestionRow> =
         queryQuestions(
             "q.deleted_at IS NULL AND q.next_review_at IS NOT NULL AND q.next_review_at<=?",

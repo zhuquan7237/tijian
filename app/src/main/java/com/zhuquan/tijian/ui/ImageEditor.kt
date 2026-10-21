@@ -308,7 +308,7 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
             Box(
                 Modifier.fillMaxWidth().heightIn(min = 180.dp).weight(0.68f)
                     .padding(horizontal = 22.dp).padding(bottom = 10.dp)
-                    .clip(RoundedCornerShape(14.dp)).background(ComposeColor(0xFFF5F6FA))
+                    .clip(RoundedCornerShape(14.dp)).background(SurfaceAlt)
             ) {
                 file?.let { imageFile ->
                     AndroidView(factory = { OriginalImageView(it, imageFile).also { v -> view = v } },
@@ -403,5 +403,5 @@ private fun ToolChip(label: String, selected: Boolean, enabled: Boolean, onClick
             .border(1.dp, if (selected) Accent else Line, CircleShape)
             .tjClickable(enabled = enabled) { onClick() }.padding(horizontal = 13.dp),
         contentAlignment = Alignment.Center
-    ) { Text(label, fontSize = 12.sp, color = if (!enabled) Muted.copy(alpha = .45f) else if (selected) androidx.compose.ui.graphics.Color.White else Ink, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) }
+    ) { Text(label, fontSize = 12.sp, color = if (!enabled) Muted.copy(alpha = .45f) else if (selected) OnAccent else Ink, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) }
 }

@@ -31,13 +31,13 @@ fun TjButton(
     onClick: () -> Unit,
 ) {
     val bg = when (style) {
-        ActionStyle.Primary -> Ink
+        ActionStyle.Primary -> Accent
         ActionStyle.Secondary -> SurfaceAlt
         ActionStyle.Danger -> RedSoft
         ActionStyle.Quiet -> Color.Transparent
     }
     val fg = when (style) {
-        ActionStyle.Primary -> Color.White
+        ActionStyle.Primary -> OnAccent
         ActionStyle.Danger -> Red
         else -> Ink
     }

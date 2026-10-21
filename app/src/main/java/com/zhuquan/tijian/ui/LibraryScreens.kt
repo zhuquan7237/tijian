@@ -187,24 +187,25 @@ fun LibraryScreen(vm: AppVm) {
 private fun GenerateCard(categoryCount: Int, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(CardShape)
-            .background(Ink)
+            .background(HeroBrush)
+            .border(1.dp, HeroLine, CardShape)
             .tjClickable { onClick() }.padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(Color(0x1FFFFFFF)),
+            Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(AccentSoft),
             contentAlignment = Alignment.Center
-        ) { Icon(Icons.Rounded.AutoAwesome, null, tint = Color(0xFFB9BEFF), modifier = Modifier.size(20.dp)) }
+        ) { Icon(Icons.Rounded.AutoAwesome, null, tint = Accent, modifier = Modifier.size(20.dp)) }
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
-            Text("生成知识文档", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+            Text("生成知识文档", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
             Text("从 $categoryCount 个分类里提炼要点与易错点", fontSize = 12.sp, color = OnHeroMuted, modifier = Modifier.padding(top = 3.dp))
         }
         Box(
-            Modifier.heightIn(min = 48.dp).clip(CircleShape).background(Color.White)
+            Modifier.heightIn(min = 48.dp).clip(CircleShape).background(Accent)
                 .tjClickable(label = "选择分类") { onClick() }
                 .padding(horizontal = 14.dp),
             contentAlignment = Alignment.Center
-        ) { Text("选择分类", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Ink) }
+        ) { Text("选择分类", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = OnAccent) }
     }
 }
 

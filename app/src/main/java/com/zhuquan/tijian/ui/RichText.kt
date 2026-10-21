@@ -42,8 +42,10 @@ data class RichSectionSpec(
     val title: String,
     val markdown: String,
     val subtitle: String = "",
-    val color: String = "#2F4BD8",
+    val color: String = "#2DD4BF",
     val fontSize: Int = 15,
+    /** 渲染变体：analysis 走「思路 / 分步 / 易错 / 结论」结构化排版；answer / needs 只改样式。 */
+    val kind: String = "",
 )
 
 object RichTextRenderer {
@@ -62,6 +64,7 @@ object RichTextRenderer {
                 put("color", sec.color)
                 put("markdown", sec.markdown)
                 put("fontSize", sec.fontSize)
+                put("kind", sec.kind)
             })
         }
         return arr.toString()
@@ -75,6 +78,8 @@ object RichTextRenderer {
         renderId: Int = 0,
         selectable: Boolean = false,
         sections: List<RichSectionSpec>? = null,
+        /** PDF 位图导出用浅色打印配色；界面始终是夜读台深色。 */
+        print: Boolean = false,
     ): String {
         val tpl = template ?: context.assets.open("richtext/renderer.html")
             .bufferedReader().use { it.readText() }.also { template = it }
@@ -84,6 +89,7 @@ object RichTextRenderer {
             .replace("__RENDER_ID__", renderId.toString())
             .replace("__SELECTABLE__", if (selectable) "true" else "false")
             .replace("__SECTIONS__", sectionsJson(sections))
+            .replace("__THEME__", if (print) "rt-print" else "")
             .replace("__CONTENT__", JSONObject.quote(markdown))
     }
 }

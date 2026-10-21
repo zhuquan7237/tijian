@@ -29,7 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -51,38 +52,51 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /* ------------------------------------------------------------------
- * 题笺 · Neutral rounded（8.1.0）
+ * 题笺 · 夜读台（8.9.0）
  *
- * 中性白底 + 石墨主操作 + 靛蓝状态强调。层级靠字号/字重/留白，不靠
- * 装饰符号；所有正文 ≥ 7:1，次要文字 ≥ 4.5:1，功能边框 ≥ 3:1。
- * 实测值见 docs/ui/contrast.py 与 docs/ui/DESIGN-0.5.md。
+ * 深石墨底 + 青绿强调，数字大字号。正文对比 ≥ 12:1，次要文字 ≥ 6:1。
  * ------------------------------------------------------------------ */
 
-val Bg = Color(0xFFF9F9F9)
-val CardBg = Color(0xFFFFFFFF)
-val SurfaceAlt = Color(0xFFF0F0F0)
-val Ink = Color(0xFF212121)
-val Ink2 = Color(0xFF444444)
-val Muted = Color(0xFF606060)
-/** 装饰性 hairline：只用于分组，不承担可点击边界。 */
-val Line = Color(0xFFE5E5E5)
-/** 输入框/可选控件的功能边框：保持可辨识的中性灰描边。 */
-val FieldBorder = Color(0xFF767676)
-val Accent = Color(0xFF355CCE)
-val AccentSoft = Color(0xFFEDF2FF)
-val AccentPressed = Color(0xFF2449AE)
-val Green = Color(0xFF2F7D63)
-val GreenSoft = Color(0xFFE8F3EE)
-val Amber = Color(0xFF9A6B1F)
-val AmberSoft = Color(0xFFFBF1DC)
-val Red = Color(0xFFB83C45)
-val RedSoft = Color(0xFFFBEBEC)
-val OnHeroMuted = Color(0xFFC3CBDA)
-val OnHeroKicker = Color(0xFFAEB8C8)
+// 夜读台：深石墨底 + 单一青绿强调。层级靠明度（Bg < CardBg < SurfaceAlt < Fill），
+// 不靠阴影——暗底上阴影看不见。WebView 端在 assets/richtext/*.html 的 :root 里
+// 用同名 CSS 变量镜像这些值，改色时两边一起改。
 
-val CardShape = RoundedCornerShape(24.dp)
-val SmallShape = RoundedCornerShape(16.dp)
-val InnerShape = RoundedCornerShape(12.dp)
+val Bg = Color(0xFF1C1E22)
+val CardBg = Color(0xFF26282C)
+val SurfaceAlt = Color(0xFF303236)
+/** 深色填充：按钮、hero card、强调底色（原 Ink 深色语义）。 */
+val Fill = Color(0xFF3A3D44)
+val Ink = Color(0xFFE6E8EB)
+val Ink2 = Color(0xFFC3C8D0)
+val Muted = Color(0xFF9CA3AF)
+/** 装饰性 hairline：只用于分组。 */
+val Line = Color(0xFF3F4451)
+/** 输入框/可选控件的功能边框。 */
+val FieldBorder = Color(0xFF6B7280)
+val Accent = Color(0xFF2DD4BF)
+val AccentSoft = Color(0xFF163B38)
+val AccentPressed = Color(0xFF0FB89E)
+/** 强调色上的文字/图标：深墨绿，在 Accent 上对比 ≥ 9:1。 */
+val OnAccent = Color(0xFF04201C)
+/** 首页 / 知识库主卡：从青绿暗光过渡到卡片底色，是整套界面唯一的「光源」。 */
+val HeroBrush = Brush.linearGradient(listOf(Color(0xFF123B37), Color(0xFF1E2A2E), Color(0xFF26282C)))
+val HeroLine = Color(0x332DD4BF)
+val Green = Color(0xFF34D399)
+val GreenSoft = Color(0xFF1F4D3D)
+val Amber = Color(0xFFFBBF24)
+val AmberSoft = Color(0xFF3F2E1A)
+val Red = Color(0xFFF87171)
+val RedSoft = Color(0xFF3D2326)
+val OnHeroMuted = Color(0xFF8B94A8)
+val OnHeroKicker = Color(0xFF9CA8BD)
+
+/** 三档圆角：卡片 20 / 控件 14 / 内嵌 10。WebView 卡片（.rt-card）同为 20px。 */
+val CardShape = RoundedCornerShape(20.dp)
+val SmallShape = RoundedCornerShape(14.dp)
+val InnerShape = RoundedCornerShape(10.dp)
+
+/** 数字字体：等宽数字 + 收紧字距，用于计数、百分比、掌握度。 */
+val NumFont = FontFamily.SansSerif
 
 /** 4/8 栅格：同一屏只用这几档间距。 */
 object Space {
@@ -103,15 +117,15 @@ fun TijianTheme(content: @Composable () -> Unit) {
             extraSmall = InnerShape, small = SmallShape, medium = SmallShape,
             large = CardShape, extraLarge = RoundedCornerShape(28.dp),
         ),
-        colorScheme = lightColorScheme(
-            primary = Ink,
-            onPrimary = Color.White,
+        colorScheme = darkColorScheme(
+            primary = Accent,
+            onPrimary = OnAccent,
             primaryContainer = AccentSoft,
             onPrimaryContainer = Ink,
             secondary = Green,
-            onSecondary = Color.White,
+            onSecondary = OnAccent,
             secondaryContainer = GreenSoft,
-            onSecondaryContainer = Color(0xFF1D4F3F),
+            onSecondaryContainer = Green,
             background = Bg,
             onBackground = Ink,
             surface = CardBg,
@@ -121,9 +135,21 @@ fun TijianTheme(content: @Composable () -> Unit) {
             outline = FieldBorder,
             outlineVariant = Line,
             error = Red,
-            onError = Color.White,
+            onError = Color(0xFF2A0E10),
             errorContainer = RedSoft,
-            onErrorContainer = Color(0xFF7A1F26),
+            onErrorContainer = Red,
+            surfaceTint = Color.Transparent,
+            surfaceDim = Bg,
+            surfaceBright = SurfaceAlt,
+            surfaceContainerLowest = Bg,
+            surfaceContainerLow = CardBg,
+            surfaceContainer = CardBg,
+            surfaceContainerHigh = SurfaceAlt,
+            surfaceContainerHighest = Fill,
+            inverseSurface = Ink,
+            inverseOnSurface = Bg,
+            inversePrimary = AccentPressed,
+            scrim = Color.Black,
         ),
         typography = Typography(
             displaySmall = Typography().displaySmall.copy(
@@ -161,10 +187,10 @@ fun tjFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedContainerColor = CardBg,
     unfocusedContainerColor = CardBg,
     cursorColor = Accent,
-    focusedBorderColor = Ink,
+    focusedBorderColor = Accent,
     unfocusedBorderColor = FieldBorder,
     disabledBorderColor = Line,
-    focusedLabelColor = Ink,
+    focusedLabelColor = Accent,
     unfocusedLabelColor = Ink2,
     focusedPlaceholderColor = Muted,
     unfocusedPlaceholderColor = Muted,
@@ -271,8 +297,8 @@ fun IconCircle(
     filled: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val bg = if (filled) Ink else SurfaceAlt
-    val fg = if (filled) Color.White else tint
+    val bg = if (filled) Accent else SurfaceAlt
+    val fg = if (filled) OnAccent else tint
     val src = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
@@ -308,7 +334,7 @@ fun TjTopBar(
             Box(
                 modifier = Modifier.size(48.dp).clip(CircleShape).tjClickable(label = "返回") { onBack() },
                 contentAlignment = Alignment.Center
-            ) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回", tint = Ink, modifier = Modifier.size(22.dp)) }
+            ) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回", tint = Ink2, modifier = Modifier.size(22.dp)) }
         }
         Column(Modifier.weight(1f).padding(start = if (onBack != null) 4.dp else 0.dp)) {
             Text(
@@ -354,7 +380,7 @@ fun TjChip(text: String, selected: Boolean = false, onClick: () -> Unit) {
         modifier = Modifier.pressScale(src, pressedScale = 0.96f).heightIn(min = 48.dp),
         colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
             containerColor = CardBg, labelColor = Ink2,
-            selectedContainerColor = Ink, selectedLabelColor = Color.White,
+            selectedContainerColor = Accent, selectedLabelColor = OnAccent,
         ),
     )
 }
@@ -364,7 +390,6 @@ fun TjChip(text: String, selected: Boolean = false, onClick: () -> Unit) {
 fun CardBox(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Box(
         modifier
-            .shadow(2.dp, CardShape, ambientColor = Color(0x0F0F1B3D), spotColor = Color(0x0F0F1B3D))
             .clip(CardShape)
             .background(CardBg)
             .border(1.dp, Line, CardShape)
@@ -377,7 +402,7 @@ fun MasteryDots(mastery: Int, size: Int = 7) {
         repeat(5) { i ->
             Box(
                 Modifier.size(size.dp).clip(CircleShape)
-                    .background(if (i < mastery) Green else Color(0xFFD5DCE8))
+                    .background(if (i < mastery) Green else FieldBorder)
             )
         }
     }

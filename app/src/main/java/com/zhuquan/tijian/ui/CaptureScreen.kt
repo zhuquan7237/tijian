@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Arrangement
@@ -123,8 +124,8 @@ fun CaptureScreen(vm: AppVm) {
                 items(vm.captureUris, key = { it.toString() }) { uri ->
                     Box(
                         Modifier.fillMaxWidth().aspectRatio(0.78f)
-                            .shadow(8.dp, RoundedCornerShape(14.dp), ambientColor = Color(0x14362A1C), spotColor = Color(0x14362A1C))
                             .clip(RoundedCornerShape(14.dp)).background(CardBg)
+                            .border(1.dp, Line, RoundedCornerShape(14.dp))
                     ) {
                         AsyncImage(
                             model = uri, contentDescription = null,

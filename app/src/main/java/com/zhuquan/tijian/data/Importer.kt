@@ -88,6 +88,11 @@ class Importer(private val context: Context, private val db: Db, private val ai:
             answer = p.answer,
             analysis = p.analysis,
             tags = JSONArray(p.tags).toString(),
+            // 识别阶段已经给出的「需要掌握」必须带进草稿：漏掉这三行会让入库的永远是 []，
+            // 用户看到的就是每道题都要再点一次「让 AI 分析」。
+            needFormulas = JSONArray(p.needFormulas).toString(),
+            needConcepts = JSONArray(p.needConcepts).toString(),
+            needMethods = JSONArray(p.needMethods).toString(),
             difficulty = p.difficulty,
             categoryName = p.category,
             confidence = p.confidence,

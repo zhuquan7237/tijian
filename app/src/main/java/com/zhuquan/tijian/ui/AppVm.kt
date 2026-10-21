@@ -466,6 +466,20 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     }
 
     /** 多选批量删除（软删除），成功后刷新列表。 */
+    /**
+     * 页面里的数据库写入统一走这里：在 IO 线程执行，不阻塞点击后的那一帧；
+     * 挂在 viewModelScope 上，页面/对话框关闭也不会把写入取消。完成后刷新统计。
+     */
+    fun write(block: (com.zhuquan.tijian.data.Db) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val error = runCatching { block(db) }.exceptionOrNull()
+            withContext(Dispatchers.Main) {
+                if (error != null) toast = "保存失败：${error.message ?: error.javaClass.simpleName}"
+                refresh()
+            }
+        }
+    }
+
     fun deleteQuestions(ids: List<String>) {
         if (ids.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {

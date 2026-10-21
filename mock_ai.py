@@ -7,41 +7,85 @@ BS = chr(92)
 def CMD(n): return BS + n
 Q2_STEM = ("求 $" + CMD("lim") + "_{x" + CMD("to") + " 1}" + CMD("dfrac") +
            "{e^{" + CMD("ln") + " x}-e^{x" + CMD("ln") + " x}}{1-x+x" + CMD("ln") + " x}$ 的值。")
-Q2_ANALYSIS = (
-    "原式 $=" + CMD("lim") + "_{x" + CMD("to") + " 1}" + CMD("dfrac") +
-    "{(1-x)" + CMD("ln") + " x}{1-x+x" + CMD("ln") + " x}$，两次使用洛必达法则：\n\n"
-    "$$" + CMD("dfrac") + "{1/x-1-" + CMD("ln") + " x}{" + CMD("ln") + " x}" +
-    CMD("to") + CMD("dfrac") + "{-1/x^2-1/x}{1/x}" + CMD("Big") + "|_{x=1}=-2$$\n\n"
-    "| 步骤 | 操作 | 结果 |\n|---|---|---|\n"
-    "| 1 | 第一次求导 | $" + CMD("dfrac") + "{1/x-1-" + CMD("ln") + " x}{" + CMD("ln") + " x}$ |\n"
-    "| 2 | 第二次求导 | $" + CMD("dfrac") + "{-1/x^2-1/x}{1/x}$ |\n\n"
-    "化学式示例：$" + CMD("ce") + "{2H2 + O2 -> 2H2O}$，矩阵：$" +
-    CMD("begin") + "{vmatrix}a&b" + BS + BS + "c&d" + CMD("end") + "{vmatrix}$"
+BS = chr(92)
+def CMD(n): return BS + n
+
+# 解析统一用新结构：思路 / 1. 2. 3. / 易错 / 结论。用于验证 structure.js 的结构化排版。
+Q1_ANALYSIS = (
+    "思路：求导后解 $f'(x)>0$。\n\n"
+    "1. 求导：$f'(x)=3x^2-3=3(x-1)(x+1)$\n\n"
+    "2. 解不等式：$f'(x)>0$ 得 $x<-1$ 或 $x>1$\n\n"
+    "易错：把 $f'(x)\\ge 0$ 的等号带上，端点会多出来。\n\n"
+    "结论：单调递增区间为 $(-\\infty,-1)\\cup(1,+\\infty)$，选 D。"
 )
+
+Q2_ANALYSIS = (
+    "思路：分子分母同时趋于 0，先整理再用洛必达。\n\n"
+    "1. 约去 $(1-x)$，原式化为 $" + CMD("lim") + "_{x" + CMD("to") + " 1}" +
+    CMD("dfrac") + "{" + CMD("ln") + " x}{1-x+x" + CMD("ln") + " x}$\n\n"
+    "2. 第一次求导：$" + CMD("dfrac") + "{1/x-1-" + CMD("ln") + " x}{" + CMD("ln") + " x}$\n\n"
+    "3. 第二次求导：$" + CMD("dfrac") + "{-1/x^2-1/x}{1/x}$，代入 $x=1$\n\n"
+    "$$" + CMD("lim") + "_{x" + CMD("to") + " 1}" + CMD("dfrac") +
+    "{-1/x^2-1/x}{1/x}" + CMD("Big") + "|_{x=1}=-2$$\n\n"
+    "易错：每次用洛必达前都要确认仍是 $" + CMD("dfrac") + "{0}{0}$ 型。\n\n"
+    "结论：极限值为 $-2$。"
+)
+
+Q3_ANALYSIS = (
+    "思路：先求导得切线斜率，再用点斜式。\n\n"
+    "1. 求导：$y'=3x^2-2$\n\n"
+    "2. 代入切点横坐标：$k=y'(1)=1$\n\n"
+    "$$y-(-1)=1\\cdot(x-1)$$\n\n"
+    "3. 整理：$y=x-2$\n\n"
+    "易错：切点纵坐标要用 $f(1)=-1$，不要代成 0。\n\n"
+    "结论：切线方程为 $y=x-2$。"
+)
+
+Q4_ANALYSIS = (
+    "思路：恒成立问题优先分离参数。\n\n"
+    "1. 分离：$a\\le \\dfrac{e^x}{x}$ 对 $x>0$ 恒成立\n\n"
+    "2. 设 $g(x)=\\dfrac{e^x}{x}$，求导得 $g'(x)=\\dfrac{e^x(x-1)}{x^2}$\n\n"
+    "3. 极小值点 $x=1$，$g(1)=e$\n\n"
+    "易错：只验证了充分条件，忘了 $x<0$ 时也要讨论。\n\n"
+    "结论：$a\\le e$。"
+)
+
+NEEDS1 = {"need_formulas": ["导数与单调性 $f'(x)>0\\Rightarrow f$ 递增"],
+          "need_concepts": ["导数为零的点不一定是极值点"],
+          "need_methods": ["求导后解不等式定单调区间"]}
+NEEDS2 = {"need_formulas": ["洛必达法则 $" + CMD("lim") + CMD("dfrac") + "{f}{g}=" + CMD("lim") + CMD("dfrac") + "{f'}{g'}$"],
+          "need_concepts": ["$" + CMD("dfrac") + "{0}{0}$ 型与 $" + CMD("dfrac") + CMD("infty") + "{" + CMD("infty") + "}$ 型的判定"],
+          "need_methods": ["等价无穷小替换（仅乘除）", "两次洛必达"]}
+NEEDS3 = {"need_formulas": ["导数几何意义 $k=f'(x_0)$"],
+          "need_concepts": ["切点既在曲线上又在切线上"],
+          "need_methods": ["点斜式求切线方程", "代点校验"]}
+NEEDS4 = {"need_formulas": ["$e^x\\ge x+1$"],
+          "need_concepts": ["恒成立等价于最值不等式"],
+          "need_methods": ["分离参数", "求导讨论最值"]}
 
 QUESTIONS = [
     {"no": "1", "type": "选择题",
      "stem": "已知函数 $f(x)=x^3-3x$，则 $f(x)$ 的单调递增区间是（  ）",
      "options": ["A. $(-\\infty,-1)$", "B. $(-1,1)$", "C. $(1,+\\infty)$", "D. $(-\\infty,-1)\\cup(1,+\\infty)$"],
-     "answer": "D", "analysis": "由 $f'(x)=3x^2-3>0$ 得 $x<-1$ 或 $x>1$",
+     "answer": "D", "analysis": Q1_ANALYSIS,
      "knowledge_tags": ["导数与单调性"], "difficulty": 3,
-     "category": "函数与导数", "confidence": 0.93, "bbox": [0.05, 0.115, 0.95, 0.255]},
+     "category": "函数与导数", "confidence": 0.93, "bbox": [0.05, 0.115, 0.95, 0.255], **NEEDS1},
     {"no": "2", "type": "解答题",
      "stem": Q2_STEM,
      "options": [], "answer": r"$-2$",
      "analysis": Q2_ANALYSIS,
      "knowledge_tags": ["极限", "洛必达法则"], "difficulty": 4,
-     "category": "函数与导数", "confidence": 0.54, "bbox": [0.05, 0.345, 0.95, 0.505]},
+     "category": "函数与导数", "confidence": 0.54, "bbox": [0.05, 0.345, 0.95, 0.505], **NEEDS2},
     {"no": "3", "type": "填空题",
      "stem": "曲线 $y=x^3-2x$ 在点 $(1,-1)$ 处的切线方程为 ______。",
-     "options": [], "answer": "$y=x-2$", "analysis": "$y'=3x^2-2$，在 $x=1$ 处斜率为 1。",
+     "options": [], "answer": "$y=x-2$", "analysis": Q3_ANALYSIS,
      "knowledge_tags": ["切线方程"], "difficulty": 2,
-     "category": "函数与导数", "confidence": 0.89, "bbox": [0.05, 0.548, 0.95, 0.615]},
+     "category": "函数与导数", "confidence": 0.89, "bbox": [0.05, 0.548, 0.95, 0.615], **NEEDS3},
     {"no": "4", "type": "解答题",
      "stem": "已知函数 $f(x)=e^x-ax$，若 $f(x)\\ge 0$ 恒成立，求 $a$ 的取值范围。",
-     "options": [], "answer": "$a\\le e$", "analysis": "分离参数或求导讨论，最小值为 $f(\\ln a)=a-a\\ln a$。",
+     "options": [], "answer": "$a\\le e$", "analysis": Q4_ANALYSIS,
      "knowledge_tags": ["恒成立", "导数应用"], "difficulty": 4,
-     "category": "极值点偏移", "confidence": 0.87, "bbox": [0.05, 0.63, 0.95, 0.705]},
+     "category": "极值点偏移", "confidence": 0.87, "bbox": [0.05, 0.63, 0.95, 0.705], **NEEDS4},
 ]
 
 KNOWLEDGE = {

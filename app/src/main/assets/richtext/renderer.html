@@ -5,10 +5,36 @@
 <meta name="viewport" content="width=__WIDTH__, initial-scale=1, maximum-scale=1, user-scalable=no">
 <link rel="stylesheet" href="katex.min.css">
 <style>
+  /* 夜读台配色。与 ui/Theme.kt 的 token 一一对应，改色时两边同步。 */
+  :root {
+    --bg: #1C1E22;          /* Bg */
+    --card: #26282C;        /* CardBg */
+    --surface-alt: #303236; /* SurfaceAlt */
+    --ink: #E6E8EB;         /* Ink */
+    --ink2: #C3C8D0;        /* Ink2 */
+    --muted: #9CA3AF;       /* Muted */
+    --line: #3F4451;        /* Line */
+    --accent: #2DD4BF;      /* Accent */
+    --accent-soft: #163B38; /* AccentSoft */
+    --accent-rgb: 45,212,191;
+    --red: #F87171;         /* Red */
+    --red-soft: #3D2326;    /* RedSoft */
+    --amber: #FBBF24;       /* Amber */
+    --amber-soft: #3F2E1A;  /* AmberSoft */
+    --menu-bg: #3A3D44;     /* Fill */
+  }
+  /* PDF 导出（RichBitmap，白底位图）：浅色打印配色，与界面无关。 */
+  body.rt-print {
+    --bg: #FFFFFF; --card: #FFFFFF; --surface-alt: #F0F2F7;
+    --ink: #151A2A; --ink2: #3E465A; --muted: #5A6675; --line: #DCE2EA;
+    --accent: #2F4BD8; --accent-soft: #EEF0FF; --accent-rgb: 47,75,216;
+    --red: #C34D55; --red-soft: #FFF1F2; --menu-bg: #12161C;
+    --amber: #9A6B1F; --amber-soft: #FBF1DC;
+  }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; background: transparent;
-    color: #151A2A;
+    color: var(--ink);
     font-family: -apple-system, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
     font-size: __FONTSIZE__px;
     line-height: 1.82;
@@ -25,41 +51,41 @@
   h1 { font-size: 1.5em; line-height: 1.35; margin: 6px 0 14px; font-weight: 700; }
   h2 { font-size: 1.22em; line-height: 1.4; margin: 22px 0 9px; font-weight: 700; }
   h3 { font-size: 1.06em; line-height: 1.45; margin: 18px 0 7px; font-weight: 700; }
-  h4 { display: inline-block; font-size: 0.72em; letter-spacing: 0.12em; color: #4D5CEB; background: #EEF0FF; border-radius: 999px; padding: 4px 9px; margin: 18px 0 9px; font-weight: 700; }
+  h4 { display: inline-block; font-size: 0.72em; letter-spacing: 0.12em; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 4px 9px; margin: 18px 0 9px; font-weight: 700; }
   h5, h6 { font-size: 1em; margin: 12px 0 6px; font-weight: 600; }
   ul, ol { margin: 6px 0 10px; padding-left: 22px; }
   li { margin: 3px 0; line-height: 1.9; }
   li > p { margin: 0; }
-  strong { font-weight: 700; color: #151A2A; }
+  strong { font-weight: 700; color: var(--ink); }
   em { font-style: italic; }
-  a { color: #4D5CEB; text-decoration: none; }
+  a { color: var(--accent); text-decoration: none; }
   blockquote {
     margin: 12px 0; padding: 9px 12px;
-    border-left: 3px solid #4D5CEB; background: #F4F5FF; color: #59627A; border-radius: 0 10px 10px 0;
+    border-left: 3px solid var(--accent); background: var(--accent-soft); color: var(--ink2); border-radius: 0 10px 10px 0;
   }
-  hr { border: 0; border-top: 1px solid #E6DFD2; margin: 16px 0; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
   code {
     font-family: "JetBrains Mono", "Roboto Mono", monospace;
-    font-size: 0.86em; background: #F0F2F7; color: #39425A;
+    font-size: 0.86em; background: var(--surface-alt); color: var(--ink2);
     padding: 1px 5px; border-radius: 4px;
   }
   pre {
-    background: #F4F5F8; border: 1px solid #E3E7F0; border-radius: 10px;
+    background: var(--surface-alt); border: 1px solid var(--line); border-radius: 10px;
     padding: 10px 12px; overflow-x: auto; margin: 10px 0;
     line-height: 1.6;
   }
-  pre code { background: transparent; color: #332F28; padding: 0; font-size: 0.84em; }
+  pre code { background: transparent; color: var(--ink); padding: 0; font-size: 0.84em; }
   .table-wrap { width: 100%; overflow-x: auto; margin: 10px 0; }
   table {
     border-collapse: collapse; width: 100%; margin: 0;
     font-size: 0.88em; table-layout: auto;
   }
   table th, table td {
-    border: 1px solid #E3E7F0; padding: 8px 10px; text-align: left;
+    border: 1px solid var(--line); padding: 8px 10px; text-align: left;
     vertical-align: top;
   }
-  table th { background: #F0F2F7; font-weight: 700; color: #3E465A; }
-  table tr:nth-child(even) td { background: #FAFBFD; }
+  table th { background: var(--surface-alt); font-weight: 700; color: var(--ink); }
+  table tr:nth-child(even) td { background: rgba(var(--accent-rgb),.04); }
   img { max-width: 100%; height: auto; border-radius: 8px; }
   .katex { font-size: 1.04em; word-break: normal; overflow-wrap: normal; }
   /* An inline-block contributes tall fractions/roots to the paragraph line box.
@@ -70,7 +96,7 @@
   .math-display .katex-display { margin: 0; padding: .2em 0; }
   .math-display .katex-display > .katex { text-align: left; }
   .math-display .katex-display > .katex > .katex-html { min-width: min-content; }
-  .rt-error { color: #C34D55; font-family: monospace; font-size: 0.9em; background: #FFF1F2; border-radius: 6px; padding: 2px 5px; }
+  .rt-error { color: var(--red); font-family: monospace; font-size: 0.9em; background: var(--red-soft); border-radius: 6px; padding: 2px 5px; }
   /* 任务列表 */
   input[type="checkbox"] { margin-right: 6px; }
   /* 长按选择：保留浏览器原生的选区与拖拽手柄，只把系统菜单换成应用自己的两项。
@@ -80,23 +106,58 @@
     -webkit-user-select: text; user-select: text;
     -webkit-touch-callout: none;
   }
-  body.rt-selectable ::selection { background: rgba(47,75,216,.24); }
-  .rt-press { background: rgba(47,75,216,.10); border-radius: 4px; }
-  /* 详情页把「题目 / 答案 / 解析」合成一个文档，样式与原生白卡一致 */
+  body.rt-selectable ::selection { background: rgba(var(--accent-rgb),.28); }
+  .rt-press { background: rgba(var(--accent-rgb),.12); border-radius: 4px; }
+  /* 详情页把「题目 / 答案 / 解析」合成一个文档，样式与原生卡片（CardBg）一致 */
   .rt-card {
-    background: #FFFFFF; border: 1px solid #DCE2EA; border-radius: 18px;
-    padding: 16px; margin: 0 0 16px 0;
+    background: var(--card); border: 1px solid var(--line); border-radius: 20px;
+    padding: 14px 16px 16px; margin: 0 0 12px 0;
   }
-  .rt-card-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 14px; }
-  .rt-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: 0 0 auto; }
-  .rt-card-title { font-size: 15px; font-weight: 600; color: #12161C; line-height: 1.3; }
-  .rt-card-sub { font-size: 12px; color: #5A6675; margin-top: 2px; }
+  .rt-card:last-child { margin-bottom: 0; }
+  /* 卡片标题是「标签」而不是第二个正文标题：小号、字距拉开、次级色，内容才是主角 */
+  .rt-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .rt-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
+  .rt-card-title { font-size: 12px; font-weight: 600; letter-spacing: .14em; color: var(--muted); line-height: 1.4; }
+  .rt-card-sub { font-size: 12px; color: var(--muted); margin-left: auto; }
+  .k-answer { border-left: 3px solid var(--accent); }
+  .k-answer .rt-card-body { font-weight: 600; color: var(--ink); }
+  .k-answer .rt-card-body .math-display { font-size: 1.12em; }
+  .k-needs h4 { margin: 12px 0 7px; }
+  .k-needs h4:first-child { margin-top: 0; }
+  .k-needs ul { list-style: none; margin: 0 0 4px; padding: 0; }
+  .k-needs li { background: var(--surface-alt); border-radius: 10px; padding: 7px 11px; margin: 0 0 6px; line-height: 1.65; }
+  /* ---------- 结构化解析（structure.js） ---------- */
+  .an-prose { margin: 0 0 12px; }
+  .an-box { border-radius: 12px; padding: 10px 12px 11px; margin: 0 0 12px; }
+  .an-box:last-child { margin-bottom: 0; }
+  .an-think { background: var(--surface-alt); }
+  .an-pit { background: var(--amber-soft); }
+  .an-concl { background: var(--accent-soft); border-left: 3px solid var(--accent); }
+  .an-tag { display: block; font-size: 11px; line-height: 1.4; font-weight: 700; letter-spacing: .14em; margin-bottom: 3px; }
+  .an-think .an-tag { color: var(--muted); }
+  .an-pit .an-tag { color: var(--amber); }
+  .an-concl .an-tag { color: var(--accent); }
+  .an-steps { list-style: none; margin: 0 0 12px; padding: 0; }
+  .an-steps:last-child { margin-bottom: 0; }
+  .an-step { position: relative; display: flex; gap: 12px; margin: 0; padding: 0 0 14px; line-height: inherit; }
+  .an-step:last-child { padding-bottom: 2px; }
+  .an-step::before { content: ''; position: absolute; left: 11px; top: 28px; bottom: 4px; width: 1px; background: var(--line); }
+  .an-step:last-child::before { display: none; }
+  .an-n {
+    flex: 0 0 23px; height: 23px; margin-top: 3px; border-radius: 50%;
+    border: 1px solid rgba(var(--accent-rgb),.55); color: var(--accent);
+    font-size: 12px; font-weight: 700; line-height: 21px; text-align: center; font-variant-numeric: tabular-nums;
+  }
+  .an-body { flex: 1 1 auto; min-width: 0; }
+  .an-body > :last-child { margin-bottom: 0; }
+  .an-lead { font-weight: 600; color: var(--ink); line-height: 1.6; margin: 1px 0 2px; }
+  .an-body .math-display { margin: 6px 0; padding: 4px 10px; border-radius: 8px; background: rgba(var(--accent-rgb),.05); }
   .rt-card-body > :first-child { margin-top: 0; }
   .rt-card-body > :last-child { margin-bottom: 0; }
   #rt-menu {
     position: fixed; z-index: 99999; display: none; align-items: center;
-    background: #12161C; border-radius: 10px; padding: 2px;
-    box-shadow: 0 6px 18px rgba(0,0,0,.28);
+    background: var(--menu-bg); border-radius: 10px; padding: 2px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.48);
     -webkit-user-select: none; user-select: none;
   }
   #rt-menu button {
@@ -107,13 +168,14 @@
   #rt-menu button + button { border-left: 1px solid rgba(255,255,255,.20); border-radius: 0 8px 8px 0; }
 </style>
 </head>
-<body>
+<body class="__THEME__">
 <div id="out"></div>
 
 <script>window.__RT_SELECTABLE = __SELECTABLE__; window.__RT_SECTIONS = __SECTIONS__;</script>
 <script src="katex.min.js"></script>
 <script src="mhchem.min.js"></script>
 <script src="markdown-it.min.js"></script>
+<script src="structure.js"></script>
 <script>
 (function () {
   var RENDER_ID = __RENDER_ID__;
@@ -219,13 +281,15 @@
     var buf = [];
     for (var si = 0; si < SECTIONS.length; si++) {
       var sec = SECTIONS[si];
-      buf.push('<section class="rt-card">' +
-        '<div class="rt-card-head"><span class="rt-dot" style="background:' + (sec.color || '#2F4BD8') + '"></span>' +
+      var kind = sec.kind || '';
+      var bodyHtml = (kind === 'analysis' && window.tjStructure && window.tjStructure(sec.markdown || '', renderMd)) || renderMd(sec.markdown || '');
+      buf.push('<section class="rt-card' + (kind ? ' k-' + kind : '') + '">' +
+        '<div class="rt-card-head"><span class="rt-dot" style="background:' + (sec.color || 'var(--accent)') + '"></span>' +
         '<div><div class="rt-card-title">' + escapeHtml(sec.title || '') + '</div>' +
         (sec.subtitle ? '<div class="rt-card-sub">' + escapeHtml(sec.subtitle) + '</div>' : '') +
         '</div></div>' +
         '<div class="rt-card-body" style="font-size:' + (sec.fontSize || 15) + 'px">' +
-        renderMd(sec.markdown || '') + '</div></section>');
+        bodyHtml + '</div></section>');
     }
     outEl.innerHTML = buf.join('');
   } else {

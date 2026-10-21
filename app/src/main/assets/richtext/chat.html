@@ -5,12 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <link rel="stylesheet" href="katex.min.css">
 <style>
+  /* 夜读台配色。与 ui/Theme.kt 的 token 一一对应，改色时两边同步。 */
+  :root {
+    --bg: #1C1E22;          /* Bg */
+    --card: #26282C;        /* CardBg */
+    --surface-alt: #303236; /* SurfaceAlt */
+    --ink: #E6E8EB;         /* Ink */
+    --ink2: #C3C8D0;        /* Ink2 */
+    --muted: #9CA3AF;       /* Muted */
+    --line: #3F4451;        /* Line */
+    --accent: #2DD4BF;      /* Accent */
+    --accent-soft: #163B38; /* AccentSoft */
+    --accent-rgb: 45,212,191;
+    --red: #F87171;         /* Red */
+    --red-soft: #3D2326;    /* RedSoft */
+    --amber: #FBBF24;       /* Amber */
+    --amber-soft: #3F2E1A;  /* AmberSoft */
+    --menu-bg: #3A3D44;     /* Fill */
+  }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; background: transparent;
     -webkit-text-size-adjust: 100%;
     font-family: -apple-system, "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", sans-serif;
-    color: #212121; font-size: 14px; line-height: 1.62;
+    color: var(--ink); font-size: 14px; line-height: 1.62;
     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
   }
   #out { padding: 12px 14px 16px; }
@@ -19,39 +37,65 @@
   .row.ai { justify-content: flex-start; }
   .bubble {
     max-width: 84%; padding: 9px 12px; border-radius: 22px;
-    background: #F0F0F0; color: #212121;
+    background: var(--surface-alt); color: var(--ink);
   }
   .card {
     width: 100%; padding: 10px 12px;
-    background: #FFFFFF; border: none;
+    background: var(--card); border: none;
     border-radius: 0;
   }
-  .who { font-size: 11px; font-weight: 600; color: #606060; margin-bottom: 8px; }
+  .who { font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 8px; }
   p { margin: 0 0 7px; }
   p:last-child { margin-bottom: 0; }
-  h1,h2,h3,h4 { margin: 12px 0 6px; line-height: 1.35; color: #212121; }
+  h1,h2,h3,h4 { margin: 12px 0 6px; line-height: 1.35; color: var(--ink); }
   h1 { font-size: 17px; } h2 { font-size: 16px; } h3 { font-size: 15px; } h4 { font-size: 14px; }
   ul, ol { margin: 4px 0 8px; padding-left: 20px; }
   li { margin: 2px 0; }
   blockquote {
     margin: 8px 0; padding: 2px 0 2px 10px;
-    border-left: 3px solid #B9C6E8; color: #4A5566; background: #F7F9FE;
+    border-left: 3px solid var(--accent); color: var(--ink2); background: var(--accent-soft);
   }
-  code { background: #F1F3F7; border-radius: 4px; padding: 1px 4px; font-size: .92em; }
-  pre { background: #F7F8FB; border: 1px solid #E6E9F0; border-radius: 8px; padding: 8px 10px; overflow-x: auto; }
+  code { background: var(--surface-alt); border-radius: 4px; padding: 1px 4px; font-size: .92em; }
+  pre { background: var(--surface-alt); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; overflow-x: auto; }
   pre code { background: transparent; padding: 0; }
   table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: .92em; }
-  th, td { border: 1px solid #E3E7F0; padding: 6px 8px; text-align: left; vertical-align: top; }
-  th { background: #F0F2F7; }
+  th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--surface-alt); }
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .katex { font-size: 1.04em; }
   .math-inline { display: inline-block; vertical-align: middle; max-width: 100%; }
   .math-display { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 8px 0; }
   .math-display .katex-display { margin: 0; padding: .1em 0; }
   .math-display .katex-display > .katex { text-align: left; }
-  .rt-error { color: #C34D55; background: #FFF1F2; border-radius: 6px; padding: 1px 5px; font-size: .9em; }
-  .rt-hl { background: rgba(53,92,206,.14); border-radius: 3px; }
-  .empty { color: #596372; font-size: 13px; padding: 4px 0 8px; }
+  .rt-error { color: var(--red); background: var(--red-soft); border-radius: 6px; padding: 1px 5px; font-size: .9em; }
+  .rt-hl { background: rgba(var(--accent-rgb),.18); border-radius: 3px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 4px 0 8px; }
+  /* ---------- 结构化解析（structure.js） ---------- */
+  .an-prose { margin: 0 0 12px; }
+  .an-box { border-radius: 12px; padding: 10px 12px 11px; margin: 0 0 12px; }
+  .an-box:last-child { margin-bottom: 0; }
+  .an-think { background: var(--surface-alt); }
+  .an-pit { background: var(--amber-soft); }
+  .an-concl { background: var(--accent-soft); border: 1px solid rgba(var(--accent-rgb),.32); }
+  .an-tag { display: block; font-size: 11px; line-height: 1.4; font-weight: 700; letter-spacing: .14em; margin-bottom: 3px; }
+  .an-think .an-tag { color: var(--muted); }
+  .an-pit .an-tag { color: var(--amber); }
+  .an-concl .an-tag { color: var(--accent); }
+  .an-steps { list-style: none; margin: 0 0 12px; padding: 0; }
+  .an-steps:last-child { margin-bottom: 0; }
+  .an-step { position: relative; display: flex; gap: 12px; margin: 0; padding: 0 0 14px; line-height: inherit; }
+  .an-step:last-child { padding-bottom: 2px; }
+  .an-step::before { content: ''; position: absolute; left: 11px; top: 28px; bottom: 4px; width: 1px; background: var(--line); }
+  .an-step:last-child::before { display: none; }
+  .an-n {
+    flex: 0 0 23px; height: 23px; margin-top: 3px; border-radius: 50%;
+    border: 1px solid rgba(var(--accent-rgb),.55); color: var(--accent);
+    font-size: 12px; font-weight: 700; line-height: 21px; text-align: center; font-variant-numeric: tabular-nums;
+  }
+  .an-body { flex: 1 1 auto; min-width: 0; }
+  .an-body > :last-child { margin-bottom: 0; }
+  .an-lead { font-weight: 600; color: var(--ink); line-height: 1.6; margin: 1px 0 2px; }
+  .an-body .math-display { margin: 6px 0; padding: 4px 10px; border-radius: 8px; background: rgba(var(--accent-rgb),.05); }
 </style>
 </head>
 <body>
@@ -59,6 +103,7 @@
 <script src="katex.min.js"></script>
 <script src="mhchem.min.js"></script>
 <script src="markdown-it.min.js"></script>
+<script src="structure.js"></script>
 <script>
 (function () {
   var MSGS = [];
@@ -135,7 +180,8 @@
       if (m.role === 'user') {
         return '<div class="row user"><div class="bubble">' + renderMd(m.text || '') + '</div></div>';
       }
-      return '<div class="row ai"><div class="card"><div class="who">题笺 AI</div>' + renderMd(m.text || '') + '</div></div>';
+      var body = (window.tjStructure && window.tjStructure(m.text || '', renderMd)) || renderMd(m.text || '');
+      return '<div class="row ai"><div class="card"><div class="who">题笺 AI</div>' + body + '</div></div>';
     }).join('');
     if (scrollBottom) {
       requestAnimationFrame(function () { window.scrollTo(0, document.body.scrollHeight); });

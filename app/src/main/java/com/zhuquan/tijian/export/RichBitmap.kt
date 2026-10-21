@@ -34,7 +34,7 @@ object RichBitmap {
         if (markdown.isBlank()) return@withContext null
 
         // 固定 CSS 视口宽度，避免受设备 DPR 影响导致字号与排版比例失真
-        val html = RichTextRenderer.html(ctx, Normalize.text(markdown), fontSize, widthPx)
+        val html = RichTextRenderer.html(ctx, Normalize.text(markdown), fontSize, widthPx, print = true)
         // Attach the offscreen WebView to the running activity's window. A Dialog
         // needs a valid window token; using the application context raised
         // BadTokenException and made PDF formulas silently fall back to text.

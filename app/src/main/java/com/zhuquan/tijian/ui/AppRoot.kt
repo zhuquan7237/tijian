@@ -158,7 +158,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
             }
             Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 92.dp, start = 20.dp, end = 20.dp)) {
                 Box(
-                    Modifier.semantics { liveRegion = LiveRegionMode.Polite }.clip(RoundedCornerShape(12.dp)).background(Color(0xF217171C))
+                    Modifier.semantics { liveRegion = LiveRegionMode.Polite }.clip(RoundedCornerShape(12.dp)).background(Color(0xF23A3D44))
                         .padding(horizontal = 16.dp, vertical = 11.dp)
                 ) { Text(msg, fontSize = 12.5.sp, lineHeight = 18.sp, color = Color.White) }
             }
@@ -235,7 +235,7 @@ private fun ImportOption(
 
 @Composable
 private fun BottomBar(route: Route, onHome: () -> Unit, onLibrary: () -> Unit, onSettings: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(Color(0xFAFFFFFF))) {
+    Column(Modifier.fillMaxWidth().background(Color(0xFA1C1E22))) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp), verticalAlignment = Alignment.CenterVertically) {
             TabItem(Icons.Rounded.MenuBook, "错题本", route is Route.Home, Modifier.weight(1f), onHome)

@@ -74,7 +74,14 @@ import kotlinx.coroutines.withContext
 @Composable
 fun ChatOverlay(vm: AppVm) {
     BackHandler(enabled = vm.chatOpen) { vm.closeChat() }
-    if (vm.chatOpen) ChatPanel(vm) else ChatFab(vm)
+    // 悬浮球只在「有题目上下文」的页面出现（详情 / 复习）。首页、知识库、设置上它没有
+    // 可追问的对象，留在那里只会压住卡片、和主按钮抢注意力。
+    val contextual = vm.route !is Route.Home && vm.route !is Route.Library && vm.route !is Route.Settings
+    when {
+        vm.chatOpen -> ChatPanel(vm)
+        contextual -> ChatFab(vm)
+        else -> Unit
+    }
 }
 
 @Composable
@@ -89,8 +96,8 @@ private fun ChatFab(vm: AppVm) {
             mutableStateOf(
                 IntOffset(
                     (maxW - sizePx - 18.dp.value * density.density).toInt(),
-                    // 默认贴近右下、在底部 tab 之上；用户仍可拖动到任意位置。
-                    (maxH - sizePx - 96.dp.value * density.density).toInt()
+                    // 贴右下角（距底 24dp）；这一层只在详情/复习页出现，没有底部 tab 要避让。
+                    (maxH - sizePx - 24.dp.value * density.density).toInt()
                 )
             )
         }
@@ -104,7 +111,8 @@ private fun ChatFab(vm: AppVm) {
                 .size(size)
                 .shadow(10.dp, CircleShape, ambientColor = Color(0x33000000), spotColor = Color(0x33000000))
                 .clip(CircleShape)
-                .background(Ink)
+                .background(Fill)
+                .border(1.dp, HeroLine, CircleShape)
                 .tjClickable(label = "追问 AI") { vm.openChat() }
                 .pointerInput(maxW, maxH, sizePx) {
                     detectDragGestures { change, drag ->
@@ -117,11 +125,11 @@ private fun ChatFab(vm: AppVm) {
                 },
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Rounded.Forum, "追问 AI", tint = Color.White, modifier = Modifier.size(24.dp))
+            Icon(Icons.Rounded.Forum, "追问 AI", tint = Accent, modifier = Modifier.size(24.dp))
             if (vm.chatQuestion != null) {
                 Box(
                     Modifier.align(Alignment.TopEnd).padding(top = 6.dp, end = 6.dp)
-                        .size(8.dp).clip(CircleShape).background(Color(0xFF8CFFD9))
+                        .size(8.dp).clip(CircleShape).background(Accent)
                 )
             }
         }
@@ -142,7 +150,7 @@ private fun ChatPanel(vm: AppVm) {
     BoxWithConstraints(
         Modifier.fillMaxSize()
             .graphicsLayer { alpha = appear.value }
-            .background(Color(0x5C000000))
+            .background(Color(0x99000000))
             .pointerInput(Unit) { detectTapGestures { vm.closeChat() } }
     ) {
         val panelMax = (maxHeight - 24.dp).coerceAtLeast(0.dp)
@@ -362,13 +370,13 @@ private fun ChatInput(input: String, busy: Boolean, compact: Boolean = false, on
         Spacer(Modifier.width(8.dp))
         Box(
             Modifier.size(48.dp).clip(CircleShape)
-                .background(if (input.isBlank() || busy) SurfaceAlt else Ink)
+                .background(if (input.isBlank() || busy) SurfaceAlt else Accent)
                 .tjClickable(enabled = input.isNotBlank() && !busy, label = "发送") { onSend() },
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 Icons.AutoMirrored.Rounded.Send, "发送",
-                tint = if (input.isBlank() || busy) Muted else Color.White,
+                tint = if (input.isBlank() || busy) Muted else OnAccent,
                 modifier = Modifier.size(20.dp)
             )
         }

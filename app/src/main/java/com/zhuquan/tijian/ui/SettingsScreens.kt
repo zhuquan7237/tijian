@@ -222,7 +222,7 @@ fun SettingRow(icon: ImageVector, title: String, subtitle: String, onClick: () -
             Text(title, fontSize = 15.sp, color = Ink, fontWeight = FontWeight.Medium)
             Text(subtitle, fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 3.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Icon(Icons.Rounded.ChevronRight, null, tint = Color(0xFF98A3B3), modifier = Modifier.size(18.dp))
+        Icon(Icons.Rounded.ChevronRight, null, tint = Muted, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -359,10 +359,10 @@ fun ProviderScreen(vm: AppVm) {
             fetchError?.let {
                 Spacer(Modifier.height(12.dp))
                 Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFFFBEDE9))
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(RedSoft)
                         .padding(12.dp)
                 ) {
-                    Text(it, fontSize = 11.sp, lineHeight = 17.sp, color = Color(0xFF8E3B26))
+                    Text(it, fontSize = 11.sp, lineHeight = 17.sp, color = Red)
                     Text(
                         "重试", fontSize = 11.sp, color = Accent, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.tjClickable { pull() }.padding(top = 6.dp)

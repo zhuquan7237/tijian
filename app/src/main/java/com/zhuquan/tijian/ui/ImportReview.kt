@@ -86,7 +86,7 @@ fun ImportScreen(vm: AppVm) {
             ) {
                 CircularProgressIndicator(
                     progress = { vm.importProgress }, modifier = Modifier.size(54.dp),
-                    color = Accent, strokeWidth = 3.dp, trackColor = Color(0xFFEDEDE7)
+                    color = Accent, strokeWidth = 3.dp, trackColor = SurfaceAlt
                 )
                 Spacer(Modifier.height(18.dp))
                 Text(vm.importLabel, fontSize = 13.sp, color = Ink)
@@ -114,10 +114,10 @@ fun ImportScreen(vm: AppVm) {
         if (vm.importErrors.isNotEmpty()) {
             Box(
                 Modifier.padding(horizontal = Space.page).fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp)).background(Color(0xFFFDF8EF))
+                    .clip(RoundedCornerShape(10.dp)).background(AmberSoft)
                     .padding(10.dp)
             ) {
-                Text(vm.importErrors.first(), fontSize = 11.5.sp, color = Color(0xFF8A5E1F), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(vm.importErrors.first(), fontSize = 11.5.sp, color = Amber, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
 
@@ -184,7 +184,7 @@ private fun DraftCard(
     onRemove: () -> Unit,
 ) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(Color.White)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(CardBg)
             .border(1.dp, Line, RoundedCornerShape(13.dp)).padding(11.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -221,7 +221,7 @@ private fun DraftCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.clip(RoundedCornerShape(7.dp))
-                    .background(if (draft.categoryName.isBlank()) Color(0xFFFDF8EF) else Color(0xFFFCFCF9))
+                    .background(if (draft.categoryName.isBlank()) AmberSoft else SurfaceAlt)
                     .border(1.dp, Line, RoundedCornerShape(7.dp))
                     .tjClickable { onPickCategory() }
                     .padding(horizontal = 9.dp, vertical = 5.dp)
@@ -337,9 +337,9 @@ private fun DraftPreviewDialog(draft: DraftQuestion, onDismiss: () -> Unit, onEd
 @Composable
 private fun NeedGroups(formulas: List<String>, concepts: List<String>, methods: List<String>) {
     Column {
-        NeedGroup("公式", formulas, Color(0xFF2F4BD8))
-        NeedGroup("概念", concepts, Color(0xFF2F7D63))
-        NeedGroup("方法", methods, Color(0xFF9A6B1F))
+        NeedGroup("公式", formulas, Accent)
+        NeedGroup("概念", concepts, Green)
+        NeedGroup("方法", methods, Amber)
     }
 }
 
@@ -478,7 +478,7 @@ fun ReviewScreen(vm: AppVm) {
             Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(SurfaceAlt)) {
                 Box(
                     Modifier.fillMaxWidth((vm.reviewIndex + 1).toFloat() / vm.reviewQueue.size)
-                        .height(3.dp).background(Ink)
+                        .height(3.dp).background(Accent)
                 )
             }
             Spacer(Modifier.height(14.dp))
@@ -495,7 +495,7 @@ fun ReviewScreen(vm: AppVm) {
                         model = File(q.imagePath), contentDescription = null,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp).clip(RoundedCornerShape(14.dp))
-                            .background(Color.White).border(1.dp, Line, RoundedCornerShape(14.dp))
+                            .background(SurfaceAlt).border(1.dp, Line, RoundedCornerShape(14.dp))
                     )
                     Spacer(Modifier.height(24.dp))
                 }
@@ -549,7 +549,7 @@ fun ReviewScreen(vm: AppVm) {
 @Composable
 private fun RateButton(text: String, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        modifier.heightIn(min = 48.dp).clip(CircleShape).background(Color.White)
+        modifier.heightIn(min = 48.dp).clip(CircleShape).background(CardBg)
             .border(1.dp, color.copy(alpha = 0.45f), CircleShape)
             .tjClickable { onClick() },
         contentAlignment = Alignment.Center

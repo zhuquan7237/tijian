@@ -71,7 +71,7 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
             },
             confirmButton = {
                 TextButton(enabled = name.isNotBlank(), onClick = {
-                    vm.db.ensureCategory(route.name + "/" + name.trim(), auto = false); vm.refresh(); creating = false
+                    val path = route.name + "/" + name.trim(); vm.write { it.ensureCategory(path, auto = false) }; creating = false
                 }) { Text("创建", color = Accent, fontWeight = FontWeight.SemiBold) }
             },
             dismissButton = { TextButton(onClick = { creating = false }) { Text("取消", color = Ink2) } }
@@ -81,7 +81,7 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
         AlertDialog(
             onDismissRequest = { deleting = null }, title = { Text("删除“" + cat.name + "”？", fontSize = 16.sp) },
             text = { Text("题目不会删除，将移至其他 / 未分类。", fontSize = 12.sp, color = Ink2) }, confirmButton = {
-                TextButton(onClick = { vm.db.deleteCategory(cat.id); vm.refresh(); deleting = null }) {
+                TextButton(onClick = { val catId = cat.id; vm.write { it.deleteCategory(catId) }; deleting = null }) {
                     Text("删除", color = Red)
                 }
             }, dismissButton = { TextButton(onClick = { deleting = null }) { Text("取消", color = Ink2) } }
@@ -127,7 +127,7 @@ private fun SubjectChildCard(cat: CategoryRow, onOpen: () -> Unit, onDelete: () 
         ) { Icon(Icons.Rounded.DeleteOutline, null, tint = Red, modifier = Modifier.size(20.dp)) }
         Icon(
             Icons.AutoMirrored.Rounded.KeyboardArrowRight, null,
-            tint = Color(0xFF98A3B3), modifier = Modifier.size(20.dp).padding(end = 6.dp)
+            tint = Muted, modifier = Modifier.size(20.dp).padding(end = 6.dp)
         )
     }
 }

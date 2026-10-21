@@ -43,6 +43,7 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.ZoomOutMap
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -75,6 +76,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -162,7 +164,7 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
         }
 
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = Space.xl)
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 88.dp)
         ) {
             if (vm.importing || vm.pending.isNotEmpty() || vm.captureUris.isNotEmpty()) {
                 TjButton(
@@ -188,7 +190,7 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
             ) {
                 val majors = SUBJECT_ROOTS.dropLast(1)
                 majors.chunked(2).forEach { pair ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         pair.forEach { subject ->
                             val children = vm.categories.filter { it.subjectGroup() == subject }
                             SubjectTile(
@@ -213,7 +215,7 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
             run {
                 var recent by remember { mutableStateOf<List<QuestionRow>>(emptyList()) }
                 LaunchedEffect(vm.stats.total, vm.stats.due, vm.dataRevision) {
-                    recent = withContext(Dispatchers.IO) { vm.db.questions().take(8) }
+                    recent = withContext(Dispatchers.IO) { vm.db.recentQuestions(8) }
                 }
                 if (recent.isNotEmpty()) {
                     SectionLabel("最近导入", Modifier.padding(horizontal = Space.page)) {
@@ -237,49 +239,61 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
 
 @Composable
 private fun ReviewHero(due: Int, total: Int, mastered: Int, onClick: () -> Unit) {
+    // 夜读台主卡：整套界面唯一一处渐变光源，数字是视觉中心。
     Column(
         Modifier.padding(horizontal = Space.page).fillMaxWidth()
-            .clip(CardShape).background(Ink)
-            .padding(20.dp)
+            .clip(CardShape).background(HeroBrush)
+            .border(1.dp, HeroLine, CardShape)
+            .padding(horizontal = 20.dp, vertical = 18.dp)
     ) {
-        Row(verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f)) {
-                Text("今日复习", fontSize = 11.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = OnHeroKicker)
+        Text("今日复习", fontSize = 11.sp, letterSpacing = 1.6.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.Bottom) {
+            Text(
+                "$due", fontSize = 64.sp, lineHeight = 64.sp, fontWeight = FontWeight.Medium,
+                color = Ink, letterSpacing = (-2.5).sp, fontFamily = NumFont,
+            )
+            Text("题待复习", fontSize = 13.sp, color = Ink2, modifier = Modifier.padding(start = 8.dp, bottom = 10.dp))
+            Spacer(Modifier.weight(1f))
+            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(bottom = 8.dp)) {
                 Text(
-                    if (total == 0) "拍照或从相册导入，开始整理错题" else if (due > 0) "按掌握程度自动安排下次复习" else "今天没有到期任务",
-                    fontSize = 12.5.sp, color = OnHeroMuted, modifier = Modifier.padding(top = 8.dp)
+                    if (total == 0) "0%" else "${(mastered * 100 / total)}%",
+                    fontSize = 22.sp, lineHeight = 26.sp, fontWeight = FontWeight.Medium,
+                    color = Green, fontFamily = NumFont, letterSpacing = (-0.6).sp,
                 )
-            }
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text("$due", fontSize = 40.sp, lineHeight = 44.sp, fontWeight = FontWeight.SemiBold, color = Color.White, letterSpacing = (-1.2).sp)
-                Text("题", fontSize = 13.sp, color = OnHeroMuted, modifier = Modifier.padding(bottom = 10.dp, start = 5.dp))
+                Text("已掌握", fontSize = 11.sp, color = Muted)
             }
         }
-        Spacer(Modifier.height(16.dp))
-        // 4dp 进度条：白色 16% 轨道 + 明确填充，深色底上也能看清
-        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x38FFFFFF))) {
+        Spacer(Modifier.height(14.dp))
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Accent.copy(alpha = 0.20f))) {
             Box(
                 Modifier.fillMaxWidth(if (total == 0) 0f else (mastered.toFloat() / total).coerceIn(0f, 1f))
-                    .height(4.dp).background(Color(0xFF7C8FFF))
+                    .height(4.dp).clip(RoundedCornerShape(2.dp)).background(Green)
             )
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("已掌握 $mastered / $total", fontSize = 12.sp, color = OnHeroMuted)
+            Text(
+                if (total == 0) "拍照或从相册导入，开始整理错题" else "已掌握 $mastered / $total 道",
+                fontSize = 12.sp, color = Muted, fontFamily = if (total == 0) null else NumFont,
+            )
             Spacer(Modifier.weight(1f))
-            Text(if (due > 0) "约 ${maxOf(1, due * 2 / 3 + 1)} 分钟" else if (total == 0) "尚未开始" else "暂无到期", fontSize = 12.sp, color = OnHeroMuted)
+            Text(
+                if (due > 0) "约 ${maxOf(1, due * 2 / 3 + 1)} 分钟" else if (total == 0) "尚未开始" else "今天没有到期",
+                fontSize = 12.sp, color = Muted,
+            )
         }
         Spacer(Modifier.height(16.dp))
+        val primary = due > 0 || total == 0
         Box(
             Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(CircleShape)
-                .background(if (due > 0) AccentSoft else Color(0xFF3A4454))
+                .background(if (primary) Accent else Fill)
                 .tjClickable(label = if (due > 0) "开始复习" else if (total > 0) "自由复习" else "导入第一道题") { onClick() },
             contentAlignment = Alignment.Center
         ) {
             Text(
                 if (due > 0) "开始复习" else if (total > 0) "自由复习" else "导入第一道题",
                 fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                color = if (due > 0) Color(0xFF2449AE) else Color.White
+                color = if (primary) OnAccent else Ink
             )
         }
     }
@@ -302,7 +316,7 @@ private fun SubjectTile(name: String, count: Int, mastered: Int, modifier: Modif
             .clip(CardShape)
             .background(CardBg)
             .border(1.dp, Line, CardShape)
-            .padding(horizontal = 12.dp, vertical = 11.dp)
+            .padding(horizontal = 14.dp, vertical = 14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -317,15 +331,16 @@ private fun SubjectTile(name: String, count: Int, mastered: Int, modifier: Modif
             )
             Spacer(Modifier.weight(1f))
             Text(
-                if (hasQuestions) "$count 道" else "0",
-                fontSize = 12.sp, color = Muted
+                if (hasQuestions) "$count" else "0",
+                fontSize = 20.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium,
+                color = if (hasQuestions) Ink else Muted, fontFamily = NumFont, letterSpacing = (-0.5).sp
             )
         }
-        Spacer(Modifier.height(9.dp))
+        Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp))
-                    .background(if (hasQuestions) SurfaceAlt else Color(0xFFF1F3F6))
+                    .background(Fill)
             ) {
                 if (hasQuestions) {
                     Box(
@@ -336,7 +351,7 @@ private fun SubjectTile(name: String, count: Int, mastered: Int, modifier: Modif
             }
             Text(
                 if (hasQuestions) "$mastered/$count" else "暂无",
-                fontSize = 11.sp, color = Muted,
+                fontSize = 11.sp, color = Muted, fontFamily = NumFont,
                 modifier = Modifier.padding(start = 8.dp)
             )
         }
@@ -371,12 +386,12 @@ private fun SubjectWideRow(name: String, count: Int, mastered: Int, onClick: () 
         )
         Spacer(Modifier.weight(1f))
         if (hasQuestions) {
-            Text("已掌握 $mastered / $count", fontSize = 11.5.sp, color = Ink2)
+            Text("已掌握 $mastered / $count", fontSize = 11.5.sp, color = Ink2, fontFamily = NumFont)
             Spacer(Modifier.width(6.dp))
         }
         Icon(
             Icons.AutoMirrored.Rounded.KeyboardArrowRight, null,
-            tint = Color(0xFF98A3B3), modifier = Modifier.size(20.dp)
+            tint = Muted, modifier = Modifier.size(20.dp)
         )
     }
 }
@@ -449,7 +464,7 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                 Text("AI 新建的分类", fontSize = 11.5.sp, color = Accent, modifier = Modifier.weight(1f))
                 Text("确认为正式分类", fontSize = 11.5.sp, color = Accent, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.tjClickable {
-                        vm.db.confirmCategory(id); vm.refresh()
+                        vm.write { it.confirmCategory(id) }
                     }.padding(4.dp))
             }
             Spacer(Modifier.height(8.dp))
@@ -538,46 +553,46 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
         Spacer(Modifier.height(12.dp))
         Row(
             Modifier.padding(horizontal = Space.page).fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp)).background(Ink)
+                .clip(CardShape).background(HeroBrush).border(1.dp, HeroLine, CardShape)
                 .tjClickable { vm.startReviewFor(id) }
                 .padding(horizontal = Space.page, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("复习这组", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                Text("复习这组", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                 Text(
                     "${rows.count { it.mastery < 4 }} 道未掌握 · 约 ${maxOf(1, rows.size / 3)} 分钟",
-                    fontSize = 11.sp, color = Color(0xD9FFFFFF), modifier = Modifier.padding(top = 3.dp)
+                    fontSize = 11.sp, color = Muted, modifier = Modifier.padding(top = 3.dp)
                 )
             }
             Box(
-                Modifier.clip(RoundedCornerShape(999.dp)).background(Color.White)
+                Modifier.clip(CircleShape).background(Accent)
                     .padding(horizontal = 14.dp, vertical = 7.dp)
-            ) { Text("开始", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Ink) }
+            ) { Text("开始", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = OnAccent) }
         }
 
         Spacer(Modifier.height(12.dp))
 
         if (selecting && selected.value.isNotEmpty()) {
             Row(
-                Modifier.fillMaxWidth().background(Ink).padding(horizontal = Space.page, vertical = 12.dp),
+                Modifier.fillMaxWidth().background(Fill).padding(horizontal = Space.page, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("已选 ${selected.value.size} 题", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("已选 ${selected.value.size} 题", fontSize = 12.sp, color = Ink, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.weight(1f))
                 Box(
                     Modifier.heightIn(min = 48.dp).clip(CircleShape)
-                        .border(1.dp, Color(0x59FF8A8A), CircleShape)
+                        .border(1.dp, Red.copy(alpha = 0.5f), CircleShape)
                         .tjClickable(label = "删除所选") { pendingBatchDelete = true }
                         .padding(horizontal = 14.dp),
                     contentAlignment = Alignment.Center
-                ) { Text("删除", fontSize = 12.sp, color = Color(0xFFFF9B9B), fontWeight = FontWeight.SemiBold) }
+                ) { Text("删除", fontSize = 12.sp, color = Red, fontWeight = FontWeight.SemiBold) }
                 Spacer(Modifier.width(8.dp))
                 Box(
-                    Modifier.heightIn(min = 48.dp).clip(CircleShape).background(Color.White)
+                    Modifier.heightIn(min = 48.dp).clip(CircleShape).background(Accent)
                         .tjClickable { showExport = true }.padding(horizontal = 14.dp),
                     contentAlignment = Alignment.Center
-                ) { Text("导出 PDF", fontSize = 11.5.sp, color = Ink, fontWeight = FontWeight.SemiBold) }
+                ) { Text("导出 PDF", fontSize = 11.5.sp, color = OnAccent, fontWeight = FontWeight.SemiBold) }
             }
         }
     }
@@ -684,18 +699,25 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
         Column(Modifier.fillMaxSize().verticalScroll(detailScroll).padding(horizontal = Space.page, vertical = 8.dp)) {
             if (question.imagePath != null) {
                 CardBox {
-                    Column(Modifier.padding(12.dp)) {
-                        Text("题目原图", fontSize = 12.sp, color = Muted)
-                        Spacer(Modifier.height(12.dp))
-                        ZoomableImage(File(question.imagePath)) { viewingImage = question.imagePath }
-                        Text("点击查看原画质 / 裁剪", color = Ink2, modifier = Modifier.padding(top = 12.dp))
-                        question.imageId?.let { imageId ->
-                            val original = remember(imageId) { vm.db.originalImagePath(imageId) }
-                            if (original != null && original != question.imagePath) TextButton(onClick = { viewingImage = original }) { Text("查看未裁剪原图") }
+                    Column(Modifier.padding(10.dp)) {
+                        ZoomableImage(File(question.imagePath), maxHeight = 200.dp) { viewingImage = question.imagePath }
+                        Row(Modifier.padding(start = 6.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("原图 · 点按放大或裁剪", fontSize = 12.sp, color = Muted, modifier = Modifier.weight(1f))
+                            question.imageId?.let { imageId ->
+                                var original by remember(imageId) { mutableStateOf<String?>(null) }
+                                LaunchedEffect(imageId) { original = withContext(Dispatchers.IO) { vm.db.originalImagePath(imageId) } }
+                                val uncropped = original
+                                if (uncropped != null && uncropped != question.imagePath) {
+                                    Text(
+                                        "未裁剪原图", fontSize = 12.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.tjClickable(label = "查看未裁剪原图") { viewingImage = uncropped }.padding(horizontal = 8.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(12.dp))
             }
             val stem = buildString {
                 append(question.stem)
@@ -706,15 +728,28 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
             if (stem.isBlank()) {
                 Text("（未识别题干，点下方编辑按钮补录）", fontSize = 12.sp, color = Muted)
             }
-            // 题目 / 答案 / 解析合成一份 HTML：只加载一次 KaTeX，滚动时也只有一个
-            // WebView 参与测量，避免三四个 WebView 各测一遍导致的卡顿。
+            val needFormulas = parseKnowledgeTags(question.needFormulas)
+            val needConcepts = parseKnowledgeTags(question.needConcepts)
+            val needMethods = parseKnowledgeTags(question.needMethods)
+            val hasNeeds = needFormulas.isNotEmpty() || needConcepts.isNotEmpty() || needMethods.isNotEmpty()
+            val needsMd = buildString {
+                fun group(title: String, items: List<String>) {
+                    if (items.isEmpty()) return
+                    append("#### ").append(title).append("\n\n")
+                    items.forEach { append("- ").append(it.replace("\n", " ")).append("\n") }
+                    append("\n")
+                }
+                group("公式", needFormulas); group("概念", needConcepts); group("方法", needMethods)
+            }
+            // 题目 / 答案 / 解析 / 需要掌握 合成一份 HTML：整页只有一个 WebView，
+            // KaTeX 只加载一次。8.8.0 每条「需要掌握」各开一个 WebView，打开详情页最多十几个。
             val docSections = buildList {
-                if (stem.isNotBlank()) add(RichSectionSpec("题目", stem, "题干与选项", Ink2.toHexColor(), 16))
-                if (question.answer.isNotBlank()) add(RichSectionSpec("答案", question.answer, "先看结论，再对照解析", Green.toHexColor(), 15))
-                if (question.analysis.isNotBlank()) add(RichSectionSpec("解析", question.analysis, "按步骤展开推理", Accent.toHexColor(), 15))
+                if (stem.isNotBlank()) add(RichSectionSpec("题目", stem, "", Muted.toHexColor(), 16, kind = "stem"))
+                if (question.answer.isNotBlank()) add(RichSectionSpec("答案", question.answer, "", Accent.toHexColor(), 17, kind = "answer"))
+                if (question.analysis.isNotBlank()) add(RichSectionSpec("解析", question.analysis, "", Ink2.toHexColor(), 15, kind = "analysis"))
+                if (hasNeeds) add(RichSectionSpec("要做出这题，需要掌握", needsMd, "", Amber.toHexColor(), 14, kind = "needs"))
             }
             if (docSections.isNotEmpty()) {
-                Spacer(Modifier.height(24.dp))
                 RichText(
                     markdown = "",
                     sections = docSections,
@@ -722,18 +757,11 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                     onAsk = { vm.openChat(it) },
                 )
             }
-            val needFormulas = parseKnowledgeTags(question.needFormulas)
-            val needConcepts = parseKnowledgeTags(question.needConcepts)
-            val needMethods = parseKnowledgeTags(question.needMethods)
-            val hasNeeds = needFormulas.isNotEmpty() || needConcepts.isNotEmpty() || needMethods.isNotEmpty()
-            Spacer(Modifier.height(16.dp))
+            if (!hasNeeds) {
+            Spacer(Modifier.height(12.dp))
             RichSection("要做出这题，需要掌握", "公式 · 概念 · 方法", Amber) {
                 Column {
-                    if (hasNeeds) {
-                        NeedLine("公式", needFormulas, Accent)
-                        NeedLine("概念", needConcepts, Green)
-                        NeedLine("方法", needMethods, Amber)
-                    } else {
+                    run {
                         Text(
                             "还缺这一块：做这道题需要哪些公式、概念和方法？",
                             fontSize = 13.sp, lineHeight = 20.sp, color = Muted
@@ -758,11 +786,12 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                     }
                 }
             }
+            }
 
             val knowledge = parseKnowledgeTags(question.tags)
             if (knowledge.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
-                RichSection("知识点", "本题涉及的主题", Amber) {
+                RichSection("知识点", "本题涉及的主题", Accent) {
                     androidx.compose.foundation.layout.FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
                         verticalArrangement = Arrangement.spacedBy(7.dp)
@@ -809,7 +838,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                             label = "mastery-bg"
                         )
                         val segFg by androidx.compose.animation.animateColorAsState(
-                            targetValue = if (on) Color.White else Ink2,
+                            targetValue = if (on) OnAccent else Ink2,
                             animationSpec = androidx.compose.animation.core.tween(Motion.Fast),
                             label = "mastery-fg"
                         )
@@ -824,10 +853,9 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                                 .background(segBg)
                                 .border(1.dp, segBg, RoundedCornerShape(10.dp))
                                 .tjClickable(label = "掌握度 $i") {
-                                    vm.db.setMastery(question.id, i)
                                     q = question.copy(mastery = i)
                                     vm.cacheQuestion(question.copy(mastery = i))
-                                    vm.refresh()
+                                    vm.write { it.setMastery(question.id, i) }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
@@ -844,7 +872,8 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                 Spacer(Modifier.height(16.dp))
                 LabelValue("笔记", question.note)
             }
-            Spacer(Modifier.height(24.dp))
+            // 底部留出悬浮追问球的高度，最后一张卡（掌握度）能滚到球上方，不被压住。
+            Spacer(Modifier.height(96.dp))
         }
     }
 
@@ -872,8 +901,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
             text = { Text("只会在错题本里隐藏，原图仍保留。", fontSize = 12.sp, color = Muted) },
             confirmButton = { TextButton(onClick = {
                 confirmDelete = false
-                vm.db.deleteQuestion(question.id)
-                vm.refresh()
+                vm.write { it.deleteQuestion(question.id) }
                 vm.back()
             }) { Text("删除", color = Red) } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } }
@@ -960,12 +988,13 @@ fun EditQuestionDialog(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
         },
         confirmButton = {
             TextButton(onClick = {
-                vm.db.updateQuestion(
-                    id = q.id, stem = stem, answer = answer, analysis = analysis,
-                    type = type, tags = q.tags, note = note,
-                    errorReasons = q.errorReasons, categoryId = catId
-                )
-                vm.refresh()
+                vm.write {
+                    it.updateQuestion(
+                        id = q.id, stem = stem, answer = answer, analysis = analysis,
+                        type = type, tags = q.tags, note = note,
+                        errorReasons = q.errorReasons, categoryId = catId
+                    )
+                }
                 onDone(
                     q.copy(
                         stem = stem, answer = answer, analysis = analysis, note = note,
@@ -1016,11 +1045,20 @@ fun Thumb(path: String?, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ZoomableImage(file: File, onClick: () -> Unit = {}) {
-    Box(Modifier.fillMaxWidth().heightIn(max = 440.dp).clip(RoundedCornerShape(14.dp))
-        .background(Color.White).border(1.dp, Line, RoundedCornerShape(14.dp)).tjClickable { onClick() }) {
+fun ZoomableImage(file: File, maxHeight: Dp = 240.dp, onClick: () -> Unit = {}) {
+    Box(Modifier.fillMaxWidth().heightIn(max = maxHeight).clip(SmallShape)
+        .background(SurfaceAlt).border(1.dp, Line, SmallShape).tjClickable(label = "查看题目原图") { onClick() }) {
         AsyncImage(model = file, contentDescription = "查看题目原图", contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 320.dp))
+            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = maxHeight))
+        Box(
+            Modifier.align(Alignment.BottomEnd).padding(8.dp).clip(CircleShape)
+                .background(Color(0xCC000000)).padding(horizontal = 9.dp, vertical = 5.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.ZoomOutMap, null, tint = Color.White, modifier = Modifier.size(13.dp))
+                Text("放大", fontSize = 11.sp, color = Color.White, modifier = Modifier.padding(start = 4.dp))
+            }
+        }
     }
 }
 
@@ -1039,11 +1077,11 @@ fun BigButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = tr
 
 @Composable
 fun BusyOverlay(label: String) {
-            Box(Modifier.fillMaxSize().background(Color(0x66000000)).pointerInput(Unit) {
+            Box(Modifier.fillMaxSize().background(Color(0x99000000)).pointerInput(Unit) {
                 awaitPointerEventScope { while (true) { awaitPointerEvent().changes.forEach { it.consume() } } }
             }, contentAlignment = Alignment.Center) {
         Column(
-            Modifier.clip(RoundedCornerShape(14.dp)).background(Color.White).padding(horizontal = 24.dp, vertical = 18.dp),
+            Modifier.clip(RoundedCornerShape(14.dp)).background(SurfaceAlt).padding(horizontal = 24.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             androidx.compose.material3.CircularProgressIndicator(Modifier.size(26.dp), color = Accent, strokeWidth = 2.dp)
@@ -1099,7 +1137,7 @@ fun knowledgeText(q: QuestionRow): String = try {
 
 fun parseColor(hex: String): Color = try {
     Color(android.graphics.Color.parseColor(hex))
-} catch (e: Exception) { Color(0xFFE7EAF8) }
+} catch (e: Exception) { SurfaceAlt }
 
 fun dateStamp(): String = SimpleDateFormat("yyyyMMdd", Locale.CHINA).format(Date())
 
@@ -1109,7 +1147,6 @@ private fun RecentCard(q: QuestionRow, onClick: () -> Unit) {
     Column(
         Modifier.width(148.dp)
             .bounceClick(label = "打开错题", onClick = onClick)
-            .shadow(2.dp, RoundedCornerShape(16.dp), ambientColor = Color(0x0F0F1B3D), spotColor = Color(0x0F0F1B3D))
             .clip(RoundedCornerShape(16.dp)).background(CardBg)
             .border(1.dp, Line, RoundedCornerShape(16.dp))
     ) {
@@ -1139,8 +1176,8 @@ private fun RecentCard(q: QuestionRow, onClick: () -> Unit) {
 private fun OverviewCell(value: String, label: String, modifier: Modifier = Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
-            value, fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
-            color = if (value == "0") Muted else Ink
+            value, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.Medium,
+            color = if (value == "0") Muted else Ink, fontFamily = NumFont, letterSpacing = (-0.8).sp
         )
         Text(label, fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
     }
