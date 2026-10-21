@@ -99,9 +99,24 @@ private val GLYPHS = listOf("∫", "△", "∑", "∿", "∂", "√", "π", "⚗
 fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
-    var results by remember(query) { mutableStateOf<List<QuestionRow>?>(null) }
-    LaunchedEffect(query) {
-        results = if (query.isBlank()) null else withContext(Dispatchers.IO) { vm.db.questions(query = query) }
+    var results by remember { mutableStateOf<List<QuestionRow>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
+    var searchError by remember { mutableStateOf(false) }
+    var searchRevision by remember { mutableStateOf(0) }
+    LaunchedEffect(query, vm.dataRevision, searchRevision) {
+        searchError = false
+        if (query.isBlank()) { results = emptyList(); searching = false; return@LaunchedEffect }
+        searching = true
+        try {
+            kotlinx.coroutines.delay(250)
+            results = withContext(Dispatchers.IO) { vm.db.questions(query = query.trim()) }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            searchError = true
+        } finally {
+            searching = false
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -124,9 +139,17 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
             )
         }
 
-        if (results != null) {
-            val list = results!!
-            if (list.isEmpty()) {
+        if (query.isNotBlank()) {
+            val list = results
+            if (searching) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Accent)
+                }
+            } else if (searchError) {
+                EmptyState("搜索失败", "请重试，题目仍保存在本机") {
+                    TjButton("重新搜索") { searchRevision++ }
+                }
+            } else if (list.isEmpty()) {
                 EmptyState("没有匹配的题", "换个关键词试试")
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
@@ -141,6 +164,18 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = Space.xl)
         ) {
+            if (vm.importing || vm.pending.isNotEmpty() || vm.captureUris.isNotEmpty()) {
+                TjButton(
+                    when {
+                        vm.importing -> "正在识别 · 查看进度"
+                        vm.pending.isNotEmpty() -> "继续校对 ${vm.pending.size} 道题"
+                        else -> "继续导入 ${vm.captureUris.size} 张图片"
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Space.page, vertical = 8.dp),
+                    style = ActionStyle.Secondary,
+                    onClick = onImport,
+                )
+            }
             ReviewHero(vm.stats.due, vm.stats.total, vm.stats.mastered) {
                 if (vm.stats.total == 0) onImport() else vm.startReview(includeAll = vm.stats.due == 0)
             }
@@ -211,7 +246,7 @@ private fun ReviewHero(due: Int, total: Int, mastered: Int, onClick: () -> Unit)
             Column(Modifier.weight(1f)) {
                 Text("今日复习", fontSize = 11.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold, color = OnHeroKicker)
                 Text(
-                    if (due > 0) "按掌握程度自动安排下次复习" else "今天没有到期任务",
+                    if (total == 0) "拍照或从相册导入，开始整理错题" else if (due > 0) "按掌握程度自动安排下次复习" else "今天没有到期任务",
                     fontSize = 12.5.sp, color = OnHeroMuted, modifier = Modifier.padding(top = 8.dp)
                 )
             }
@@ -232,7 +267,7 @@ private fun ReviewHero(due: Int, total: Int, mastered: Int, onClick: () -> Unit)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("已掌握 $mastered / $total", fontSize = 12.sp, color = OnHeroMuted)
             Spacer(Modifier.weight(1f))
-            Text(if (due > 0) "约 ${maxOf(1, due * 2 / 3 + 1)} 分钟" else "今日已完成", fontSize = 12.sp, color = OnHeroMuted)
+            Text(if (due > 0) "约 ${maxOf(1, due * 2 / 3 + 1)} 分钟" else if (total == 0) "尚未开始" else "暂无到期", fontSize = 12.sp, color = OnHeroMuted)
         }
         Spacer(Modifier.height(16.dp))
         Box(

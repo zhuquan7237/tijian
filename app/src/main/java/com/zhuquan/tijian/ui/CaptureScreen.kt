@@ -54,6 +54,7 @@ import java.io.File
 @Composable
 fun CaptureScreen(vm: AppVm) {
     val ctx = LocalContext.current
+    var confirmClear by rememberSaveable { mutableStateOf(false) }
     var editingUri by remember { mutableStateOf<Uri?>(null) }
     var pendingUri by rememberSaveable { mutableStateOf<Uri?>(null) }
 
@@ -76,9 +77,9 @@ fun CaptureScreen(vm: AppVm) {
 
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
-            title = "拍照导入",
+            title = "导入工作台",
             subtitle = if (vm.captureUris.isEmpty()) "一张试卷可以拍多张，最后一起识别"
-            else "已拍 ${vm.captureUris.size} 张 · 可以继续拍",
+            else "已选 ${vm.captureUris.size} / 9 张 · 点击图片可裁剪",
             onBack = { vm.back() },
             actions = {
                 if (vm.captureUris.isNotEmpty()) {
@@ -86,7 +87,7 @@ fun CaptureScreen(vm: AppVm) {
                         "清空",
                         fontSize = 12.sp,
                         color = Muted,
-                        modifier = Modifier.tjClickable { vm.clearCapture() }.padding(8.dp)
+                        modifier = Modifier.tjClickable(label = "清空待导入图片") { confirmClear = true }.padding(8.dp)
                     )
                 }
             }
@@ -149,11 +150,11 @@ fun CaptureScreen(vm: AppVm) {
 
         Column(Modifier.padding(horizontal = Space.page, vertical = 16.dp)) {
             Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TjButton("从相册添加", Modifier.weight(1f).fillMaxHeight(), style = ActionStyle.Secondary) {
+                TjButton("从相册添加", Modifier.weight(1f).fillMaxHeight(), style = ActionStyle.Secondary, enabled = vm.captureUris.size < 9 && !vm.importing) {
                     pickMore.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 }
                 TjButton(if (vm.captureUris.isEmpty()) "拍照" else "继续拍", Modifier.weight(1f).fillMaxHeight(),
-                    style = ActionStyle.Secondary, enabled = vm.captureUris.size < 9) { shoot() }
+                    style = ActionStyle.Secondary, enabled = vm.captureUris.size < 9 && !vm.importing) { shoot() }
             }
             Spacer(Modifier.height(8.dp))
             TjButton(
@@ -162,6 +163,15 @@ fun CaptureScreen(vm: AppVm) {
             ) { vm.importCapture() }
         }
     }
+    if (confirmClear) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { confirmClear = false },
+        title = { Text("清空待导入图片？") },
+        text = { Text("将移除这 ${vm.captureUris.size} 张待导入图片，已有错题和相册原图不会删除。") },
+        confirmButton = { TjButton("清空", style = ActionStyle.Danger) {
+            vm.clearCapture(); confirmClear = false
+        } },
+        dismissButton = { TjButton("保留", style = ActionStyle.Quiet) { confirmClear = false } }
+    )
     editingUri?.let { source -> ImageEditorDialog(source, onDismiss = { editingUri = null }, onSaved = { edited ->
         vm.replaceCapture(source, edited); editingUri = null
     }) }

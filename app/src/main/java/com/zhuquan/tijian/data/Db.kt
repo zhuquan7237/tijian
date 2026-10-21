@@ -188,7 +188,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         if (existing != null) return existing.id
         val id = newId()
         val now = System.currentTimeMillis()
-        writableDatabase.insert("category", null, ContentValues().apply {
+        writableDatabase.insertOrThrow("category", null, ContentValues().apply {
             put("id", id); put("name", name); put("subject", subject)
             put("auto_created", if (auto) 1 else 0)
             put("status", if (auto) "pending" else "confirmed")
@@ -201,7 +201,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
     fun createCategory(name: String, subject: String = ""): String {
         val id = newId()
         val now = System.currentTimeMillis()
-        writableDatabase.insert("category", null, ContentValues().apply {
+        writableDatabase.insertOrThrow("category", null, ContentValues().apply {
             put("id", id); put("name", name.trim()); put("subject", subjectRoot(subject))
             put("auto_created", 0); put("status", "confirmed")
             put("color", colorFor(name)); put("sort", 100)
@@ -320,13 +320,38 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         }
     }
 
+    /** All selected drafts commit together, or remain available for retry. */
+    fun saveDrafts(drafts: List<DraftQuestion>, batchId: String?): Pair<Int, Int> {
+        val sql = writableDatabase
+        sql.beginTransaction()
+        try {
+            var saved = 0
+            var skipped = 0
+            val seen = HashSet<String>()
+            drafts.forEach { draft ->
+                val key = draft.stem.trim().take(80)
+                if (key.isNotBlank() && (!seen.add(key) || hasStem(key))) {
+                    skipped++
+                } else {
+                    val categoryId = ensureCategory(draft.categoryName.ifBlank { "未分类" })
+                    insertQuestion(draft, categoryId, batchId, category(categoryId)?.subject.orEmpty())
+                    saved++
+                }
+            }
+            sql.setTransactionSuccessful()
+            return saved to skipped
+        } finally {
+            sql.endTransaction()
+        }
+    }
+
     fun insertQuestion(
         draft: DraftQuestion, categoryId: String, batchId: String?, subject: String,
         errorReasons: String = "[]", source: String = ""
     ): String {
         val id = newId()
         val now = System.currentTimeMillis()
-        writableDatabase.insert("question", null, ContentValues().apply {
+        writableDatabase.insertOrThrow("question", null, ContentValues().apply {
             put("id", id); put("batch_id", batchId); put("subject", subject)
             put("category_id", categoryId); put("type", draft.type); put("stem", draft.stem)
             put("options", draft.options); put("answer", draft.answer); put("analysis", draft.analysis)
