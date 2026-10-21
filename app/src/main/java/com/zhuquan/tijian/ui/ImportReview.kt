@@ -73,7 +73,7 @@ fun ImportScreen(vm: AppVm) {
             actions = {
                 if (!vm.importing && vm.pending.isNotEmpty()) {
                     Text("全部确认", fontSize = 12.5.sp, color = Accent,
-                        modifier = Modifier.tjClickable { vm.confirmPending() }.padding(8.dp))
+                        modifier = Modifier.tjClickable(enabled = !vm.busy) { vm.confirmPending() }.padding(8.dp))
                 }
             }
         )
@@ -96,8 +96,10 @@ fun ImportScreen(vm: AppVm) {
         }
 
         if (vm.pending.isEmpty()) {
-            EmptyState("没有待确认的题目", "回到错题本重新导入") {
-                BigButton("返回", Modifier.width(140.dp)) { vm.home() }
+            EmptyState("没有待确认的题目", if (vm.captureUris.isNotEmpty()) "待导入图片已保留，可返回工作台重试" else "回到错题本重新导入") {
+                TjButton(if (vm.captureUris.isNotEmpty()) "返回工作台" else "返回错题本") {
+                    if (vm.captureUris.isNotEmpty()) vm.go(Route.Capture) else vm.home()
+                }
             }
             if (vm.importErrors.isNotEmpty()) {
                 Column(Modifier.padding(horizontal = Space.page)) {
@@ -139,7 +141,7 @@ fun ImportScreen(vm: AppVm) {
             TjButton("AI 重新分类", Modifier.weight(1f), style = ActionStyle.Secondary, enabled = !vm.busy) {
                 vm.autoClassify()
             }
-            BigButton("确认入库 ${vm.pending.size} 题", Modifier.weight(1f)) { vm.confirmPending() }
+            TjButton(if (vm.busy) vm.busyLabel else "确认入库 ${vm.pending.size} 题", Modifier.weight(1f), loading = vm.busy) { vm.confirmPending() }
         }
     }
 

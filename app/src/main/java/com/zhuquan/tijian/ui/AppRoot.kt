@@ -7,13 +7,13 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.updateTransition
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -64,13 +64,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.graphics.rememberGraphicsLayer
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.foundation.Image
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zhuquan.tijian.BuildConfig
@@ -100,166 +93,43 @@ fun AppRoot(vm: AppVm = viewModel()) {
     BackHandler(enabled = !vm.chatOpen && vm.route != Route.Home) { if (!vm.back()) vm.home() }
 
     Box(Modifier.fillMaxSize().background(Bg).windowInsetsPadding(WindowInsets.safeDrawing)) {
-        // Keep live page compositions: returning must not recreate WebViews or
-        // briefly show their empty initial layout. Pages outside the stack are
-        // removed only after their exit animation completes.
+        // Retain page state, but draw only the active page. Never snapshot WebViews:
+        // full-screen readback adds latency and can capture stale AndroidView frames.
         val pages = remember { androidx.compose.runtime.mutableStateMapOf<Route, Int>() }
-        // 三个一级 tab 常驻组合：切 tab 时不再触发布局/数据加载，直接参与淡入淡出。
-        if (pages.isEmpty()) {
-            pages[Route.Home] = 0
-            pages[Route.Library] = 0
-            pages[Route.Settings] = 0
-        }
         if (!pages.containsKey(vm.route)) pages[vm.route] = vm.navigationDepth()
-
-        // 用一条显式的动画进度驱动页面切换：新页从 0 淡入并盖在旧页上，
-        // 旧页始终保持不透明。这样任何一帧都至少有一页可见，返回时不会闪白。
-        // 之前用 updateTransition + 每页 animateFloat，部分页面在切换时会直接拿到
-        // 终值（alpha 恒为 1），所以看起来像硬切。
-        // 动画状态在 route 变化的那一次 composition 里同步初始化：
-        // remember(vm.route) 会让新页的进度从 0 开始，而不是先以 1 画一帧再回跳。
-        var lastRoute by remember { mutableStateOf<Route?>(null) }
-        val outgoingRoute = remember(vm.route) { lastRoute }
-        val peerMove = remember(vm.route) {
-            val from = outgoingRoute
-            from != null && isPeerRoute(from) && isPeerRoute(vm.route)
-        }
-        // FlClash 的 tab 切换是横向 PageView：按 tab 顺序决定滑动方向。
-        val peerDir = remember(vm.route) {
-            val from = outgoingRoute
-            if (from != null && isPeerRoute(from) && isPeerRoute(vm.route)) {
-                if (peerIndex(vm.route) >= peerIndex(from)) 1f else -1f
-            } else 0f
-        }
-        val navDir = remember(vm.route) { if (vm.navForward) 1f else -1f }
         val navAnim = remember(vm.route) {
-            androidx.compose.animation.core.Animatable(if (outgoingRoute == null) 1f else 0f)
+            androidx.compose.animation.core.Animatable(if (reducedMotion) 1f else 0f)
         }
-        // 离场页不再作为活组件参与动画：切换开始时把整页录进一个 GraphicsLayer，
-        // 冻结成一张位图，只让位图做位移/缩放。这样 WebView / AsyncImage 不可能
-        // 在动画期间继续往屏幕上画旧帧，也就没有残影。
-        val pageLayer = rememberGraphicsLayer()
-        var captureArmed by remember { mutableStateOf(false) }
-        var exitSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
-        LaunchedEffect(vm.route) {
-            lastRoute = vm.route
-            if (outgoingRoute != null) {
-                exitSnapshot = null
-                captureArmed = true
-                navAnim.snapTo(0f)
-                // 等两帧：让 p=0 的旧页面真正画完，再截这一帧。
-                withFrameNanos { }
-                withFrameNanos { }
-                exitSnapshot = runCatching { pageLayer.toImageBitmap() }.getOrNull()
-                captureArmed = false
-                navAnim.animateTo(1f, tween(300, easing = FastOutSlowInEasing))
-            }
-            delay(80)
-            pages.keys.toList().filter { !vm.retainsPage(it) }.forEach {
-                pages.remove(it); vm.forgetPage(it)
-            }
-            exitSnapshot = null
-        }
-        LaunchedEffect(navAnim.isRunning) { vm.navigating = navAnim.isRunning }
-
-        Box(Modifier.fillMaxSize().drawWithContent {
-            if (captureArmed) {
-                pageLayer.record { this@drawWithContent.drawContent() }
-                drawLayer(pageLayer)
-            } else {
-                drawContent()
-            }
-        }) {
-        exitSnapshot?.let { snap ->
-            Image(
-                bitmap = snap,
-                contentDescription = null,
-                contentScale = ContentScale.FillBounds,
-                modifier = Modifier.fillMaxSize()
-                    .zIndex(if (navDir < 0f) 2f else -1f)
-                    .graphicsLayer {
-                    val p = navAnim.value
-                    if (peerMove) {
-                        translationX = -p * size.width * peerDir
-                    } else if (navDir > 0f) {
-                        translationX = -p * size.width * 0.5f
-                        scaleX = 1f - 0.3f * p
-                        scaleY = scaleX
-                    } else {
-                        translationX = p * size.width
-                    }
+        LaunchedEffect(vm.route, reducedMotion) {
+                if (reducedMotion) navAnim.snapTo(1f)
+                else navAnim.animateTo(1f, tween(Motion.Base, easing = Motion.Enter))
+                pages.keys.toList().filter { !vm.retainsPage(it) }.forEach {
+                    pages.remove(it)
+                    vm.forgetPage(it)
                 }
-            )
-            Box(Modifier.fillMaxSize()
-                .zIndex(if (navDir < 0f) 2f else -1f)
-                .graphicsLayer {
-                val p = navAnim.value
-                if (peerMove) {
-                    translationX = -p * size.width * peerDir
-                } else if (navDir > 0f) {
-                    translationX = -p * size.width * 0.5f
-                    scaleX = 1f - 0.3f * p
-                    scaleY = scaleX
-                    alpha = 0.36f * p
-                } else {
-                    translationX = p * size.width
-                    alpha = 0f
-                }
-            }.background(Color.Black))
         }
-        pages.toMap().forEach { (route, depth) ->
+        Box(Modifier.fillMaxSize().clip(androidx.compose.ui.graphics.RectangleShape)) {
+        pages.keys.toList().forEach { route ->
         androidx.compose.runtime.key(route) {
             val isCurrent = route == vm.route
-            val isOutgoing = route == outgoingRoute && navAnim.value < 1f
-            val visible = isCurrent || isOutgoing
-            val z = when {
-                !visible -> -2f
-                peerMove -> if (isCurrent) 1f else 0f
-                navDir > 0f -> if (isCurrent) 1f else 0f
-                else -> if (isOutgoing) 1f else 0f
-            }
-            Box(Modifier.fillMaxSize().zIndex(z)
+            Box(Modifier.fillMaxSize().zIndex(if (isCurrent) 1f else -1f)
                 .graphicsLayer {
-                    val p = navAnim.value
-                    var x = 0f
-                    var sc = 1f
-                    // 有冻结快照时，旧页不再由活组件绘制，避免任何残帧。
-                    if (visible && (exitSnapshot == null || isCurrent)) {
-                        if (peerMove) {
-                            // FlClash PageView：两页不透明，整屏横向滑动。
-                            x = if (isCurrent) (1f - p) * size.width * peerDir
-                            else -p * size.width * peerDir
-                        } else if (navDir > 0f) {
-                            // 进入：新页整屏推入；旧页左移半屏 + 缩到 0.7。
-                            if (isCurrent) x = (1f - p) * size.width
-                            else {
-                                x = -p * size.width * 0.5f
-                                sc = 1f - 0.3f * p
-                            }
-                        } else {
-                            // 返回：当前页整屏右移；上一页从左侧半屏放大回来。
-                            if (isCurrent) {
-                                x = -(1f - p) * size.width * 0.5f
-                                sc = 0.7f + 0.3f * p
-                            } else {
-                                x = p * size.width
-                            }
-                        }
-                    } else {
-                        x = size.width * 2
-                    }
-                    translationX = x
-                    scaleX = sc
-                    scaleY = sc
-                    // 页面本身永远 alpha=1。图片/WebView 在 alpha 合成层里会残留
-                    // 上一帧，造成切换时的图片拖影；压暗改用下面的纯色遮罩。
-                    alpha = 1f
+                    // A small opaque translation avoids alpha compositing of WebViews.
+                    translationX = if (!isCurrent) size.width * 2f
+                        else if (isPeerRoute(route)) 0f
+                        else (1f - navAnim.value) * 24.dp.toPx() * (if (vm.navForward) 1 else -1)
                     clip = true
                 }.then(if (!isCurrent) Modifier.clearAndSetSemantics {} else Modifier)) {
                 Column(Modifier.fillMaxSize().background(Bg)) {
                     Box(Modifier.weight(1f)) {
                         when (route) {
-                            is Route.Home -> HomeScreen(vm) { showImport = true }
+                            is Route.Home -> HomeScreen(vm) {
+                                when {
+                                    vm.importing || vm.pending.isNotEmpty() -> vm.go(Route.Import)
+                                    vm.captureUris.isNotEmpty() -> vm.go(Route.Capture)
+                                    else -> showImport = true
+                                }
+                            }
                             is Route.Subject -> SubjectScreen(vm, route)
                             is Route.Category -> CategoryScreen(vm, route)
                             is Route.Detail -> QuestionDetailScreen(vm, route)
@@ -277,30 +147,9 @@ fun AppRoot(vm: AppVm = viewModel()) {
                         onLibrary = { vm.replace(Route.Library); vm.refresh() },
                         onSettings = { vm.replace(Route.Settings); vm.refresh() })
                 }
-                if (!peerMove) {
-                    // 纯色遮罩只压暗，不改变页面的 alpha，图片不会留下幽灵帧。
-                    Box(Modifier.matchParentSize().graphicsLayer {
-                        val p = navAnim.value
-                        alpha = when {
-                            !visible -> 0f
-                            isCurrent && navDir < 0f -> 0.26f * (1f - p)
-                            isOutgoing && navDir > 0f -> 0.36f * p
-                            else -> 0f
-                        }
-                    }.background(Color.Black))
-                }
             }
         }
         }
-        }
-        // tab 滑动时页面内的底栏会跟着横向移动；在顶层盖一条同样的底栏，
-        // 让底栏保持不动（FlClash 的 NavigationBar 在 PageView 外面）。
-        if (peerMove && navAnim.value < 1f) {
-            Box(Modifier.align(Alignment.BottomCenter).background(CardBg)) {
-                BottomBar(vm.route, onHome = { vm.home() },
-                    onLibrary = { vm.replace(Route.Library); vm.refresh() },
-                    onSettings = { vm.replace(Route.Settings); vm.refresh() })
-            }
         }
         vm.toast?.let { msg ->
             LaunchedEffect(msg) {
@@ -309,7 +158,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
             }
             Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 92.dp, start = 20.dp, end = 20.dp)) {
                 Box(
-                    Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xF217171C))
+                    Modifier.semantics { liveRegion = LiveRegionMode.Polite }.clip(RoundedCornerShape(12.dp)).background(Color(0xF217171C))
                         .padding(horizontal = 16.dp, vertical = 11.dp)
                 ) { Text(msg, fontSize = 12.5.sp, lineHeight = 18.sp, color = Color.White) }
             }
@@ -361,13 +210,6 @@ fun AppRoot(vm: AppVm = viewModel()) {
 }
 
 private fun isPeerRoute(route: Route): Boolean = route is Route.Home || route is Route.Library || route is Route.Settings
-
-private fun peerIndex(route: Route): Int = when (route) {
-    is Route.Home -> 0
-    is Route.Library -> 1
-    is Route.Settings -> 2
-    else -> 0
-}
 
 @Composable
 private fun ImportOption(
@@ -426,17 +268,15 @@ private fun TabItem(
         targetValue = if (selected) AccentSoft else Color.Transparent,
         animationSpec = tween(160), label = "tab-pill"
     )
-    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     Column(
-        modifier.heightIn(min = 64.dp)
+        modifier.semantics { this.selected = selected }.heightIn(min = 64.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clickable(
                 interactionSource = src,
                 indication = androidx.compose.foundation.LocalIndication.current,
                 role = androidx.compose.ui.semantics.Role.Tab,
             ) {
-                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
-                onClick()
+                if (!selected) onClick()
             }
             .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

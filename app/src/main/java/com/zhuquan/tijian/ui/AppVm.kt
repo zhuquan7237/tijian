@@ -135,9 +135,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     fun retainsPage(page: Route): Boolean = page == route || page in stack ||
         page is Route.Home || page is Route.Library || page is Route.Settings
 
-    var navigating = false
     fun go(next: Route) {
-        if (navigating) return
         if (next != route) { navForward = true; stack.add(route); route = next }
     }
 
@@ -193,13 +191,17 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     fun importCapture() {
         val list = captureUris
-        if (list.isEmpty()) return
-        captureUris = emptyList()
+        if (list.isEmpty() || importing || busy) return
         importUris(list, "camera")
     }
 
     fun importUris(uris: List<Uri>, source: String = "share") {
-        if (uris.isEmpty() || importing) return
+        if (uris.isEmpty() || importing || busy) return
+        if (pending.isNotEmpty()) {
+            route = Route.Import
+            toast = "请先确认或移除上一批题目，再导入新图片"
+            return
+        }
         viewModelScope.launch {
             importing = true
             importProgress = 0f
@@ -211,6 +213,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 val out = importer.import(uris, source) { done, total, label ->
                     importProgress = done.toFloat() / total.coerceAtLeast(1)
                     importLabel = label
+                }
+                if (out.errors.isEmpty() && out.drafts.isNotEmpty() && source == "camera") {
+                    captureUris = captureUris.filterNot { it in uris }
                 }
                 pending = out.drafts
                 pendingBatch = out.batchId
@@ -233,9 +238,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     fun autoClassify() {
         val list = pending
-        if (list.isEmpty() || !provider.ready()) return
+        if (list.isEmpty() || !provider.ready() || busy) return
+        busy = true; busyLabel = "AI 分类中"
         viewModelScope.launch {
-            busy = true; busyLabel = "AI 分类中"
             try {
                 val map = ai.classify(provider, list, categories)
                 pending = pending.map { d -> map[d.id]?.let { d.copy(categoryName = it) } ?: d }
@@ -256,37 +261,38 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     }
 
     fun confirmPending(only: List<DraftQuestion>? = null) {
-        val list = only ?: pending
+        if (busy || importing) return
+        val requestedIds = only?.map { it.id }?.toSet()
+        val list = pending.filter { requestedIds == null || it.id in requestedIds }
         if (list.isEmpty()) return
+        busy = true
+        busyLabel = "正在入库"
         viewModelScope.launch {
-            busy = true; busyLabel = "正在入库"
-            var saved = 0
-            var skipped = 0
-            withContext(Dispatchers.IO) {
-                val seen = HashSet<String>()
-                list.forEach { d ->
-                    val key = d.stem.trim().take(80)
-                    if (key.isNotBlank() && (!seen.add(key) || db.hasStem(key))) {
-                        skipped++
-                        return@forEach
-                    }
-                    val cat = if (d.categoryName.isBlank()) "未分类" else d.categoryName
-                    val catId = db.ensureCategory(cat)
-                    val subject = db.category(catId)?.subject.orEmpty()
-                    db.insertQuestion(d, catId, pendingBatch, subject)
-                    saved++
-                }
+            try {
+                val (saved, skipped) = withContext(Dispatchers.IO) { db.saveDrafts(list, pendingBatch) }
+                val completed = list.map { it.id }.toSet()
+                pending = pending.filterNot { it.id in completed }
+                if (pending.isEmpty()) { pendingBatch = null; home() }
+                refresh()
+                toast = if (skipped > 0) "已入库 $saved 题 · 跳过 $skipped 道重复" else "已入库 $saved 题"
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                toast = "入库失败，待确认题目已保留，请重试"
+            } finally {
+                busy = false
+                busyLabel = ""
             }
-            pending = emptyList()
-            pendingBatch = null
-            busy = false
-            refresh()
-            home()
-            toast = if (skipped > 0) "已入库 $saved 题 · 跳过 $skipped 道重复" else "已入库 $saved 题"
         }
     }
 
     fun addManual(imageUri: Uri) {
+        if (importing || busy) return
+        if (pending.isNotEmpty()) {
+            route = Route.Import
+            toast = "请先处理上一批待确认题目"
+            return
+        }
         viewModelScope.launch {
             importing = true
             importLabel = "保存图片"
