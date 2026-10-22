@@ -3,6 +3,7 @@ package com.zhuquan.tijian
 import com.zhuquan.tijian.data.knowledgeMarkdown
 import com.zhuquan.tijian.data.parseKnowledgeTags
 import com.zhuquan.tijian.ui.Normalize
+import com.zhuquan.tijian.ui.cleanMathLite
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -41,6 +42,20 @@ class KnowledgeRegressionTest {
         assertTrue(md.contains("- 链式法则"))
         assertTrue(md.contains("- 漏写 y'"))
         assertTrue(md.contains("## 2. 截距"))
+    }
+
+    @Test fun cleanMathLiteNeverLeaksLatexToCards() {
+        val src = "若 ${'$'}x\\geqslant 0${'$'}，则 ${'$'}\\lim\\limits_{n\\to\\infty}\\sqrt[n]{1+x^{n}+\\left(\\dfrac{x^2}{2}\\right)^n}=${'$'} ______。"
+        val out = cleanMathLite(src)
+        assertFalse("card text must not contain a backslash command: " + out, out.contains("\\"))
+        assertTrue(out.contains("≥"))
+        assertTrue(out.contains("√"))
+        assertTrue(out.contains("∞"))
+        assertTrue(out.contains("→"))
+
+        val powers = cleanMathLite("${'$'}x^{3}${'$'} 与 ${'$'}e^{x}${'$'}")
+        assertTrue("superscripts should stay readable: " + powers, powers.contains("x³"))
+        assertTrue("superscripts should stay readable: " + powers, powers.contains("eˣ"))
     }
 
     @Test fun normalizeDoesNotDropInlineLatex() {

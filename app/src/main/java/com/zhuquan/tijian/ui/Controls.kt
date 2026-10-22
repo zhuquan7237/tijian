@@ -1,12 +1,18 @@
 package com.zhuquan.tijian.ui
 
+import android.os.Build
+import android.view.Gravity
+import android.view.WindowManager
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.TextStyle
@@ -14,6 +20,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -95,4 +104,37 @@ fun TjTextField(
         colors = colors, shape = shape, visualTransformation = visualTransformation,
         keyboardOptions = keyboardOptions, keyboardActions = keyboardActions,
     )
+}
+
+/**
+ * 全屏 Dialog 统一入口。Dialog 自己的窗口默认会把状态栏高度算进去，手机上
+ * 底部操作栏会被挤出物理屏幕；模拟器没有状态栏时又完全看不出来。
+ * 这里把窗口钉在物理边界，再由 safeDrawingPadding 统一处理系统栏。
+ */
+@Composable
+fun FullScreenDialog(
+    onDismissRequest: () -> Unit,
+    dismissEnabled: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Dialog(
+        onDismissRequest = { if (dismissEnabled) onDismissRequest() },
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    ) {
+        val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
+        SideEffect {
+            if (Build.VERSION.SDK_INT >= 30) {
+                dialogWindow?.attributes = dialogWindow.attributes.apply { setFitInsetsTypes(0) }
+            }
+            dialogWindow?.setLayout(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT
+            )
+            dialogWindow?.setGravity(Gravity.TOP or Gravity.START)
+        }
+        Column(
+            Modifier.fillMaxSize().background(Bg).safeDrawingPadding(),
+            content = content
+        )
+    }
 }

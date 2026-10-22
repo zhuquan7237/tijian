@@ -175,6 +175,7 @@
 <script src="katex.min.js"></script>
 <script src="mhchem.min.js"></script>
 <script src="markdown-it.min.js"></script>
+<script src="mathprep.js"></script>
 <script src="structure.js"></script>
 <script>
 (function () {
@@ -197,38 +198,12 @@
     return c >= 0x4e00 && c <= 0x9fff;
   }
 
-  // 1) 没有 $ 定界符的裸 LaTeX：只包裹不含中文的片段
-  function wrapBare(line) {
-    if (line.indexOf('$') !== -1) return line;
-    if (line.indexOf('\\') === -1) return line;
-    return line.replace(/[^\u4e00-\u9fff]+/g, function (seg) {
-      if (!/\\[a-zA-Z]+/.test(seg)) return seg;
-      if (/^\s*$/.test(seg)) return seg;
-      // markdown 结构行不包
-      if (/^\s*(#{1,6}\s|>|\||```)/.test(line)) return seg;
-      return '$' + seg + '$';
-    });
-  }
-
   function renderMd(raw) {
     blocks = [];
-    var src = raw.split('\n').map(wrapBare).join('\n');
+    // 定界符、裸 LaTeX、漏写闭合 $ 统一由 mathprep.js 处理，
+    // renderer.html 与 chat.html 共用同一套公式保护逻辑。
+    var src = window.tjMath.prepare(raw, stash);
 
-  // 2) 保护各种定界符，避免 markdown 把 _ ^ 吃掉
-  // 2) 保护各种定界符，避免 markdown 把 _ ^ \ 吃掉
-  src = src.replace(/\$\$([\s\S]+?)\$\$/g, function (m, p1) { return stash(p1, true); });
-  src = src.replace(/\\\[([\s\S]+?)\\\]/g, function (m, p1) { return stash(p1, true); });
-  src = src.replace(/\\\(([\s\S]+?)\\\)/g, function (m, p1) { return stash(p1, false); });
-  src = src.replace(/(^|[^\\$])\$(?!\$)([^\n$]+?)\$/g, function (m, pre, p1) {
-    return pre + stash(p1, false);
-  });
-
-  // 3) 截断的回答常留下未闭合的 $$ / \[ / \(：把剩下的整段按公式处理，
-  //    这样用户看到的是渲染结果或 [公式]，而不是裸露的 LaTeX 源码。
-  src = src.replace(/\$\$([\s\S]*)$/g, function (m, p1) { return stash(p1, true); });
-  src = src.replace(/\\\[([\s\S]*)$/g, function (m, p1) { return stash(p1, true); });
-  src = src.replace(/\\\(([\s\S]*)$/g, function (m, p1) { return stash(p1, false); });
-  src = src.replace(/\$/g, '');
 
   var md = window.markdownit({
     html: false,

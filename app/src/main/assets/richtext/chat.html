@@ -103,6 +103,7 @@
 <script src="katex.min.js"></script>
 <script src="mhchem.min.js"></script>
 <script src="markdown-it.min.js"></script>
+<script src="mathprep.js"></script>
 <script src="structure.js"></script>
 <script>
 (function () {
@@ -120,30 +121,12 @@
     };
   }
 
-  function wrapBare(line) {
-    if (line.indexOf('$') !== -1) return line;
-    if (line.indexOf('\\') === -1) return line;
-    return line.replace(/[^\u4e00-\u9fff]+/g, function (seg) {
-      if (!/\\[a-zA-Z]+/.test(seg)) return seg;
-      if (/^\s*$/.test(seg)) return seg;
-      if (/^\s*(#{1,6}\s|>|\||```)/.test(line)) return seg;
-      return '$' + seg + '$';
-    });
-  }
-
   function renderMd(raw) {
     var blocks = [];
     var stash = stashFactory(blocks);
-    var src = raw.split('\n').map(wrapBare).join('\n');
-    src = src.replace(/\$\$([\s\S]+?)\$\$/g, function (m, p1) { return stash(p1, true); });
-    src = src.replace(/\\\[([\s\S]+?)\\\]/g, function (m, p1) { return stash(p1, true); });
-    src = src.replace(/\\\(([\s\S]+?)\\\)/g, function (m, p1) { return stash(p1, false); });
-    src = src.replace(/(^|[^\\$])\$(?!\$)([^\n$]+?)\$/g, function (m, pre, p1) { return pre + stash(p1, false); });
-    // 截断的回答：未闭合的定界符整段兜底，避免漏出 TeX 源码
-    src = src.replace(/\$\$([\s\S]*)$/g, function (m, p1) { return stash(p1, true); });
-    src = src.replace(/\\\[([\s\S]*)$/g, function (m, p1) { return stash(p1, true); });
-    src = src.replace(/\\\(([\s\S]*)$/g, function (m, p1) { return stash(p1, false); });
-    src = src.replace(/\$/g, '');
+    // 与 renderer.html 共用 mathprep.js：漏写闭合 $、裸 LaTeX 都不会再直显。
+    var src = window.tjMath.prepare(raw, stash);
+
 
     var html = md.render(src);
     html = html.replace(/@@M(\d+)@@/g, function (m, idx) {

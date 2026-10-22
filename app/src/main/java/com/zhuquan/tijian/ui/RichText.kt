@@ -62,7 +62,7 @@ object RichTextRenderer {
                 put("title", sec.title)
                 put("subtitle", sec.subtitle)
                 put("color", sec.color)
-                put("markdown", sec.markdown)
+                put("markdown", Normalize.text(sec.markdown))
                 put("fontSize", sec.fontSize)
                 put("kind", sec.kind)
             })
@@ -346,31 +346,151 @@ fun RichText(
     }
 }
 
-/** 列表/卡片用的轻量文本：不做完整排版，只把常见命令转成可读符号 */
+/** 列表/卡片用的轻量文本：把常见 LaTeX 转成可读符号，绝不把源码直显。 */
 fun cleanMathLite(input: String): String {
-    var t = cleanMath(input)
-    val bs = 0x5C.toChar().toString()
-    val greek = mapOf(
-        "alpha" to "α", "beta" to "β", "gamma" to "γ", "delta" to "δ", "theta" to "θ",
-        "lambda" to "λ", "mu" to "μ", "pi" to "π", "rho" to "ρ", "sigma" to "σ",
-        "phi" to "φ", "omega" to "ω", "Delta" to "Δ", "Sigma" to "Σ", "Omega" to "Ω",
-        "varepsilon" to "ε", "epsilon" to "ε", "varphi" to "φ"
-    )
-    greek.forEach { (k, v) -> t = t.replace(bs + k, v) }
-    t = t.replace(bs + "lim", "lim").replace(bs + "to", "→").replace(bs + "rightarrow", "→")
-        .replace(bs + "Rightarrow", "⇒").replace(bs + "int", "∫").replace(bs + "sum", "∑")
-        .replace(bs + "prod", "∏").replace(bs + "cdot", "·").replace(bs + "times", "×")
-        .replace(bs + "pm", "±").replace(bs + "approx", "≈").replace(bs + "neq", "≠")
-        .replace(bs + "leq", "≤").replace(bs + "geq", "≥").replace(bs + "infty", "∞")
-        .replace(bs + "quad", " ").replace(bs + "qquad", "  ")
-    t = t.replace(Regex(bs + "dfrac"), "").replace(Regex(bs + "tfrac"), "")
-    // sqrt{...}
-    t = Regex(bs + bs + "sqrt" + bs + "?\\{([^{}]*)\\}").replace(t) { "√(${it.groupValues[1]})" }
-    // lim_{x\to 0}
-    t = t.replace(Regex("lim_\\{([^{}]*)\\}"), "lim($1)")
-    // 保留 \\ 换行与矩阵环境，但去掉环境标记
-    t = Regex(bs + "begin\\{[a-zA-Z*]+\\}").replace(t, "")
-    t = Regex(bs + "end\\{[a-zA-Z*]+\\}").replace(t, "")
-    t = t.replace("&", " ").replace(bs + bs, "  ")
+    var t = input
+        .replace("$$", "")
+        .replace("$", "")
+        .replace("\r\n", "\n")
+    // JSON 多层转义：\\sin → \sin
+    t = Regex("""\\\\(?=[A-Za-z])""").replace(t, """\""")
+    t = expandLatex(t)
+    t = t.replace("{", "").replace("}", "")
+    // 卡片空间有限，把常见的上下标转成 Unicode，至少读起来像公式而不是源码。
+    t = Regex("\\^(\\d+)").replace(t) { superscript(it.groupValues[1]) }
+    t = Regex("\\^([xyn])").replace(t) { superscript(it.groupValues[1]) }
+    t = Regex("lim_([^\\s(]+)").replace(t) { "lim(${it.groupValues[1]})" }
+    t = Regex("""_([0-9n])""").replace(t) { subscript(it.groupValues[1]) }
+    t = Regex("\\\\([A-Za-z]+)").replace(t) { it.groupValues[1] }
+    t = t.replace("&", " ")
+    t = Regex("[ \t]+").replace(t, " ")
     return t.trim()
+}
+
+private fun superscript(raw: String): String {
+    val map = mapOf(
+        '0' to '⁰', '1' to '¹', '2' to '²', '3' to '³', '4' to '⁴',
+        '5' to '⁵', '6' to '⁶', '7' to '⁷', '8' to '⁸', '9' to '⁹',
+        'x' to 'ˣ', 'y' to 'ʸ', 'n' to 'ⁿ', '+' to '⁺', '-' to '⁻'
+    )
+    return raw.map { map[it] ?: it }.joinToString("")
+}
+
+private fun subscript(raw: String): String {
+    val map = mapOf(
+        '0' to '₀', '1' to '₁', '2' to '₂', '3' to '₃', '4' to '₄',
+        '5' to '₅', '6' to '₆', '7' to '₇', '8' to '₈', '9' to '₉', 'n' to 'ₙ'
+    )
+    return raw.map { map[it] ?: it }.joinToString("")
+}
+
+private val latexSymbols = mapOf(
+    "alpha" to "α", "beta" to "β", "gamma" to "γ", "delta" to "δ", "theta" to "θ",
+    "lambda" to "λ", "mu" to "μ", "nu" to "ν", "xi" to "ξ", "pi" to "π", "rho" to "ρ",
+    "sigma" to "σ", "tau" to "τ", "phi" to "φ", "chi" to "χ", "psi" to "ψ", "omega" to "ω",
+    "Delta" to "Δ", "Sigma" to "Σ", "Omega" to "Ω", "Gamma" to "Γ", "Lambda" to "Λ",
+    "Phi" to "Φ", "Psi" to "Ψ", "Pi" to "Π", "Theta" to "Θ",
+    "varepsilon" to "ε", "epsilon" to "ε", "varphi" to "φ", "vartheta" to "ϑ",
+    "geqslant" to "≥", "leqslant" to "≤", "geq" to "≥", "leq" to "≤", "ge" to "≥", "le" to "≤",
+    "ne" to "≠", "neq" to "≠", "approx" to "≈", "equiv" to "≡", "sim" to "∼", "simeq" to "≃",
+    "propto" to "∝", "ll" to "≪", "gg" to "≫",
+    "to" to "→", "rightarrow" to "→", "leftarrow" to "←", "Rightarrow" to "⇒",
+    "Leftarrow" to "⇐", "leftrightarrow" to "↔", "mapsto" to "↦",
+    "infty" to "∞", "pm" to "±", "mp" to "∓", "times" to "×", "cdot" to "·", "div" to "÷",
+    "sum" to "∑", "prod" to "∏", "int" to "∫", "iint" to "∬", "iiint" to "∭",
+    "lim" to "lim", "ln" to "ln", "log" to "log", "lg" to "lg",
+    "sin" to "sin", "cos" to "cos", "tan" to "tan", "cot" to "cot", "sec" to "sec", "csc" to "csc",
+    "arcsin" to "arcsin", "arccos" to "arccos", "arctan" to "arctan",
+    "max" to "max", "min" to "min", "sup" to "sup", "inf" to "inf", "det" to "det",
+    "dim" to "dim", "ker" to "ker", "deg" to "deg", "gcd" to "gcd", "hom" to "hom",
+    "partial" to "∂", "nabla" to "∇", "emptyset" to "∅", "varnothing" to "∅",
+    "in" to "∈", "notin" to "∉", "ni" to "∋",
+    "subset" to "⊂", "subseteq" to "⊆", "supset" to "⊃", "supseteq" to "⊇",
+    "cup" to "∪", "cap" to "∩", "forall" to "∀", "exists" to "∃",
+    "perp" to "⊥", "angle" to "∠", "circ" to "∘", "degree" to "°",
+    "quad" to " ", "qquad" to "  ", "ldots" to "…", "cdots" to "⋯", "dots" to "…",
+    "because" to "∵", "therefore" to "∴", "langle" to "⟨", "rangle" to "⟩",
+    "lvert" to "|", "rvert" to "|", "mid" to "|",
+)
+
+/** 递归展开 \frac / \sqrt / \text，并把命令换成 Unicode 符号。 */
+private fun expandLatex(input: String): String {
+    val sb = StringBuilder()
+    var i = 0
+    while (i < input.length) {
+        val ch = input[i]
+        if (ch != '\\') { sb.append(ch); i++; continue }
+        val cmd = Regex("""^[A-Za-z]+""").find(input.substring(i + 1))?.value
+        if (cmd == null) {
+            val next = input.getOrNull(i + 1) ?: ' '
+            when (next) {
+                '{', '}', '%', '_', '&', '#', '$' -> sb.append(next)
+                ',', ';', ':', '!', ' ' -> sb.append(' ')
+                '\\' -> sb.append("; ")
+                else -> sb.append(next)
+            }
+            i += 2
+            continue
+        }
+        val after = i + 1 + cmd.length
+        when (cmd) {
+            "frac", "dfrac", "tfrac" -> {
+                val a = latexGroup(input, skipSpace(input, after))
+                val b = a?.let { latexGroup(input, skipSpace(input, it.second)) }
+                if (a != null && b != null) {
+                    sb.append('(').append(expandLatex(a.first)).append(")/(")
+                        .append(expandLatex(b.first)).append(')')
+                    i = b.second
+                } else { sb.append(cmd); i = after }
+            }
+            "sqrt" -> {
+                var j = skipSpace(input, after)
+                var index = ""
+                if (input.getOrNull(j) == '[') {
+                    val close = input.indexOf(']', j + 1)
+                    if (close > j) { index = input.substring(j + 1, close); j = skipSpace(input, close + 1) }
+                }
+                val g = latexGroup(input, j)
+                if (g != null) {
+                    sb.append(if (index.isBlank()) "√(" else "√[$index](")
+                        .append(expandLatex(g.first)).append(')')
+                    i = g.second
+                } else { sb.append("√"); i = after }
+            }
+            "text", "mathrm", "mathbf", "mathit", "operatorname", "mbox" -> {
+                val g = latexGroup(input, skipSpace(input, after))
+                if (g != null) { sb.append(expandLatex(g.first)); i = g.second }
+                else { sb.append(cmd); i = after }
+            }
+            "left", "right", "limits", "nolimits", "displaystyle", "textstyle",
+            "big", "Big", "bigg", "Bigg", "bigl", "bigr", "Bigl", "Bigr" -> i = after
+            "begin", "end" -> {
+                val g = latexGroup(input, skipSpace(input, after))
+                if (g != null) i = g.second else { sb.append(cmd); i = after }
+            }
+            else -> { sb.append(latexSymbols[cmd] ?: cmd); i = after }
+        }
+    }
+    return sb.toString()
+}
+
+private fun skipSpace(s: String, from: Int): Int {
+    var i = from
+    while (i < s.length && s[i].isWhitespace()) i++
+    return i
+}
+
+private fun latexGroup(s: String, open: Int): Pair<String, Int>? {
+    if (s.getOrNull(open) != '{') return null
+    var depth = 0
+    for (i in open until s.length) {
+        when (s[i]) {
+            '{' -> depth++
+            '}' -> {
+                depth--
+                if (depth == 0) return s.substring(open + 1, i) to i + 1
+            }
+        }
+    }
+    return null
 }

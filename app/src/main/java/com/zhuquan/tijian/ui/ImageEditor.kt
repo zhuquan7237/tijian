@@ -16,6 +16,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Brush
+import androidx.compose.material.icons.rounded.Crop
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -134,13 +139,36 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
         paint.style = Paint.Style.FILL
         if (cropMode) {
             val c = RectF(r.left + crop.left * r.width(), r.top + crop.top * r.height(), r.left + crop.right * r.width(), r.top + crop.bottom * r.height())
+            // 选区外压暗；整图选区时外框仍在，靠内缩的描边保证四边可见。
             paint.color = 0x99000000.toInt(); paint.style = Paint.Style.FILL
             canvas.drawRect(r.left, r.top, r.right, c.top, paint); canvas.drawRect(r.left, c.bottom, r.right, r.bottom, paint)
             canvas.drawRect(r.left, c.top, c.left, c.bottom, paint); canvas.drawRect(c.right, c.top, r.right, c.bottom, paint)
-            paint.color = android.graphics.Color.WHITE; paint.style = Paint.Style.STROKE; paint.strokeWidth = 3 * resources.displayMetrics.density
-            canvas.drawRect(c, paint)
+            val line = RectF(c); val inset = 1.5f * resources.displayMetrics.density; line.inset(inset, inset)
+            // 三分线让白纸上的选区也有可读的裁剪参考。
+            paint.style = Paint.Style.STROKE; paint.strokeWidth = resources.displayMetrics.density
+            paint.color = 0x662DD4BF
+            for (i in 1..2) {
+                val x = line.left + line.width() * i / 3f
+                val y = line.top + line.height() * i / 3f
+                canvas.drawLine(x, line.top, x, line.bottom, paint)
+                canvas.drawLine(line.left, y, line.right, y, paint)
+            }
+            // 白底 + 青绿双层描边，浅色试卷和深色桌面上都看得见。
+            paint.color = android.graphics.Color.WHITE
+            paint.strokeWidth = 4 * resources.displayMetrics.density
+            canvas.drawRect(line, paint)
+            paint.color = android.graphics.Color.rgb(45, 212, 191)
+            paint.strokeWidth = 2 * resources.displayMetrics.density
+            canvas.drawRect(line, paint)
             paint.style = Paint.Style.FILL
-            for (x in listOf(c.left, c.right)) for (y in listOf(c.top, c.bottom)) canvas.drawCircle(x, y, 7 * resources.displayMetrics.density, paint)
+            val whiteRing = 8 * resources.displayMetrics.density
+            val accentDot = 5 * resources.displayMetrics.density
+            for (x in listOf(line.left, line.right)) for (y in listOf(line.top, line.bottom)) {
+                paint.color = android.graphics.Color.WHITE
+                canvas.drawCircle(x, y, whiteRing, paint)
+                paint.color = android.graphics.Color.rgb(45, 212, 191)
+                canvas.drawCircle(x, y, accentDot, paint)
+            }
         }
     }
     private fun requestTile() {
@@ -224,6 +252,9 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
         return true
     }
     override fun performClick(): Boolean { super.performClick(); return true }
+    /** 选区仍是整张图时不要重新编码保存，避免无意义的画质损失。 */
+    fun hasCropSelection(): Boolean =
+        crop.left > .001f || crop.top > .001f || crop.right < .999f || crop.bottom < .999f
     fun resetCrop() { crop.set(0f, 0f, 1f, 1f); updateGestureExclusion(); invalidate() }
     fun undoStroke() { if (strokes.isNotEmpty()) { strokes.removeAt(strokes.size - 1); invalidate() } }
     fun clearStrokes() { strokes.clear(); invalidate() }
@@ -275,7 +306,7 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
     val scope = rememberCoroutineScope()
     var file by remember(uri) { mutableStateOf<File?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    var cropping by remember { mutableStateOf(false) }
+    var cropping by remember { mutableStateOf(true) }
     var brushing by remember { mutableStateOf(false) }
     var brushColor by remember { mutableStateOf<Int>(0xFFE74C3C.toInt()) }
     var brushWidth by remember { mutableStateOf(0.006f) }
@@ -303,91 +334,102 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
         }
         Column(Modifier.fillMaxSize().background(Bg).padding(WindowInsets.safeDrawing.asPaddingValues())) {
             TjTopBar("原图查看与编辑", "双指缩放 · 拖动查看 · 裁剪或标注后另存副本", onBack = { if (!saving) onDismiss() })
-            // Image keeps a bounded share of the screen. The toolbox below is
-            // always fully reachable and can scroll independently on short phones.
+            // 图片占据剩余空间，工具栏固定在底部；这样短屏也不会把保存按钮挤出屏幕。
             Box(
-                Modifier.fillMaxWidth().heightIn(min = 180.dp).weight(0.68f)
-                    .padding(horizontal = 22.dp).padding(bottom = 10.dp)
-                    .clip(RoundedCornerShape(14.dp)).background(SurfaceAlt)
+                Modifier.fillMaxWidth().weight(1f)
+                    .padding(horizontal = 20.dp).padding(top = 4.dp, bottom = 12.dp)
+                    .clip(RoundedCornerShape(18.dp)).background(SurfaceAlt)
             ) {
                 file?.let { imageFile ->
-                    AndroidView(factory = { OriginalImageView(it, imageFile).also { v -> view = v } },
-                        modifier = Modifier.fillMaxSize(), update = { v ->
+                    AndroidView(factory = { ctx ->
+                        runCatching { OriginalImageView(ctx, imageFile) }.getOrElse { failure ->
+                            // 文件被系统清理或从旧备份恢复时，原图可能已经不存在；
+                            // 不能因为这个让整个详情页崩溃。
+                            error = failure.message ?: "原图文件已丢失，无法编辑"
+                            android.widget.FrameLayout(ctx)
+                        }.also { v -> if (v is OriginalImageView) { view = v; v.resetCrop() } }
+                    }, modifier = Modifier.fillMaxSize(), update = { v ->
+                        if (v is OriginalImageView) {
                             if (v.cropMode != cropping) v.cropMode = cropping
                             if (v.brushMode != brushing) v.brushMode = brushing
                             v.brushColor = brushColor; v.brushWidth = brushWidth
-                        }, onRelease = { it.close() })
+                        }
+                    }, onRelease = { (it as? OriginalImageView)?.close() })
                 }
                 if (file == null && error == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
             }
             Column(
-                Modifier.fillMaxWidth().weight(0.32f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    when {
-                        cropping -> "拖动四角或边框自由裁剪；拖动框内移动选区"
-                        brushing -> "在图上书写标注；可撤销或清空"
-                        else -> "原图完整显示，放大时按可见区域读取原始像素"
-                    },
-                    fontSize = 11.sp, color = Ink2
-                )
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ToolChip("裁剪", cropping, enabled = !saving && !brushing) { cropping = !cropping }
-                    ToolChip("画笔", brushing, enabled = !saving && !cropping) { brushing = !brushing }
-                    ToolChip("撤销", false, enabled = !saving && brushing) { view?.undoStroke() }
-                    ToolChip("清空", false, enabled = !saving && brushing && (view?.strokes?.isNotEmpty() == true)) { view?.clearStrokes() }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    EditorTool("裁剪", Icons.Rounded.Crop, cropping, !saving && !brushing) { cropping = !cropping }
+                    EditorTool("画笔", Icons.Rounded.Brush, brushing, !saving && !cropping) { brushing = !brushing }
+                    EditorTool("撤销", Icons.AutoMirrored.Rounded.Undo, false, !saving && brushing) { view?.undoStroke() }
+                    EditorTool("清空", Icons.Rounded.DeleteOutline, false, !saving && brushing) { view?.clearStrokes() }
                 }
                 if (brushing) {
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(0xFFE74C3C, 0xFF2D7FF9, 0xFF16A34A, 0xFF111827).map { it.toInt() }.forEach { c ->
-                            Box(
-                                Modifier.size(48.dp).clip(CircleShape).background(ComposeColor(c))
-                                    .border(if (brushColor == c) 2.5.dp else 1.dp, if (brushColor == c) Accent else Line, CircleShape)
-                                    .tjClickable { brushColor = c; view?.brushColor = c }
-                            )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("颜色", fontSize = 11.sp, color = Muted, modifier = Modifier.width(30.dp))
+                            listOf(0xFFE74C3C, 0xFF2D7FF9, 0xFF16A34A, 0xFF111827).map { it.toInt() }.forEach { c ->
+                                Box(
+                                    Modifier.size(32.dp).clip(CircleShape).background(ComposeColor(c))
+                                        .border(if (brushColor == c) 2.5.dp else 1.dp, if (brushColor == c) Accent else Line, CircleShape)
+                                        .tjClickable { brushColor = c; view?.brushColor = c }
+                                )
+                            }
                         }
-                        Spacer(Modifier.weight(1f))
-                        listOf(0.003f, 0.006f, 0.011f).zip(listOf("细", "中", "粗")).forEach { (w, label) ->
-                            Box(
-                                Modifier.heightIn(min = 48.dp).clip(CircleShape)
-                                    .background(if (brushWidth == w) AccentSoft else SurfaceAlt)
-                                    .tjClickable { brushWidth = w; view?.brushWidth = w }
-                                    .padding(horizontal = 11.dp), contentAlignment = Alignment.Center
-                            ) { Text(label, fontSize = 11.sp, color = if (brushWidth == w) Accent else Ink2) }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("粗细", fontSize = 11.sp, color = Muted, modifier = Modifier.width(30.dp))
+                            listOf(0.003f, 0.006f, 0.011f).zip(listOf("细", "中", "粗")).forEach { (w, label) ->
+                                Box(
+                                    Modifier.size(36.dp).clip(CircleShape)
+                                        .background(if (brushWidth == w) AccentSoft else CardBg)
+                                        .border(1.dp, if (brushWidth == w) Accent else Line, CircleShape)
+                                        .tjClickable { brushWidth = w; view?.brushWidth = w },
+                                    contentAlignment = Alignment.Center
+                                ) { Text(label, fontSize = 11.sp, color = if (brushWidth == w) Accent else Ink2) }
+                            }
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(
-                        enabled = !saving && !brushing, onClick = { view?.resetCrop() }, modifier = Modifier.heightIn(min = 48.dp), shape = CircleShape,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Line)
-                    ) { Text("重置", color = Ink2) }
-                    Button(
-                        enabled = !saving && file != null, onClick = {
-                            val source = file ?: return@Button
-                            saving = true; error = null
-                            val annotated = view?.strokes?.isNotEmpty() == true
-                            if (cropping || annotated) scope.launch {
-                                var output: File? = null
-                                try {
-                                    output = withContext(Dispatchers.IO) {
-                                        val v = view
-                                        val raw = if (cropping && v != null) {
-                                            cropOriginal(source, RectF(v.crop), File.createTempFile("crop_", ".png", context.cacheDir))
-                                        } else source
-                                        if (annotated && v != null) v.exportWithStrokes(raw) else raw
-                                    }
-                                    onSaved(Uri.fromFile(output))
-                                } catch (cancelled: CancellationException) { throw cancelled }
-                                catch (failure: Exception) { error = failure.message ?: "保存失败，请重试" }
-                                finally { output?.delete(); saving = false; editRevision++ }
-                            } else scope.launch { saving = true; try { onSaved(Uri.fromFile(source)) } finally { saving = false } }
-                        }, modifier = Modifier.weight(1f).heightIn(min = 48.dp), shape = CircleShape
-                    ) { Text(if (saving) "保存中" else "保存副本", fontWeight = FontWeight.SemiBold) }
+                Text(
+                    when {
+                        cropping -> "拖动四角或边框裁剪；保存时只裁选中的区域"
+                        brushing -> "在图上书写标注；可撤销或清空"
+                        else -> "原图完整显示，放大时按可见区域读取原始像素"
+                    },
+                    fontSize = 11.sp, lineHeight = 17.sp, color = Muted
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TjButton("重置", Modifier.weight(1f), style = ActionStyle.Secondary, enabled = !saving) {
+                        view?.resetCrop()
+                    }
+                    TjButton(
+                        if (saving) "保存中" else "保存副本", Modifier.weight(1.35f),
+                        enabled = !saving && file != null, loading = saving
+                    ) {
+                        val source = file ?: return@TjButton
+                        val target = view
+                        val cropRect = if (cropping && target?.hasCropSelection() == true) RectF(target.crop) else null
+                        val annotated = target?.strokes?.isNotEmpty() == true
+                        saving = true; error = null
+                        if (cropRect != null || annotated) scope.launch {
+                            var output: File? = null
+                            try {
+                                output = withContext(Dispatchers.IO) {
+                                    val raw = if (cropRect != null) {
+                                        cropOriginal(source, cropRect, File.createTempFile("crop_", ".png", context.cacheDir))
+                                    } else source
+                                    if (annotated) target!!.exportWithStrokes(raw) else raw
+                                }
+                                onSaved(Uri.fromFile(output))
+                            } catch (cancelled: CancellationException) { throw cancelled }
+                            catch (failure: Exception) { error = failure.message ?: "保存失败，请重试" }
+                            finally { output?.delete(); saving = false; editRevision++ }
+                        } else scope.launch { saving = true; try { onSaved(Uri.fromFile(source)) } finally { saving = false } }
+                    }
                 }
                 error?.let { Text(it, color = Red, fontSize = 11.5.sp) }
             }
@@ -396,12 +438,26 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
 }
 
 @Composable
-private fun ToolChip(label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier.heightIn(min = 48.dp).clip(CircleShape)
-            .background(if (selected) Accent else SurfaceAlt)
-            .border(1.dp, if (selected) Accent else Line, CircleShape)
-            .tjClickable(enabled = enabled) { onClick() }.padding(horizontal = 13.dp),
-        contentAlignment = Alignment.Center
-    ) { Text(label, fontSize = 12.sp, color = if (!enabled) Muted.copy(alpha = .45f) else if (selected) OnAccent else Ink, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) }
+private fun RowScope.EditorTool(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val tint = when {
+        !enabled -> Muted.copy(alpha = .42f)
+        selected -> Accent
+        else -> Ink2
+    }
+    Column(
+        Modifier.weight(1f).height(62.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) AccentSoft else CardBg)
+            .border(1.dp, if (selected) Accent.copy(alpha = .55f) else Line, RoundedCornerShape(16.dp))
+            .tjClickable(enabled = enabled) { onClick() },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(icon, null, tint = tint, modifier = Modifier.size(21.dp))
+        Spacer(Modifier.height(4.dp))
+        Text(
+            label, fontSize = 11.sp, color = tint,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+        )
+    }
 }

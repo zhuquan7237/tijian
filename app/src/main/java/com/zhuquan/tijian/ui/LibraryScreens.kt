@@ -57,9 +57,6 @@ import com.zhuquan.tijian.data.fullName
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.ui.window.Dialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -273,13 +270,7 @@ private fun DocEditDialog(
 ) {
     var title by remember { mutableStateOf(doc.title) }
     var content by remember { mutableStateOf(doc.contentMd) }
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false, decorFitsSystemWindows = false
-        )
-    ) {
-        Column(Modifier.fillMaxSize().background(Bg).safeDrawingPadding().imePadding()) {
+    FullScreenDialog(onDismissRequest = onDismiss) {
             Row(
                 Modifier.fillMaxWidth().padding(start = Space.page, end = 10.dp, top = 12.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -323,7 +314,6 @@ private fun DocEditDialog(
                     if (title.isNotBlank()) onSave(title.trim(), content)
                 }
             }
-        }
     }
 }
 

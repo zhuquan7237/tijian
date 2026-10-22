@@ -17,9 +17,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -51,7 +48,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -209,9 +205,10 @@ private fun DraftCard(
                     }
                 }
                 Text(
-                    draft.stem.ifBlank { "（未识别题干，点此补录）" },
-                    fontSize = 12.5.sp, color = if (draft.stem.isBlank()) Muted else Ink,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    cleanMathLite(draft.stem).ifBlank { "（未识别题干，点此补录）" },
+                    fontSize = 12.5.sp, lineHeight = 19.sp,
+                    color = if (draft.stem.isBlank()) Muted else Ink,
+                    maxLines = 3, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 5.dp).tjClickable { onEdit() }
                 )
             }
@@ -256,13 +253,7 @@ fun Tag(text: String) {
 
 @Composable
 private fun DraftPreviewDialog(draft: DraftQuestion, onDismiss: () -> Unit, onEdit: () -> Unit) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false, decorFitsSystemWindows = false
-        )
-    ) {
-        Column(Modifier.fillMaxSize().background(Bg).safeDrawingPadding().imePadding()) {
+    FullScreenDialog(onDismissRequest = onDismiss) {
             Row(
                 Modifier.fillMaxWidth().padding(start = Space.page, end = 10.dp, top = 12.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -303,15 +294,15 @@ private fun DraftPreviewDialog(draft: DraftQuestion, onDismiss: () -> Unit, onEd
                     Spacer(Modifier.height(14.dp))
                 }
                 RichSection("题目", "识别到的题干与选项", Ink2) {
-                    RichText(draft.stem.ifBlank { "（未识别到题干）" }, fontSize = 16)
+                    RichText(draft.stem.ifBlank { "（未识别到题干）" }, fontSize = 16, interactive = false)
                 }
                 if (draft.answer.isNotBlank()) {
                     Spacer(Modifier.height(14.dp))
-                    RichSection("答案", "核对最终结论", Green) { RichText(draft.answer, fontSize = 15) }
+                    RichSection("答案", "核对最终结论", Green) { RichText(draft.answer, fontSize = 15, interactive = false) }
                 }
                 if (draft.analysis.isNotBlank()) {
                     Spacer(Modifier.height(14.dp))
-                    RichSection("解析", "按步骤复盘思路", Accent) { RichText(draft.analysis, fontSize = 15) }
+                    RichSection("解析", "按步骤复盘思路", Accent) { RichText(draft.analysis, fontSize = 15, interactive = false) }
                 }
                 val formulas = parseKnowledgeTags(draft.needFormulas)
                 val concepts = parseKnowledgeTags(draft.needConcepts)
@@ -330,7 +321,6 @@ private fun DraftPreviewDialog(draft: DraftQuestion, onDismiss: () -> Unit, onEd
                 TjButton("修改", Modifier.weight(1f).fillMaxHeight(), style = ActionStyle.Secondary) { onEdit() }
                 BigButton("看完了", Modifier.weight(1f).fillMaxHeight()) { onDismiss() }
             }
-        }
     }
 }
 

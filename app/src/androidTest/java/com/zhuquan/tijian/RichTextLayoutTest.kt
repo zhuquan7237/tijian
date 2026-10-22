@@ -106,6 +106,35 @@ class RichTextLayoutTest {
             if (i == 9) assertEquals("Formula processing broke Markdown table", 2, m.getInt("rows"))
         }
     }
+    @Test fun testUnclosedDollarAndBareLatexNeverLeak() {
+        val d = "$"
+        val content = listOf(
+            "#### 公式", "",
+            "- ${d}\\lim_{u\\to 0}(1+u)^{1/u}=e${d}",
+            "- ${d}\\ln(1+u)\\sim u\\quad (u\\to 0)${d}",
+            "- ${d}\\sin x\\sim x",                 // 漏写闭合 $
+            "- ${d}1-\\cos x\\sim \\dfrac{x^{2}}{2}${d}",
+            "- \\tan x-\\sin x\\sim \\dfrac{x^3}{2}", // 完全没有定界符
+        ).joinToString("\n")
+        val m = render(content)
+        assertEquals("all five formulas must render", 5, m.getInt("formulas"))
+        assertFalse("raw TeX leaked into text: " + m.getString("text"), m.getString("text").contains("\\"))
+    }
+
+    @Test fun testDetailNeedsSectionKeepsListStructure() {
+        val d = "$"
+        val content = listOf(
+            "#### 公式", "",
+            "- ${d}\\sin x\\sim x${d}",
+            "- ${d}\\cos x\\sim 1-\\dfrac{x^{2}}{2}${d}",
+            "- ${d}\\tan x-\\sin x\\sim \\dfrac{x^3}{2}${d}",
+        ).joinToString("\n")
+        val m = render(content)
+        assertEquals(3, m.getInt("formulas"))
+        assertFalse(m.getString("text").contains("\\"))
+        assertTrue("list markers must survive math wrapping", m.getString("text").contains("sin"))
+    }
+
     @Test fun testAsyncReplacementShrinkAndStableHeight() {
         val large = render((1..35).joinToString("\n\n") { "很长的解析 " + it } + "\n\nEND")
         val small = render("答案 $-2$ END")
