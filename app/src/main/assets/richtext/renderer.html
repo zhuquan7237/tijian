@@ -225,7 +225,7 @@
         trust: false,
         output: 'html'
       });
-      return '<span class="' + (b.display ? 'math-display' : 'math-inline') + '">' + rendered + '</span>';
+      return '<span class="' + (b.display ? 'math-display' : 'math-inline') + '" data-tex="' + window.tjMath.escAttr(b.tex) + '">' + rendered + '</span>';
     } catch (e) {
       // A first-pass failure can be caused by a macro (\\ce, \\pu) not yet
       // registered. Retry after mhchem has initialized; if it still fails, show
@@ -235,7 +235,7 @@
           displayMode: b.display, throwOnError: true, strict: false, trust: false, output: 'html',
           macros: (window.__rtMacros || {})
         });
-        return '<span class="' + (b.display ? 'math-display' : 'math-inline') + '">' + retried + '</span>';
+        return '<span class="' + (b.display ? 'math-display' : 'math-inline') + '" data-tex="' + window.tjMath.escAttr(b.tex) + '">' + retried + '</span>';
       } catch (e2) {
         return '<span class="rt-error" title="' + escapeHtml(String(e2)) + '">[公式]</span>';
       }
@@ -323,8 +323,8 @@
     window.__rtSelText = '';
     document.addEventListener('selectionchange', function () {
       var s = window.getSelection();
-      if (!s) return;
-      var t = s.toString();
+      if (!s || !s.rangeCount) return;
+      var t = window.tjMath.selectionText(s.getRangeAt(0));
       if (t && t.trim()) window.__rtSelText = t;
     });
     window.__rtClearSel = function () {

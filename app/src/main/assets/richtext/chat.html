@@ -136,14 +136,14 @@
         var out = katex.renderToString(b.tex, {
           displayMode: b.display, throwOnError: false, strict: false, trust: false, output: 'html'
         });
-        return '<span class="' + (b.display ? 'math-display' : 'math-inline') + '">' + out + '</span>';
+        return '<span class="' + (b.display ? 'math-display' : 'math-inline') + '" data-tex="' + window.tjMath.escAttr(b.tex) + '">' + out + '</span>';
       } catch (e) {
         try {
           var retry = katex.renderToString(b.tex, {
             displayMode: b.display, throwOnError: true, strict: false, trust: false, output: 'html',
             macros: (window.__rtMacros || {})
           });
-          return '<span class="' + (b.display ? 'math-display' : 'math-inline') + '">' + retry + '</span>';
+          return '<span class="' + (b.display ? 'math-display' : 'math-inline') + '" data-tex="' + window.tjMath.escAttr(b.tex) + '">' + retry + '</span>';
         } catch (e2) {
           return '<span class="rt-error">[公式]</span>';
         }
@@ -248,7 +248,8 @@
     var sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
-    pushSelection(range.toString());
+    // 选区跨过公式时用原始 TeX，否则引用到追问里只剩零散字符。
+    pushSelection(window.tjMath ? window.tjMath.selectionText(range) : range.toString());
   }
 
   document.addEventListener('touchstart', function (e) {

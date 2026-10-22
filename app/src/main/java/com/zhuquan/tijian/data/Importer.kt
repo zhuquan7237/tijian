@@ -60,7 +60,13 @@ class Importer(private val context: Context, private val db: Db, private val ai:
                 }
                 try {
                     val jpeg = downscaleJpeg(File(img.path), 1600)
-                    val parsed = ai.recognize(cfg, jpeg)
+                    var parsed = ai.recognize(cfg, jpeg)
+                    // 照片里没印答案/解析时，识别结果会是空字段。这里自动补一次，
+                    // 避免入库后详情页出现「有题目、没解析、没答案」。
+                    if (parsed.any { it.answer.isBlank() || it.analysis.isBlank() }) {
+                        onStep(index + 1, uris.size, "补全解析 ${index + 1}/${uris.size}")
+                        parsed = runCatching { ai.fillSolutions(cfg, parsed) }.getOrDefault(parsed)
+                    }
                     parsed.forEachIndexed { i, p -> drafts.add(toDraft(img, p, i)) }
                 } catch (e: Exception) {
                     drafts.add(emptyDraft(img))

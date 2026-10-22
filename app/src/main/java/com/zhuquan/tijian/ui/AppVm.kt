@@ -356,6 +356,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     }
 
     var needsBusyFor by androidx.compose.runtime.mutableStateOf<String?>(null)
+    var solutionBusyFor by androidx.compose.runtime.mutableStateOf<String?>(null)
         private set
 
     /** 旧题 / 模型漏字段时，补全「需要掌握」的公式、概念、方法。 */
@@ -377,6 +378,50 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 toast = "补全失败：${e.message}"
             } finally {
                 needsBusyFor = null
+            }
+        }
+    }
+
+    /**
+     * 旧题/识别时漏掉答案或解析的补全入口。走和导入时同一套 fillSolutions，
+     * 只填空字段，不覆盖已有的答案。
+     */
+    fun fillSolution(id: String) {
+        if (solutionBusyFor != null) return
+        if (!provider.ready()) { toast = "先在「我的 → AI 接入」配置模型"; return }
+        solutionBusyFor = id
+        viewModelScope.launch {
+            try {
+                val q = withContext(Dispatchers.IO) { db.question(id) } ?: return@launch
+                val seed = com.zhuquan.tijian.ai.ParsedQuestion(
+                    type = q.type, stem = q.stem, options = parseOptions(q.options),
+                    answer = q.answer, analysis = q.analysis,
+                    needFormulas = parseKnowledgeTags(q.needFormulas),
+                    needConcepts = parseKnowledgeTags(q.needConcepts),
+                    needMethods = parseKnowledgeTags(q.needMethods),
+                )
+                val fixed = ai.fillSolutions(provider, listOf(seed)).firstOrNull() ?: return@launch
+                if (fixed.answer.isBlank() && fixed.analysis.isBlank()) {
+                    toast = "模型没有给出可用结果，检查题目图片是否清晰"
+                    return@launch
+                }
+                withContext(Dispatchers.IO) {
+                    db.updateQuestionSolution(id, fixed.answer.ifBlank { q.answer }, fixed.analysis.ifBlank { q.analysis })
+                    if (fixed.needFormulas.isNotEmpty() || fixed.needConcepts.isNotEmpty() || fixed.needMethods.isNotEmpty()) {
+                        db.updateQuestionNeeds(
+                            id,
+                            org.json.JSONArray(fixed.needFormulas).toString(),
+                            org.json.JSONArray(fixed.needConcepts).toString(),
+                            org.json.JSONArray(fixed.needMethods).toString()
+                        )
+                    }
+                }
+                refresh()
+                toast = "已补全答案与解析"
+            } catch (e: Exception) {
+                toast = "补全失败：${e.message}"
+            } finally {
+                solutionBusyFor = null
             }
         }
     }
@@ -507,8 +552,12 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         private set
     var chatBusy by androidx.compose.runtime.mutableStateOf(false)
         private set
+    /** 上一次回答是否被模型长度限制截断；截断后界面给「继续」。 */
+    var chatTruncated by androidx.compose.runtime.mutableStateOf(false)
+        private set
     var chatError by androidx.compose.runtime.mutableStateOf<String?>(null)
         private set
+    private var chatJob: kotlinx.coroutines.Job? = null
     /** 最近一次打开过的题目，用于离开详情页后悬浮球仍能追问同一题。 */
     var lastQuestionId by androidx.compose.runtime.mutableStateOf<String?>(null)
 
@@ -557,22 +606,42 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         chatMessages = chatMessages + ("user" to prompt)
         chatQuote = ""
         chatBusy = true
+        chatTruncated = false
         chatError = null
-        viewModelScope.launch {
+        chatJob = viewModelScope.launch {
             try {
                 val contextText = withContext(Dispatchers.IO) { buildQuestionContext(q) }
-                val answer = ai.ask(provider, contextText, history, prompt, quote)
+                val (answer, truncated) = ai.ask(provider, contextText, history, prompt, quote)
                 withContext(Dispatchers.IO) {
                     db.addChatMessage(q.id, "user", prompt, quote)
                     db.addChatMessage(q.id, "assistant", answer)
                 }
                 chatMessages = chatMessages + ("assistant" to answer)
+                chatTruncated = truncated
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                chatError = "已停止生成"
             } catch (e: Exception) {
                 chatError = e.message ?: "回答失败"
             } finally {
                 chatBusy = false
             }
         }
+    }
+
+    /** 停止当前追问：取消 HTTP 请求，不再把半截回答写进历史。 */
+    fun stopChat() {
+        ai.cancelActive()
+        chatJob?.cancel()
+        chatJob = null
+        chatBusy = false
+        chatTruncated = false
+    }
+
+    /** 回答被长度限制截断后，从断点接着写，不重复已写内容。 */
+    fun continueChat() {
+        if (chatBusy) return
+        chatTruncated = false
+        sendChat("请从你上次回答被截断的地方接着写，不要重复已经写过的内容，也不要重新开头。")
     }
 
     fun clearChat() {
@@ -649,7 +718,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     suspend fun buildDocPdf(doc: DocRow): File = withContext(Dispatchers.IO) {
         val f = File(getApplication<Application>().cacheDir, "export/${safe(doc.title)}_${System.currentTimeMillis()}.pdf")
         f.parentFile?.mkdirs()
-        PdfExporter.exportText(doc.title, doc.contentMd, f)
+        PdfExporter.exportText(getApplication(), doc.title, doc.contentMd, f)
         f
     }
 

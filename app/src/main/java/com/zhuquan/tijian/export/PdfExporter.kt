@@ -190,7 +190,12 @@ object PdfExporter {
         return pages
     }
 
-    fun exportText(title: String, markdown: String, target: File): Int {
+    /**
+     * 知识库 PDF：整篇 Markdown 走与 App 内相同的富文本管线（KaTeX + mhchem + 表格），
+     * 不再按行画纯文本——之前 LaTeX 会原样以源码形式出现在 PDF 里。
+     * 渲染成位图后按页切片，单页放不下就续到下一页。
+     */
+    suspend fun exportText(context: Context, title: String, markdown: String, target: File): Int {
         val doc = PdfDocument()
         val pager = Pager(doc)
         pager.newPage()
@@ -201,6 +206,44 @@ object PdfExporter {
         pager.hairline()
         pager.y += 18f
 
+        val blocks = splitSections(markdown)
+        blocks.forEach { block ->
+            val bitmap = RichBitmap.render(context, block, widthPx = 1400, fontSize = 13)
+            if (bitmap != null) {
+                pager.ensure(24f)
+                pager.y += 4f
+                pager.image(bitmap, 1f, allowSlice = true)
+                bitmap.recycle()
+            } else {
+                // 位图渲染失败时退回纯文本，至少内容不丢。
+                drawPlainMarkdown(pager, block)
+            }
+            pager.y += 10f
+        }
+        pager.finish()
+        FileOutputStream(target).use { doc.writeTo(it) }
+        val pages = pager.pageNo
+        doc.close()
+        return pages
+    }
+
+    /** 按二级标题切块：单块位图不会超过 RichBitmap 的高度上限，长文档也能分页。 */
+    private fun splitSections(markdown: String): List<String> {
+        val out = ArrayList<String>()
+        val current = StringBuilder()
+        markdown.lineSequence().forEach { line ->
+            if (line.startsWith("## ") && current.isNotBlank()) {
+                out.add(current.toString().trim())
+                current.setLength(0)
+            }
+            current.append(line).append('\n')
+        }
+        if (current.isNotBlank()) out.add(current.toString().trim())
+        return out.ifEmpty { listOf(markdown) }
+    }
+
+    /** 纯文本兜底：仅在富文本位图渲染失败时使用。 */
+    private fun drawPlainMarkdown(pager: Pager, markdown: String) {
         markdown.lineSequence().forEach { raw ->
             val line = raw.trimEnd()
             when {
@@ -240,11 +283,6 @@ object PdfExporter {
                 }
             }
         }
-        pager.finish()
-        FileOutputStream(target).use { doc.writeTo(it) }
-        val pages = pager.pageNo
-        doc.close()
-        return pages
     }
 
     // ---------------- layout primitives ----------------

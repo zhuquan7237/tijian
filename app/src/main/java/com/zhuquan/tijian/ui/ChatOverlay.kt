@@ -35,6 +35,7 @@ import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Forum
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -202,6 +203,20 @@ private fun ChatPanel(vm: AppVm) {
                 QuoteBlock(vm.chatQuote, compact = compact) { vm.updateChatQuote("") }
             }
 
+            if (vm.chatTruncated && !vm.chatBusy) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("回答被模型长度限制截断", fontSize = 11.5.sp, color = Amber)
+                    Spacer(Modifier.weight(1f))
+                    Box(
+                        Modifier.clip(RoundedCornerShape(999.dp)).background(AmberSoft)
+                            .tjClickable(label = "继续生成") { vm.continueChat() }
+                            .padding(horizontal = 12.dp, vertical = 7.dp)
+                    ) { Text("继续", fontSize = 12.sp, color = Amber, fontWeight = FontWeight.SemiBold) }
+                }
+            }
             if (!compact) QuickChips(enabled = !vm.chatBusy) { vm.sendChat(it) }
 
             ChatInput(
@@ -215,7 +230,8 @@ private fun ChatPanel(vm: AppVm) {
                         input = ""
                         vm.sendChat(text)
                     }
-                }
+                },
+                onStop = { vm.stopChat() }
             )
         }
     }
@@ -351,7 +367,14 @@ private fun QuoteBlock(quote: String, compact: Boolean = false, onClear: () -> U
 }
 
 @Composable
-private fun ChatInput(input: String, busy: Boolean, compact: Boolean = false, onInput: (String) -> Unit, onSend: () -> Unit) {
+private fun ChatInput(
+    input: String,
+    busy: Boolean,
+    compact: Boolean = false,
+    onInput: (String) -> Unit,
+    onSend: () -> Unit,
+    onStop: () -> Unit,
+) {
     Row(
         Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 10.dp),
         verticalAlignment = Alignment.Bottom
@@ -370,13 +393,24 @@ private fun ChatInput(input: String, busy: Boolean, compact: Boolean = false, on
         Spacer(Modifier.width(8.dp))
         Box(
             Modifier.size(48.dp).clip(CircleShape)
-                .background(if (input.isBlank() || busy) SurfaceAlt else Accent)
-                .tjClickable(enabled = input.isNotBlank() && !busy, label = "发送") { onSend() },
+                .background(when {
+                    busy -> RedSoft
+                    input.isBlank() -> SurfaceAlt
+                    else -> Accent
+                })
+                .tjClickable(enabled = busy || input.isNotBlank(), label = if (busy) "停止" else "发送") {
+                    if (busy) onStop() else onSend()
+                },
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                Icons.AutoMirrored.Rounded.Send, "发送",
-                tint = if (input.isBlank() || busy) Muted else OnAccent,
+                if (busy) Icons.Rounded.Stop else Icons.AutoMirrored.Rounded.Send,
+                if (busy) "停止" else "发送",
+                tint = when {
+                    busy -> Red
+                    input.isBlank() -> Muted
+                    else -> OnAccent
+                },
                 modifier = Modifier.size(20.dp)
             )
         }

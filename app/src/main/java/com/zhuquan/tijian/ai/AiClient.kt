@@ -44,6 +44,15 @@ private val JSON = "application/json; charset=utf-8".toMediaType()
 
 class AiClient {
 
+    /** 当前正在执行的 HTTP 调用；用户点「停止」时真正把它 abort 掉。 */
+    @Volatile
+    private var activeCall: okhttp3.Call? = null
+
+    fun cancelActive() {
+        runCatching { activeCall?.cancel() }
+        activeCall = null
+    }
+
     // ---------------- public API ----------------
 
     suspend fun listModels(cfg: ProviderConfig): List<String> = withContext(Dispatchers.IO) {
@@ -154,6 +163,76 @@ class AiClient {
             parseQuestions(raw)
         }
 
+    /**
+     * 识别结果里答案/解析为空时（照片没印答案，或模型把字段写成了别的名字），
+     * 批量补一次；一次请求覆盖多题，避免每题单独调用。
+     */
+    suspend fun fillSolutions(cfg: ProviderConfig, items: List<ParsedQuestion>): List<ParsedQuestion> =
+        withContext(Dispatchers.IO) {
+            val targets = items.withIndex().filter { (_, q) -> q.answer.isBlank() || q.analysis.isBlank() }
+            if (targets.isEmpty()) return@withContext items
+            val list = StringBuilder()
+            targets.forEach { (i, q) ->
+                list.append("${i + 1}. 题型：${q.type}\n题干：${q.stem.take(800)}\n")
+                if (q.options.isNotEmpty()) list.append("选项：${q.options.joinToString(" / ").take(400)}\n")
+                if (q.answer.isNotBlank()) list.append("已有答案：${q.answer.take(200)}\n")
+                list.append("\n")
+            }
+            val prompt = """你是解题老师。下面的题目来自试卷照片，可能没有印答案和解析。请补全每道题的最终答案与完整解析。
+要求：
+1. 只输出 JSON，不要解释、不要 markdown 代码块。
+2. 每题给出 answer（最终答案，只写结论）与 analysis（完整推理过程，按「思路 / 1. 2. 3. / 易错 / 结论」结构，公式用 LaTeX ${'$'}...${'$'}）。
+3. 不要编造题目里没有的条件；题目信息不足时 answer 与 analysis 填空字符串。
+4. 已经给出答案的题不要改答案，只补解析。
+5. need_formulas / need_concepts / need_methods 各 0~4 条，只写本题真正需要的内容。
+
+题目：
+$list
+输出模板：{"items":[{"index":1,"answer":"","analysis":"","need_formulas":[""],"need_concepts":[""],"need_methods":[""]}]}"""
+            val body = if (cfg.protocol == "responses") {
+                JSONObject().apply {
+                    put("model", cfg.model); put("input", prompt)
+                    put("temperature", 0.2); put("max_output_tokens", 8000)
+                }
+            } else {
+                JSONObject().apply {
+                    put("model", cfg.model)
+                    put("messages", JSONArray()
+                        .put(JSONObject().apply { put("role", "system"); put("content", SYSTEM) })
+                        .put(JSONObject().apply { put("role", "user"); put("content", prompt) }))
+                    put("temperature", 0.2); put("max_tokens", 8000)
+                }
+            }
+            val raw = runCatching { call(cfg, body) }.getOrNull() ?: return@withContext items
+            val jsonText = extractJson(raw) ?: return@withContext items
+            val json = runCatching { JSONObject(jsonText) }.getOrNull() ?: return@withContext items
+            val arr = json.optJSONArray("items") ?: json.optJSONArray("questions") ?: return@withContext items
+            val byIndex = HashMap<Int, JSONObject>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                byIndex[o.optInt("index", i + 1)] = o
+            }
+            items.mapIndexed { i, q ->
+                val o = byIndex[i + 1] ?: return@mapIndexed q
+                fun strList(vararg keys: String): List<String> {
+                    for (k in keys) {
+                        val a = o.optJSONArray(k) ?: continue
+                        val out = ArrayList<String>()
+                        for (n in 0 until a.length()) a.optString(n).trim().takeIf { it.isNotBlank() }?.let(out::add)
+                        if (out.isNotEmpty()) return out
+                    }
+                    return emptyList()
+                }
+                q.copy(
+                    answer = q.answer.ifBlank { o.optString("answer") },
+                    analysis = q.analysis.ifBlank { o.optString("analysis").ifBlank { o.optString("explanation") } },
+                    needFormulas = q.needFormulas.ifEmpty { strList("need_formulas", "required_formulas") },
+                    needConcepts = q.needConcepts.ifEmpty { strList("need_concepts", "required_concepts") },
+                    needMethods = q.needMethods.ifEmpty { strList("need_methods", "required_methods") },
+                )
+            }
+        }
+
     suspend fun classify(
         cfg: ProviderConfig, drafts: List<DraftQuestion>, cats: List<CategoryRow>
     ): Map<String, String> = withContext(Dispatchers.IO) {
@@ -262,7 +341,7 @@ ${material.take(9000)}
         history: List<Pair<String, String>>,
         question: String,
         quote: String = "",
-    ): String = withContext(Dispatchers.IO) {
+    ): Pair<String, Boolean> = withContext(Dispatchers.IO) {
         val askText = buildString {
             if (quote.isNotBlank()) {
                 append("我在解析里选中的这段内容：\n> ")
@@ -276,7 +355,7 @@ ${material.take(9000)}
                 append("【题目资料】\n").append(context).append("\n\n")
                 if (history.isNotEmpty()) {
                     append("【此前的对话】\n")
-                    history.takeLast(8).forEach { (role, text) ->
+                    history.takeLast(16).forEach { (role, text) ->
                         append(if (role == "user") "学生：" else "老师：").append(text).append("\n")
                     }
                     append("\n")
@@ -288,7 +367,7 @@ ${material.take(9000)}
                 put("input", transcript)
                 put("instructions", TUTOR_SYSTEM)
                 put("temperature", 0.4)
-                put("max_output_tokens", 3000)
+                put("max_output_tokens", 8000)
             }
         } else {
             val messages = JSONArray()
@@ -301,7 +380,7 @@ ${material.take(9000)}
                 put("role", "assistant")
                 put("content", "我已读完这道题的题干、答案、解析、需要掌握的知识点，以及你目前的掌握情况。你想先弄懂哪一步？")
             })
-            history.takeLast(8).forEach { (role, text) ->
+            history.takeLast(16).forEach { (role, text) ->
                 messages.put(JSONObject().apply { put("role", role); put("content", text) })
             }
             messages.put(JSONObject().apply { put("role", "user"); put("content", askText) })
@@ -309,10 +388,11 @@ ${material.take(9000)}
                 put("model", cfg.model)
                 put("messages", messages)
                 put("temperature", 0.4)
-                put("max_tokens", 3000)
+                put("max_tokens", 8000)
             }
         }
-        call(cfg, body).trim()
+        val (text, truncated) = callWithMeta(cfg, body)
+        text.trim() to truncated
     }
 
     /**
@@ -369,7 +449,8 @@ ${q.analysis.take(1600)}
 
     // ---------------- transport ----------------
 
-    private fun call(cfg: ProviderConfig, body: JSONObject): String {
+    /** 返回正文与「是否被长度限制截断」；截断时界面会给出「继续」。 */
+    private fun callWithMeta(cfg: ProviderConfig, body: JSONObject): Pair<String, Boolean> {
         if (cfg.baseUrl.isBlank()) throw AiException("未配置 AI 接口")
         val base = normalizeBase(cfg.baseUrl)
         val url = when {
@@ -379,10 +460,14 @@ ${q.analysis.take(1600)}
         }
         val builder = Request.Builder().url(url).post(body.toString().toRequestBody(JSON))
         if (cfg.apiKey.isNotBlank()) builder.header("Authorization", "Bearer ${cfg.apiKey}")
+        val call = client.newCall(builder.build())
+        activeCall = call
         val resp = try {
-            client.newCall(builder.build()).execute()
+            call.execute()
         } catch (e: Exception) {
             throw AiException("网络错误：${e.message ?: e.javaClass.simpleName}")
+        } finally {
+            activeCall = null
         }
         resp.use {
             val text = it.body?.string().orEmpty()
@@ -392,9 +477,18 @@ ${q.analysis.take(1600)}
                 }.getOrNull()
                 throw AiException("HTTP ${it.code}：${msg ?: text.take(300)}")
             }
-            return extractText(text)
+            val truncated = runCatching {
+                val obj = JSONObject(text)
+                val chat = obj.optJSONArray("choices")?.optJSONObject(0)
+                chat?.optString("finish_reason") == "length" ||
+                    obj.optString("status") == "incomplete" ||
+                    obj.optJSONObject("incomplete_details")?.optString("reason") == "max_output_tokens"
+            }.getOrDefault(false)
+            return extractText(text) to truncated
         }
     }
+
+    private fun call(cfg: ProviderConfig, body: JSONObject): String = callWithMeta(cfg, body).first
 
     private fun extractText(raw: String): String {
         val obj = runCatching { JSONObject(raw) }.getOrElse { return raw }
@@ -441,11 +535,14 @@ ${q.analysis.take(1600)}
         val out = ArrayList<ParsedQuestion>()
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
-            val stem = o.optString("stem").ifBlank { o.optString("question") }
+            val stem = o.optString("stem").ifBlank { o.optString("question") }.ifBlank { o.optString("content") }
             if (stem.isBlank() && o.optString("type").isBlank()) continue
             val opts = ArrayList<String>()
             o.optJSONArray("options")?.let { a ->
                 for (k in 0 until a.length()) opts.add(a.optString(k))
+            } ?: o.optJSONObject("options")?.let { map ->
+                // 有的模型把选项写成 {"A":"...","B":"..."}
+                map.keys().asSequence().sorted().forEach { k -> map.optString(k).takeIf { it.isNotBlank() }?.let { opts.add("$k. $it") } }
             }
             fun strList(vararg keys: String): List<String> {
                 for (k in keys) {
@@ -469,11 +566,13 @@ ${q.analysis.take(1600)}
             out.add(
                 ParsedQuestion(
                     no = o.optString("no"),
-                    type = normalizeType(o.optString("type"), opts, stem),
+                    type = normalizeType(o.optString("type").ifBlank { o.optString("question_type") }, opts, stem),
                     stem = stem,
                     options = opts,
-                    answer = o.optString("answer"),
-                    analysis = o.optString("analysis"),
+                    answer = o.optString("answer").ifBlank { o.optString("final_answer") }
+                        .ifBlank { o.optString("result") }.ifBlank { o.optString("correct_answer") },
+                    analysis = o.optString("analysis").ifBlank { o.optString("explanation") }
+                        .ifBlank { o.optString("solution") }.ifBlank { o.optString("steps") },
                     tags = tags,
                     needFormulas = strList("need_formulas", "required_formulas"),
                     needConcepts = strList("need_concepts", "required_concepts"),
@@ -514,7 +613,7 @@ ${q.analysis.take(1600)}
 1. 只围绕当前这道题回答，不要跑题去讲整章内容。
 2. 学生可能只问某一步；如果给了「选中的内容」，优先解释那一段，并指出它在解题中的作用。
 3. 结合学生当前的掌握度：mastery 低时把前置概念补出来，mastery 高时直接讲关键卡点。
-4. 回答用中文，控制在 300 字以内，除非学生要求展开。格式固定：第一行「结论：……」直接回答；需要推导时用 1. 2. 3. 编号分步，每步一行，先说这步做什么再写式子，关键式子单独一行；有易错点时单独一行「易错：……」。不要用 # 标题，不要写成一大段。
+4. 回答用中文。格式固定：第一行「结论：……」直接回答；需要推导时用 1. 2. 3. 编号分步，每步一行，先说这步做什么再写式子，关键式子单独一行；有易错点时单独一行「易错：……」。不要用 # 标题，不要写成一大段。需要完整推导就写完整，不要为了短而省略中间步骤；也不要重复已经讲过的内容。
 5. 所有数学公式使用 LaTeX：行内 $...$，独立公式 $$...$$。不要输出纯文本公式。
 6. 不要编造题目里没有的条件；不确定就说不确定。"""
 
@@ -551,7 +650,7 @@ ${q.analysis.take(1600)}
             }
             val start = t.indexOf('{')
             if (start < 0) return null
-            var depth = 0
+            val stack = ArrayList<Char>()
             var inStr = false
             var esc = false
             for (i in start until t.length) {
@@ -565,15 +664,21 @@ ${q.analysis.take(1600)}
                 } else {
                     when (ch) {
                         '"' -> inStr = true
-                        '{' -> depth++
-                        '}' -> {
-                            depth--
-                            if (depth == 0) return t.substring(start, i + 1)
+                        '{' -> stack.add('}')
+                        '[' -> stack.add(']')
+                        '}', ']' -> {
+                            if (stack.isNotEmpty()) stack.removeAt(stack.size - 1)
+                            if (stack.isEmpty()) return t.substring(start, i + 1)
                         }
                     }
                 }
             }
-            return null
+            // 输出被 max_tokens 截断时 JSON 不完整。这里按栈补齐括号，
+            // 已经写完的题目仍然能入库，不会因为最后一题被截断而整批丢掉。
+            val sb = StringBuilder(t.substring(start))
+            if (inStr) sb.append('"')
+            for (i in stack.indices.reversed()) sb.append(stack[i])
+            return sb.toString()
         }
     }
 }

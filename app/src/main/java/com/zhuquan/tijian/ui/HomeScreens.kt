@@ -124,11 +124,7 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             title = "错题本",
-            subtitle = "${vm.stats.total} 道错题",
-            actions = {
-                IconCircle(Icons.Rounded.Search, "搜索") { searchOpen = !searchOpen; if (!searchOpen) query = "" }
-                IconCircle(Icons.Rounded.Add, "导入错题", tint = Color.White, filled = true) { onImport() }
-            }
+            subtitle = "${vm.stats.total} 道错题"
         )
 
         if (searchOpen) {
@@ -182,7 +178,14 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
                 if (vm.stats.total == 0) onImport() else vm.startReview(includeAll = vm.stats.due == 0)
             }
 
-            SectionLabel("学科", Modifier.padding(horizontal = Space.page))
+            // 搜索/导入原先在标题栏右上角，单手够不到；挪到「学科」这一行的最右侧，
+            // 和内容区同一条水平线，拇指自然就能碰到。
+            SectionLabel("学科", Modifier.padding(horizontal = Space.page)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    IconCircle(Icons.Rounded.Search, "搜索") { searchOpen = !searchOpen; if (!searchOpen) query = "" }
+                    IconCircle(Icons.Rounded.Add, "导入错题", tint = Color.White, filled = true) { onImport() }
+                }
+            }
 
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = Space.page),
@@ -756,6 +759,37 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                     selectable = true,
                     onAsk = { vm.openChat(it) },
                 )
+            }
+            if (question.answer.isBlank() || question.analysis.isBlank()) {
+                Spacer(Modifier.height(12.dp))
+                RichSection("答案与解析", "识别时缺失，可让 AI 补全", Red) {
+                    Column {
+                        Text(
+                            "这道题还缺" + listOfNotNull(
+                                if (question.answer.isBlank()) "答案" else null,
+                                if (question.analysis.isBlank()) "解析" else null
+                            ).joinToString("和") + "。补全后再回来复习。",
+                            fontSize = 13.sp, lineHeight = 20.sp, color = Muted
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Box(
+                            Modifier.heightIn(min = 48.dp).clip(CircleShape)
+                                .background(RedSoft)
+                                .tjClickable(label = "让 AI 补全答案与解析") { vm.fillSolution(question.id) }
+                                .padding(horizontal = 14.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (vm.solutionBusyFor == question.id) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(Modifier.size(14.dp), color = Red, strokeWidth = 2.dp)
+                                    Text("正在补全…", fontSize = 12.sp, color = Red, modifier = Modifier.padding(start = 7.dp))
+                                }
+                            } else {
+                                Text("让 AI 补全答案与解析", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Red)
+                            }
+                        }
+                    }
+                }
             }
             if (!hasNeeds) {
             Spacer(Modifier.height(12.dp))

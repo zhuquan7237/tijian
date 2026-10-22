@@ -78,7 +78,7 @@ QUESTIONS = [
      "category": "函数与导数", "confidence": 0.54, "bbox": [0.05, 0.345, 0.95, 0.505], **NEEDS2},
     {"no": "3", "type": "填空题",
      "stem": "曲线 $y=x^3-2x$ 在点 $(1,-1)$ 处的切线方程为 ______。",
-     "options": [], "answer": "$y=x-2$", "analysis": Q3_ANALYSIS,
+     "options": [], "answer": "", "analysis": "",
      "knowledge_tags": ["切线方程"], "difficulty": 2,
      "category": "函数与导数", "confidence": 0.89, "bbox": [0.05, 0.548, 0.95, 0.615], **NEEDS3},
     {"no": "4", "type": "解答题",
@@ -149,6 +149,22 @@ def reply_for(text):
             "concepts": ["导数的几何意义", "切点既在曲线上又在切线上"],
             "methods": ["先求导再代点", "点斜式写切线方程"],
         }, ensure_ascii=False)
+    if "请补全每道题的最终答案与完整解析" in text:
+        # 模拟“照片没印答案”时的补全请求：按 index 返回答案与解析。
+        return json.dumps({"items": [
+            {"index": 1, "answer": "D",
+             "analysis": "思路：求导后解 $f'(x)>0$。\n\n1. 求导：$f'(x)=3x^2-3$\n\n结论：选 D。",
+             "need_formulas": ["$f'(x)>0$ 对应单调递增"], "need_concepts": [], "need_methods": []},
+            {"index": 2, "answer": "$-2$",
+             "analysis": "思路：分子分母同趋于 0，用洛必达。\n\n1. 第一次求导\n\n结论：极限为 $-2$。",
+             "need_formulas": [], "need_concepts": [], "need_methods": ["两次洛必达"]},
+            {"index": 3, "answer": "$y=x-2$",
+             "analysis": "思路：先求导得切线斜率，再用点斜式。\n\n1. 求导：$y'=3x^2-2$\n\n结论：$y=x-2$。",
+             "need_formulas": ["$k=f'(x_0)$"], "need_concepts": [], "need_methods": ["点斜式"]},
+            {"index": 4, "answer": "$a\\le e$",
+             "analysis": "思路：恒成立问题优先分离参数。\n\n1. 分离参数\n\n结论：$a\\le e$。",
+             "need_formulas": [], "need_concepts": [], "need_methods": ["分离参数"]},
+        ]}, ensure_ascii=False)
     if "知识点整理助手" in text:
         return json.dumps(KNOWLEDGE, ensure_ascii=False)
     if "题目数字化助手" in text:

@@ -70,5 +70,54 @@
     return src.replace(/\uE000/g, '\\$');
   }
 
-  window.tjMath = { prepare: prepare, wrapBareLine: wrapBareLine };
+  function escAttr(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
+  /** 选区落在公式里时，用公式原始 TeX 代替渲染后的零散字符。 */
+  function mathElOf(node) {
+    var el = node && node.nodeType === 3 ? node.parentElement : node;
+    while (el) {
+      if (el.getAttribute && el.getAttribute('data-tex')) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function mathTexOf(node) {
+    var el = mathElOf(node);
+    return el ? el.getAttribute('data-tex') : null;
+  }
+
+  function selectionText(range) {
+    if (!range) return '';
+    var startEl = mathElOf(range.startContainer);
+    var endEl = mathElOf(range.endContainer);
+    if (startEl && startEl === endEl) return '$' + startEl.getAttribute('data-tex') + '$';
+    // 选区只盖住公式的一部分时，cloneContents 里留下的是 KaTeX 渲染后的
+    // 零散字符（x^{2/3} → "x23"），引用出来完全读不懂。先把两端公式整体
+    // 纳入选区，再统一换成原始 TeX。
+    var expanded = range.cloneRange();
+    if (startEl) { try { expanded.setStartBefore(startEl); } catch (e) {} }
+    if (endEl) { try { expanded.setEndAfter(endEl); } catch (e) {} }
+    var frag = expanded.cloneContents();
+    var div = document.createElement('div');
+    div.appendChild(frag);
+    var maths = div.querySelectorAll('[data-tex]');
+    for (var i = 0; i < maths.length; i++) {
+      var el = maths[i];
+      var tex = '$' + el.getAttribute('data-tex') + '$';
+      if (el.parentNode) el.parentNode.replaceChild(document.createTextNode(tex), el);
+    }
+    // 零宽字符（KaTeX 排版用的断行提示）不该出现在引用文本里。
+    return (div.textContent || '').replace(/[\u200b\u2061\u2062]/g, '');
+  }
+
+  window.tjMath = {
+    prepare: prepare,
+    wrapBareLine: wrapBareLine,
+    escAttr: escAttr,
+    selectionText: selectionText
+  };
 })();

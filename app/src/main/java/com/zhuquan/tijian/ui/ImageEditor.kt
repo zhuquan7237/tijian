@@ -30,15 +30,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.zhuquan.tijian.data.*
 import kotlinx.coroutines.*
 import java.io.File
@@ -321,18 +317,7 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
         } }.onSuccess { file = it }.onFailure { error = it.message }
     }
     DisposableEffect(uri) { onDispose { if (uri.scheme != "file") file?.delete() } }
-    Dialog(onDismissRequest = { if (!saving) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
-        SideEffect {
-            // The full-screen dialog must share the physical window bounds;
-            // fitting its frame to status bars and padding again offsets its bottom.
-            if (android.os.Build.VERSION.SDK_INT >= 30) dialogWindow?.let { window ->
-                window.attributes = window.attributes.apply { setFitInsetsTypes(0) }
-            }
-            dialogWindow?.setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT, android.view.WindowManager.LayoutParams.MATCH_PARENT)
-            dialogWindow?.setGravity(android.view.Gravity.TOP or android.view.Gravity.START)
-        }
-        Column(Modifier.fillMaxSize().background(Bg).padding(WindowInsets.safeDrawing.asPaddingValues())) {
+    FullScreenDialog(onDismissRequest = onDismiss, dismissEnabled = !saving) {
             TjTopBar("原图查看与编辑", "双指缩放 · 拖动查看 · 裁剪或标注后另存副本", onBack = { if (!saving) onDismiss() })
             // 图片占据剩余空间，工具栏固定在底部；这样短屏也不会把保存按钮挤出屏幕。
             Box(
@@ -359,14 +344,22 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
                 if (file == null && error == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
             }
             Column(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    EditorTool("裁剪", Icons.Rounded.Crop, cropping, !saving && !brushing) { cropping = !cropping }
-                    EditorTool("画笔", Icons.Rounded.Brush, brushing, !saving && !cropping) { brushing = !brushing }
-                    EditorTool("撤销", Icons.AutoMirrored.Rounded.Undo, false, !saving && brushing) { view?.undoStroke() }
-                    EditorTool("清空", Icons.Rounded.DeleteOutline, false, !saving && brushing) { view?.clearStrokes() }
+                // 模式切换与历史操作分成两组，组间留出呼吸感；组内用细分隔线，
+                // 比四个各自带边框的小方块干净得多。
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    EditorToolGroup {
+                        EditorTool("裁剪", Icons.Rounded.Crop, cropping, !saving && !brushing, Modifier.width(88.dp)) { cropping = !cropping }
+                        EditorToolDivider()
+                        EditorTool("画笔", Icons.Rounded.Brush, brushing, !saving && !cropping, Modifier.width(88.dp)) { brushing = !brushing }
+                    }
+                    EditorToolGroup {
+                        EditorTool("撤销", Icons.AutoMirrored.Rounded.Undo, false, !saving && brushing, Modifier.width(70.dp)) { view?.undoStroke() }
+                        EditorToolDivider()
+                        EditorTool("清空", Icons.Rounded.DeleteOutline, false, !saving && brushing, Modifier.width(70.dp)) { view?.clearStrokes() }
+                    }
                 }
                 if (brushing) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -433,31 +426,53 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
                 }
                 error?.let { Text(it, color = Red, fontSize = 11.5.sp) }
             }
-        }
     }
 }
 
 @Composable
-private fun RowScope.EditorTool(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+private fun EditorToolGroup(modifier: Modifier = Modifier, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    Row(
+        modifier.clip(RoundedCornerShape(18.dp))
+            .background(SurfaceAlt)
+            .border(1.dp, Line, RoundedCornerShape(18.dp))
+            .padding(5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
+    )
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.EditorToolDivider() {
+    Box(Modifier.width(1.dp).height(26.dp).background(Line.copy(alpha = .6f)))
+}
+
+@Composable
+private fun EditorTool(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     val tint = when {
-        !enabled -> Muted.copy(alpha = .42f)
+        !enabled -> Muted.copy(alpha = .38f)
         selected -> Accent
-        else -> Ink2
+        else -> Ink
     }
     Column(
-        Modifier.weight(1f).height(62.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(if (selected) AccentSoft else CardBg)
-            .border(1.dp, if (selected) Accent.copy(alpha = .55f) else Line, RoundedCornerShape(16.dp))
+        modifier.height(56.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) AccentSoft else ComposeColor.Transparent)
             .tjClickable(enabled = enabled) { onClick() },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(icon, null, tint = tint, modifier = Modifier.size(21.dp))
-        Spacer(Modifier.height(4.dp))
+        Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
-            label, fontSize = 11.sp, color = tint,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            label, fontSize = 11.5.sp, color = tint,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
         )
     }
 }

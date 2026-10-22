@@ -172,6 +172,30 @@ class ImageEditorLayoutTest {
         } finally { out.delete(); instrumentation.runOnMainSync { ctx.finish() } }
     }
 
+    @Test fun knowledgePdfUsesRichTextPipeline() {
+        val appCtx = instrumentation.targetContext
+        val host = instrumentation.startActivitySync(
+            Intent(appCtx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ) as MainActivity
+        val out = File(host.cacheDir, "doc-rich.pdf")
+        try {
+            val d = "$"
+            val md = "# 导数应用\n\n## 1. 导数与单调性\n\n若 " + d + "f'(x)>0" + d + "，则 " + d + "f(x)" + d + " 单调递增。\n\n" +
+                "**要点**\n\n- 先求定义域\n- 解 " + d + "\\dfrac{1}{2}x^2>0" + d + "\n"
+            val pages = kotlinx.coroutines.runBlocking {
+                com.zhuquan.tijian.export.PdfExporter.exportText(host, "导数应用", md, out)
+            }
+            java.io.File(host.getExternalFilesDir(null)!!, "doc-rich.pdf").outputStream().use { target ->
+                out.inputStream().use { it.copyTo(target) }
+            }
+            assertTrue("knowledge PDF should render at least one page", pages >= 1)
+            assertTrue("knowledge PDF should not be empty", out.length() > 1000)
+        } finally {
+            out.delete()
+            instrumentation.runOnMainSync { host.finish() }
+        }
+    }
+
     @Test fun richBitmapRendersLatexInsteadOfFallingBackToSource() {
         val host = instrumentation.startActivitySync(Intent(instrumentation.targetContext, RichTextRegressionActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as RichTextRegressionActivity

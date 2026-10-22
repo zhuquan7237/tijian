@@ -136,7 +136,7 @@ private class TjWebView(ctx: Context) : WebView(ctx) {
         override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
             if (item.itemId != MENU_COPY && item.itemId != MENU_ASK) return false
             evaluateJavascript(
-                "(function(){var s=window.getSelection();return window.__rtSelText||(s?s.toString():'');})()"
+                "(function(){var s=window.getSelection();var t=(s&&s.rangeCount&&window.tjMath)?window.tjMath.selectionText(s.getRangeAt(0)):'';return window.__rtSelText||t;})()"
             ) { raw ->
                 val text = decodeJsString(raw)
                 if (text.isNotBlank()) {
@@ -355,6 +355,11 @@ fun cleanMathLite(input: String): String {
     // JSON 多层转义：\\sin → \sin
     t = Regex("""\\\\(?=[A-Za-z])""").replace(t, """\""")
     t = expandLatex(t)
+    // 分数指数要整体保留：只把 2 变成上标会把 x^{2/3} 读成「x 的平方除以 3」。
+    t = Regex("""\^\{([^{}]+)\}""").replace(t) { m ->
+        val inner = m.groupValues[1]
+        if (inner.contains('/')) "^($inner)" else superscript(inner)
+    }
     t = t.replace("{", "").replace("}", "")
     // 卡片空间有限，把常见的上下标转成 Unicode，至少读起来像公式而不是源码。
     t = Regex("\\^(\\d+)").replace(t) { superscript(it.groupValues[1]) }

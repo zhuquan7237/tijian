@@ -135,6 +135,23 @@ class RichTextLayoutTest {
         assertTrue("list markers must survive math wrapping", m.getString("text").contains("sin"))
     }
 
+    @Test fun testMathSelectionKeepsTexDelimiters() {
+        val d = "$"
+        render("分式 " + d + "\\dfrac{1}{2}" + d + " END")
+        val done = CountDownLatch(1)
+        var value = ""
+        instrumentation.runOnMainSync {
+            web(host.window.decorView)?.evaluateJavascript(
+                "(function(){var el=document.querySelector('[data-tex]');if(!el)return 'NOEL';" +
+                    "var r=document.createRange();r.selectNodeContents(el);" +
+                    "return window.tjMath.selectionText(r);})()"
+            ) { v -> value = v ?: ""; done.countDown() }
+        }
+        assertTrue("selection callback timed out", done.await(5, TimeUnit.SECONDS))
+        assertTrue("math selection must keep TeX delimiters: $value", value.contains("$"))
+        assertTrue("math selection must keep the original TeX: $value", value.contains("dfrac"))
+    }
+
     @Test fun testAsyncReplacementShrinkAndStableHeight() {
         val large = render((1..35).joinToString("\n\n") { "很长的解析 " + it } + "\n\nEND")
         val small = render("答案 $-2$ END")

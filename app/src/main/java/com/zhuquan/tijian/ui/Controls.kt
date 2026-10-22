@@ -1,18 +1,13 @@
 package com.zhuquan.tijian.ui
 
-import android.os.Build
-import android.view.Gravity
-import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.TextStyle
@@ -22,7 +17,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -117,23 +111,16 @@ fun FullScreenDialog(
     dismissEnabled: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // decorFitsSystemWindows = true：让系统把 Dialog 窗口裁到状态栏/导航栏之内。
+    // 之前用 false + setFitInsetsTypes(0) 走边到边，但部分 OEM（小米/HyperOS）
+    // 不给 Dialog 窗口派发 WindowInsets，safeDrawingPadding 拿到 0，真机上底部
+    // 一排按钮就被导航栏盖住；模拟器没有导航栏所以复现不出来。
     Dialog(
         onDismissRequest = { if (dismissEnabled) onDismissRequest() },
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = true)
     ) {
-        val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
-        SideEffect {
-            if (Build.VERSION.SDK_INT >= 30) {
-                dialogWindow?.attributes = dialogWindow.attributes.apply { setFitInsetsTypes(0) }
-            }
-            dialogWindow?.setLayout(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT
-            )
-            dialogWindow?.setGravity(Gravity.TOP or Gravity.START)
-        }
         Column(
-            Modifier.fillMaxSize().background(Bg).safeDrawingPadding(),
+            Modifier.fillMaxSize().background(Bg),
             content = content
         )
     }

@@ -380,6 +380,12 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         arrayOf(stem, answer, analysis, type, tags, note, errorReasons, categoryId, System.currentTimeMillis(), id)
     )
 
+    fun updateQuestionSolution(id: String, answer: String, analysis: String) =
+        writableDatabase.execSQL(
+            "UPDATE question SET answer=?, analysis=?, updated_at=? WHERE id=?",
+            arrayOf(answer, analysis, System.currentTimeMillis(), id)
+        )
+
     fun updateQuestionNeeds(id: String, formulas: String, concepts: String, methods: String) =
         writableDatabase.execSQL(
             "UPDATE question SET need_formulas=?, need_concepts=?, need_methods=?, updated_at=? WHERE id=?",
