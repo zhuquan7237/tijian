@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
 import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.test.platform.app.InstrumentationRegistry
@@ -51,6 +52,47 @@ class ImageEditorLayoutTest {
             }
             result.recycle()
             assertTrue("export must include visible annotation pixels", colored > 0)
+        } finally {
+            instrumentation.runOnMainSync { host.finish() }
+            file.delete(); out.delete()
+        }
+    }
+
+    @Test fun strokeAndCropExportCarvesSelectionAndKeepsAnnotationInside() {
+        val ctx = instrumentation.targetContext
+        val file = File(ctx.cacheDir, "crop-stroke-source.png")
+        val out = File(ctx.cacheDir, "crop-stroke-out.png")
+        val bmp = Bitmap.createBitmap(900, 1200, Bitmap.Config.ARGB_8888)
+        Canvas(bmp).drawColor(Color.WHITE); bmp.compress(Bitmap.CompressFormat.PNG, 100, file.outputStream()); bmp.recycle()
+        val host = instrumentation.startActivitySync(Intent(ctx, RichTextRegressionActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as RichTextRegressionActivity
+        try {
+            instrumentation.runOnMainSync {
+                val view = OriginalImageView(host, file)
+                host.setContentView(view)
+                view.layout(0, 0, 600, 800)
+                view.brushMode = true
+                val now = SystemClock.uptimeMillis()
+                fun move(action: Int, x: Float, y: Float, at: Long) {
+                    MotionEvent.obtain(now, now + at, action, x, y, 0).let { view.onTouchEvent(it); it.recycle() }
+                }
+                move(MotionEvent.ACTION_DOWN, 100f, 200f, 0)
+                move(MotionEvent.ACTION_MOVE, 300f, 450f, 20)
+                move(MotionEvent.ACTION_UP, 300f, 450f, 40)
+                // 保存路径的新行为：不在裁剪模式下（用户点了「裁剪」当确认、或切去画笔），选区仍生效
+                view.exportWithStrokes(out, RectF(0f, 0f, 1f, 0.5f))
+                view.close()
+            }
+            val result = android.graphics.BitmapFactory.decodeFile(out.path)
+            assertEquals("carved to the selection height", 900, result.width)
+            assertEquals(600, result.height)
+            var colored = 0
+            for (x in 120 until 300 step 4) for (y in 250 until 450 step 4) {
+                val pixel = result.getPixel(x, y)
+                if (Color.red(pixel) > 180 && Color.green(pixel) < 150) colored++
+            }
+            result.recycle()
+            assertTrue("annotation must survive inside the carved region", colored > 0)
         } finally {
             instrumentation.runOnMainSync { host.finish() }
             file.delete(); out.delete()

@@ -14,12 +14,14 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalDensity
 
 /** One size and shape for actions; height can grow with the system font scale. */
 enum class ActionStyle { Primary, Secondary, Danger, Quiet }
@@ -120,8 +122,24 @@ fun FullScreenDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = true)
     ) {
         Column(
-            Modifier.fillMaxSize().background(Bg),
+            // 实测部分机型连 decorFits 都不生效（底部按钮被导航栏裁掉一半），
+            // 这里无条件加底部避让：insets 拿得到就用 insets，拿不到退回
+            // navigation_bar_height 系统资源值，两者取大，宁可多留空白不挡按钮。
+            Modifier.fillMaxSize().background(Bg).padding(bottom = navigationBarAvoidance()),
             content = content
         )
     }
+}
+
+/** 底部导航栏避让高度：insets 与系统资源值取大。 */
+@Composable
+private fun navigationBarAvoidance(): Dp {
+    val density = LocalDensity.current
+    val insetPx = WindowInsets.navigationBars.getBottom(density)
+    val fallbackPx = runCatching {
+        val res = android.content.res.Resources.getSystem()
+        val id = res.getIdentifier("navigation_bar_height", "dimen", "android")
+        if (id != 0) res.getDimensionPixelSize(id) else 0
+    }.getOrDefault(0)
+    return with(density) { maxOf(insetPx, fallbackPx).coerceAtLeast(0).toDp() }
 }

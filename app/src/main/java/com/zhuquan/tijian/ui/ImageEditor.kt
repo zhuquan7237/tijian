@@ -256,8 +256,10 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
     fun clearStrokes() { strokes.clear(); invalidate() }
 
     /** Flatten the current view (oriented source + annotations) into a clean PNG at up to 2200px.
-     *  屏显 preview 只有 1600px，导出时按目标尺寸重新解码原图，标注副本才不会比纯裁剪的糊。 */
-    fun exportWithStrokes(output: File): File {
+     *  屏显 preview 只有 1600px，导出时按目标尺寸重新解码原图，标注副本才不会比纯裁剪的糊。
+     *  crop 非空时先按整图坐标画标注、再从成品里裁出选区：裁剪+标注共用一条路径，
+     *  标注坐标始终对齐整图，不会被裁剪平移。 */
+    fun exportWithStrokes(output: File, crop: RectF? = null): File {
         val maxDim = 2200f
         val scale = min(1f, maxDim / max(imageWidth, imageHeight))
         val w = (imageWidth * scale).toInt().coerceAtLeast(1)
@@ -265,7 +267,6 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(android.graphics.Color.WHITE)
-        val image = RectF(0f, 0f, w.toFloat(), h.toFloat())
         val m = Matrix()
         m.set(orientation); m.postTranslate(-oriented.left, -oriented.top)
         m.postScale(scale, scale)
@@ -287,8 +288,18 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
             base.strokeCap = Paint.Cap.ROUND; base.strokeJoin = Paint.Join.ROUND
             canvas.drawPath(path, base)
         }
-        try { output.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
-        finally { bitmap.recycle() }
+        var result = bitmap
+        if (crop != null) {
+            val x = (crop.left * w).toInt().coerceIn(0, w - 1)
+            val y = (crop.top * h).toInt().coerceIn(0, h - 1)
+            val cw = ((crop.right - crop.left) * w).toInt().coerceIn(1, w - x)
+            val ch = ((crop.bottom - crop.top) * h).toInt().coerceIn(1, h - y)
+            val carved = Bitmap.createBitmap(bitmap, x, y, cw, ch)
+            if (carved !== bitmap) bitmap.recycle()
+            result = carved
+        }
+        try { output.outputStream().use { check(result.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+        finally { result.recycle() }
         return output
     }
     fun close() {
@@ -393,7 +404,7 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
                     when {
                         cropping -> "拖动四角或边框裁剪；保存时只裁选中的区域"
                         brushing -> "在图上书写标注；可撤销或清空"
-                        else -> "原图完整显示，放大时按可见区域读取原始像素"
+                        else -> "原图完整显示，放大时按可见区域读取原始像素；已拖出的裁剪选区保存时仍生效"
                     },
                     fontSize = 11.sp, lineHeight = 17.sp, color = Muted
                 )
@@ -407,17 +418,26 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
                     ) {
                         val source = file ?: return@TjButton
                         val target = view
-                        val cropRect = if (cropping && target?.hasCropSelection() == true) RectF(target.crop) else null
+                        // 选区只看「有没有裁过」，不看当前在哪个模式：用户拖完选区后
+                        // 切到画笔、或点「裁剪」按钮想确认，保存时选区都必须生效。
+                        // 之前要求 cropping 模式下保存才裁，导致第一次裁剪经常被静默丢弃。
+                        val cropRect = target?.takeIf { it.hasCropSelection() }?.let { RectF(it.crop) }
                         val annotated = target?.strokes?.isNotEmpty() == true
                         saving = true; error = null
                         if (cropRect != null || annotated) scope.launch {
                             var output: File? = null
                             try {
                                 output = withContext(Dispatchers.IO) {
-                                    val raw = if (cropRect != null) {
-                                        cropOriginal(source, cropRect, File.createTempFile("crop_", ".png", context.cacheDir))
-                                    } else source
-                                    if (annotated) target!!.exportWithStrokes(raw) else raw
+                                    when {
+                                        // 标注导出自己处理裁剪（整图渲染后按选区裁出），坐标才对得上
+                                        annotated -> target!!.exportWithStrokes(
+                                            File.createTempFile("edit_", ".png", context.cacheDir), cropRect
+                                        )
+                                        cropRect != null -> cropOriginal(
+                                            source, cropRect, File.createTempFile("crop_", ".png", context.cacheDir)
+                                        )
+                                        else -> source
+                                    }
                                 }
                                 onSaved(Uri.fromFile(output))
                             } catch (cancelled: CancellationException) { throw cancelled }
