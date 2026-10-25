@@ -4,4 +4,5 @@
     <files-path name="shared" path="share/" />
     <cache-path name="camera" path="camera/" />
     <files-path name="capture_staging" path="capture_staging/" />
+    <cache-path name="note_camera" path="note_camera/" />
 </paths>

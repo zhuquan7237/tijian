@@ -159,8 +159,17 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     init {
         refresh()
         restoreCaptureManifest()
+        // 外观偏好：0 跟随系统 / 1 浅色 / 2 深色
+        tjAppearance.intValue = db.getSetting("appearance")?.toIntOrNull() ?: 0
         val last = db.getSetting("update.lastCheck")?.toLongOrNull() ?: 0L
         if (System.currentTimeMillis() - last > 6 * 3600_000L) checkUpdate(silent = true)
+    }
+
+    fun setAppearance(mode: Int) {
+        tjAppearance.intValue = mode.coerceIn(0, 2)
+        viewModelScope.launch(Dispatchers.IO) {
+            db.putSetting("appearance", mode.toString())
+        }
     }
 
     var dataRevision by androidx.compose.runtime.mutableIntStateOf(0)
@@ -226,6 +235,28 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         if (sourceId != null) db.linkOriginal(image.id, sourceId)
         db.updateQuestionImage(questionId, image.id)
         db.question(questionId) ?: error("题目不存在")
+    }
+
+    /** 给笔记追加一张图片（拍照/相册 → 编辑器 → 入库）。 */
+    suspend fun addNoteImage(questionId: String, uri: Uri): QuestionRow = withContext(Dispatchers.IO) {
+        val image = importer.ingestOnly(uri)
+        db.appendNoteImage(questionId, image.id)
+        db.question(questionId) ?: error("题目不存在")
+    }
+
+    /** 编辑已有笔记图后替换：新图沿用原图的 original 链路。 */
+    suspend fun replaceNoteImage(questionId: String, oldImageId: String, uri: Uri): QuestionRow = withContext(Dispatchers.IO) {
+        val image = importer.ingestOnly(uri)
+        db.linkOriginal(image.id, oldImageId)
+        db.replaceNoteImage(questionId, oldImageId, image.id)
+        db.question(questionId) ?: error("题目不存在")
+    }
+
+    fun removeNoteImage(questionId: String, imageId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.removeNoteImage(questionId, imageId)
+            withContext(Dispatchers.Main) { refresh() }
+        }
     }
 
     suspend fun replaceCapture(source: Uri, edited: Uri) {

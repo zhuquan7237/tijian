@@ -37,13 +37,14 @@ fun ChatTranscript(
     }
     val selectCallback = rememberUpdatedState(onSelect)
     val latestJson = rememberUpdatedState(json)
+    // 组合期读取主题：夜/昼切换会触发重组，进而重发 __setNight
+    val nightNow = isNight
 
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
             @SuppressLint("SetJavaScriptEnabled")
-            WebView(ctx).apply {
-                setBackgroundColor(Color.TRANSPARENT)
+            WebView(ctx).apply {                setBackgroundColor(Color.TRANSPARENT)
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = false
                 settings.allowFileAccess = false
@@ -68,6 +69,9 @@ fun ChatTranscript(
                     override fun onPageFinished(view: WebView, url: String?) {
                         android.util.Log.d("ChatJS", "page finished: $url")
                         view.evaluateJavascript(
+                            "window.__setNight && window.__setNight(" + nightNow + ")", null
+                        )
+                        view.evaluateJavascript(
                             "window.__setMessages(" + JSONObject.quote(latestJson.value) + ")", null
                         )
                     }
@@ -88,6 +92,7 @@ fun ChatTranscript(
         },
         onRelease = { view -> view.removeJavascriptInterface("AndroidChat"); view.destroy() },
         update = { view ->
+            view.evaluateJavascript("window.__setNight && window.__setNight(" + nightNow + ")", null)
             view.evaluateJavascript("window.__setMessages(" + JSONObject.quote(json) + ")", null)
         }
     )

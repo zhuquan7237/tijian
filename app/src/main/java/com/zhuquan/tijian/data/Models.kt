@@ -37,6 +37,10 @@ data class QuestionRow(
     val needFormulas: String = "[]",
     val needConcepts: String = "[]",
     val needMethods: String = "[]",
+    /** 用户手输的自定义标签（如「卷一 · 第 12 题」），不参与 AI 分类。 */
+    val customTag: String = "",
+    /** 笔记图片的 image id JSON 数组（拍照/相册导入的手写笔记）。 */
+    val noteImages: String = "[]",
     val difficulty: Int,
     val errorReasons: String,
     val source: String,

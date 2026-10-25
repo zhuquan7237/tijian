@@ -23,6 +23,14 @@
     --amber-soft: #3F2E1A;  /* AmberSoft */
     --menu-bg: #3A3D44;     /* Fill */
   }
+  /* 日间墨白（浅色界面），与 renderer.html 的 rt-day 保持一致 */
+  body.rt-day {
+    --bg: #F5F4EF; --card: #FFFFFF; --surface-alt: #EDEBE3;
+    --ink: #23262B; --ink2: #464B54; --muted: #7C828C; --line: #E0DED4;
+    --accent: #0B8A7F; --accent-soft: #DCF0ED; --accent-rgb: 11,138,127;
+    --red: #C0454D; --red-soft: #FBEDEE; --menu-bg: #FFFFFF;
+    --amber: #9A6B1F; --amber-soft: #FBF1DC;
+  }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; background: transparent;
@@ -175,6 +183,10 @@
   window.__setMessages = function (json) {
     try { MSGS = JSON.parse(json) || []; } catch (e) { MSGS = []; }
     renderAll(true);
+  };
+
+  window.__setNight = function (night) {
+    document.body.classList.toggle('rt-day', !night);
   };
 
   window.__scrollBottom = function () {

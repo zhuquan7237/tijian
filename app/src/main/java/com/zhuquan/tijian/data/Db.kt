@@ -5,8 +5,9 @@ import android.content.Context
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import java.io.File
 
-class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelper(context, databaseName, null, 5) {
+class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelper(context, databaseName, null, 6) {
 
     companion object {
         const val UNCAT = "uncat"
@@ -50,9 +51,10 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                 review_count INTEGER NOT NULL DEFAULT 0,
                 last_review_at INTEGER, next_review_at INTEGER,
                 ai_confidence REAL NOT NULL DEFAULT 0, note TEXT DEFAULT '',
+                custom_tag TEXT DEFAULT '', note_images TEXT DEFAULT '[]',
                 image_id TEXT, content_hash TEXT,
                 created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER)"""
-        )
+            )
         db.execSQL("CREATE INDEX idx_q_cat ON question(category_id, deleted_at)")
         db.execSQL("CREATE INDEX idx_q_due ON question(next_review_at)")
         db.execSQL(
@@ -127,6 +129,13 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                         "UPDATE question SET content_hash=? WHERE id=?", arrayOf(h, r[0])
                     )
                 }
+            }
+        }
+        if (oldVersion < 6) {
+            // 自定义标签（用户手输，如「卷一 · 第 12 题」）与笔记图片（image id 的 JSON 数组）
+            if (hasTable(db, "question")) {
+                addColumnIfMissing(db, "question", "custom_tag", "TEXT DEFAULT ''")
+                addColumnIfMissing(db, "question", "note_images", "TEXT DEFAULT '[]'")
             }
         }
     }
@@ -352,7 +361,8 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         val sql = """SELECT q.id, q.category_id, IFNULL(c.name,'未分类'), q.type, q.stem, q.options,
             q.answer, q.analysis, q.knowledge_tags, q.difficulty, q.error_reasons, q.source,
             q.mastery, q.review_count, IFNULL(q.next_review_at,0), q.ai_confidence, q.note,
-            q.image_id, i.path, q.created_at, q.need_formulas, q.need_concepts, q.need_methods
+            q.image_id, i.path, q.created_at, q.need_formulas, q.need_concepts, q.need_methods,
+            q.custom_tag, q.note_images
             FROM question q LEFT JOIN category c ON c.id=q.category_id
             LEFT JOIN image i ON i.id=q.image_id
             WHERE $where ORDER BY $order"""
@@ -367,7 +377,9 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                 imageId = c.getString(17), imagePath = c.getString(18), createdAt = c.getLong(19),
                 needFormulas = c.getString(20) ?: "[]",
                 needConcepts = c.getString(21) ?: "[]",
-                needMethods = c.getString(22) ?: "[]"
+                needMethods = c.getString(22) ?: "[]",
+                customTag = c.getString(23) ?: "",
+                noteImages = c.getString(24) ?: "[]"
             )
         }
     }
@@ -435,12 +447,63 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
 
     fun updateQuestion(
         id: String, stem: String, answer: String, analysis: String, type: String,
-        tags: String, note: String, errorReasons: String, categoryId: String
+        tags: String, note: String, errorReasons: String, categoryId: String,
+        customTag: String
     ) = writableDatabase.execSQL(
         """UPDATE question SET stem=?, answer=?, analysis=?, type=?, knowledge_tags=?,
-           note=?, error_reasons=?, category_id=?, updated_at=? WHERE id=?""",
-        arrayOf(stem, answer, analysis, type, tags, note, errorReasons, categoryId, System.currentTimeMillis(), id)
+           note=?, error_reasons=?, category_id=?, custom_tag=?, updated_at=? WHERE id=?""",
+        arrayOf(stem, answer, analysis, type, tags, note, errorReasons, categoryId, customTag.trim(), System.currentTimeMillis(), id)
     )
+
+    /** 手输的自定义标签（如「卷一 · 第 12 题」），列表里跟在分类后面显示。 */
+    fun updateQuestionTag(id: String, tag: String) = writableDatabase.execSQL(
+        "UPDATE question SET custom_tag=?, updated_at=? WHERE id=?",
+        arrayOf(tag.trim(), System.currentTimeMillis(), id)
+    )
+
+    // ---------- note images ----------
+
+    private fun readNoteIds(noteImages: String): List<String> = try {
+        val arr = org.json.JSONArray(noteImages)
+        (0 until arr.length()).mapNotNull { i ->
+            arr.optString(i).trim().takeIf { it.isNotBlank() }
+        }
+    } catch (e: Exception) { emptyList() }
+
+    /** 笔记图片 (image id to 本地路径)，按 note_images 里的顺序，缺文件的自动略过。 */
+    fun noteImageRefs(noteImages: String): List<Pair<String, String>> = readNoteIds(noteImages)
+        .mapNotNull { id -> imagePath(id)?.let { path -> if (File(path).exists()) id to path else null } }
+
+    fun appendNoteImage(id: String, imageId: String) {
+        val cur = read("SELECT note_images FROM question WHERE id=?", arrayOf(id)) { it.getString(0) }
+            .firstOrNull() ?: "[]"
+        val ids = readNoteIds(cur).toMutableList()
+        if (!ids.contains(imageId)) ids.add(imageId)
+        writableDatabase.execSQL(
+            "UPDATE question SET note_images=?, updated_at=? WHERE id=?",
+            arrayOf(org.json.JSONArray(ids).toString(), System.currentTimeMillis(), id)
+        )
+    }
+
+    fun replaceNoteImage(id: String, oldImageId: String, newImageId: String) {
+        val cur = read("SELECT note_images FROM question WHERE id=?", arrayOf(id)) { it.getString(0) }
+            .firstOrNull() ?: "[]"
+        val ids = readNoteIds(cur).map { if (it == oldImageId) newImageId else it }
+        writableDatabase.execSQL(
+            "UPDATE question SET note_images=?, updated_at=? WHERE id=?",
+            arrayOf(org.json.JSONArray(ids).toString(), System.currentTimeMillis(), id)
+        )
+    }
+
+    fun removeNoteImage(id: String, imageId: String) {
+        val cur = read("SELECT note_images FROM question WHERE id=?", arrayOf(id)) { it.getString(0) }
+            .firstOrNull() ?: "[]"
+        val ids = readNoteIds(cur).filter { it != imageId }
+        writableDatabase.execSQL(
+            "UPDATE question SET note_images=?, updated_at=? WHERE id=?",
+            arrayOf(org.json.JSONArray(ids).toString(), System.currentTimeMillis(), id)
+        )
+    }
 
     fun updateQuestionSolution(id: String, answer: String, analysis: String) =
         writableDatabase.execSQL(

@@ -74,6 +74,7 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(vm: AppVm) {
     var showAbout by remember { mutableStateOf(false) }
     var showBackup by remember { mutableStateOf(false) }
+    var showAppearance by remember { mutableStateOf(false) }
     var restoreUri by remember { mutableStateOf<Uri?>(null) }
     val ctx = LocalContext.current
 
@@ -119,6 +120,10 @@ fun SettingsScreen(vm: AppVm) {
                     vm.go(Route.Provider)
                 }
                 DividerSoft()
+                SettingRow(Icons.Rounded.Info, "外观", if (tjAppearance.intValue == 1) "浅色" else if (tjAppearance.intValue == 2) "深色" else "跟随系统") {
+                    showAppearance = true
+                }
+                DividerSoft()
                 SettingRow(
                     Icons.Rounded.CloudDownload, "检查更新",
                     if (vm.checkingUpdate) "检查中…" else "当前 ${Updater.currentName()}"
@@ -140,6 +145,34 @@ fun SettingsScreen(vm: AppVm) {
             )
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (showAppearance) {
+        AlertDialog(
+            onDismissRequest = { showAppearance = false },
+            title = { Text("外观", fontSize = 16.sp) },
+            text = {
+                Column {
+                    listOf(
+                        0 to "跟随系统",
+                        1 to "浅色（日间墨白）",
+                        2 to "深色（夜读台）",
+                    ).forEach { (mode, label) ->
+                        Row(
+                            Modifier.fillMaxWidth().tjClickable {
+                                vm.setAppearance(mode); showAppearance = false
+                            }.padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioDot(tjAppearance.intValue == mode)
+                            Text(label, fontSize = 14.sp, color = Ink, modifier = Modifier.padding(start = 10.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showAppearance = false }) { Text("取消", color = Ink2) } }
+        )
     }
 
     if (showBackup) {

@@ -23,6 +23,14 @@
     --amber-soft: #3F2E1A;  /* AmberSoft */
     --menu-bg: #3A3D44;     /* Fill */
   }
+  /* 日间墨白（浅色界面）：暖纸白 + 深青，与 Theme.kt 的 Light token 对应。 */
+  body.rt-day {
+    --bg: #F5F4EF; --card: #FFFFFF; --surface-alt: #EDEBE3;
+    --ink: #23262B; --ink2: #464B54; --muted: #7C828C; --line: #E0DED4;
+    --accent: #0B8A7F; --accent-soft: #DCF0ED; --accent-rgb: 11,138,127;
+    --red: #C0454D; --red-soft: #FBEDEE; --menu-bg: #FFFFFF;
+    --amber: #9A6B1F; --amber-soft: #FBF1DC;
+  }
   /* PDF 导出（RichBitmap，白底位图）：浅色打印配色，与界面无关。 */
   body.rt-print {
     --bg: #FFFFFF; --card: #FFFFFF; --surface-alt: #F0F2F7;
@@ -172,6 +180,7 @@
 <div id="out"></div>
 
 <script>window.__RT_SELECTABLE = __SELECTABLE__; window.__RT_SECTIONS = __SECTIONS__;</script>
+<script>console.log('TJTHEME', document.body.className, getComputedStyle(document.body).getPropertyValue('--card'), 'day?', document.body.classList.contains('rt-day'));</script>
 <script src="katex.min.js"></script>
 <script src="mhchem.min.js"></script>
 <script src="markdown-it.min.js"></script>

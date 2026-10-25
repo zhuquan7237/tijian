@@ -485,6 +485,13 @@ fun ReviewScreen(vm: AppVm) {
             Spacer(Modifier.height(14.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Tag(q.type.ifBlank { "题目" })
+                if (q.customTag.isNotBlank()) {
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        Modifier.clip(RoundedCornerShape(4.dp)).background(AmberSoft)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) { Text(q.customTag, fontSize = 11.sp, color = Amber, maxLines = 1, fontWeight = FontWeight.SemiBold) }
+                }
                 Spacer(Modifier.width(6.dp))
                 Text(q.categoryName, fontSize = 11.5.sp, color = Muted)
             }

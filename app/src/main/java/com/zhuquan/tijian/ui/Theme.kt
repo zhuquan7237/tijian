@@ -30,6 +30,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -52,43 +53,114 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /* ------------------------------------------------------------------
- * 题笺 · 夜读台（8.9.0）
+ * 题笺 · 夜读台（8.9.0）/ 日间墨白（8.11.0）
  *
- * 深石墨底 + 青绿强调，数字大字号。正文对比 ≥ 12:1，次要文字 ≥ 6:1。
+ * 深浅两套 token：夜读台（深石墨 + 青绿）与日间墨白（暖纸白 + 深青）。
+ * 层级靠明度（Bg < CardBg < SurfaceAlt < Fill），不靠阴影。
+ * WebView 端在 assets/richtext 目录的 html 里用同名 CSS 变量镜像（rt-day / 默认夜色），
+ * 改色时两边一起改。
  * ------------------------------------------------------------------ */
 
-// 夜读台：深石墨底 + 单一青绿强调。层级靠明度（Bg < CardBg < SurfaceAlt < Fill），
-// 不靠阴影——暗底上阴影看不见。WebView 端在 assets/richtext/*.html 的 :root 里
-// 用同名 CSS 变量镜像这些值，改色时两边一起改。
+/** 当前是否夜色：由「外观」设置 + 系统深色模式共同决定（AppRoot 写入系统值）。
+ *  组合期读取（内部是两个状态位），主题切换会触发订阅它的组件重组。 */
+val isNight: Boolean
+    get() = when (tjAppearance.intValue) { 1 -> false; 2 -> true; else -> sysNight.value }
 
-val Bg = Color(0xFF1C1E22)
-val CardBg = Color(0xFF26282C)
-val SurfaceAlt = Color(0xFF303236)
+/** 外观偏好：0 跟随系统 / 1 浅色 / 2 深色（setting 表 appearance 键）。 */
+val tjAppearance = androidx.compose.runtime.mutableIntStateOf(0)
+
+private val sysNight = androidx.compose.runtime.mutableStateOf(false)
+
+/** AppRoot 每次组合把系统深浅写进来。 */
+internal fun updateSystemNight(dark: Boolean) { sysNight.value = dark }
+
+private val night: Boolean get() = isNight
+
+// ---- 夜读台（深） ----
+private val DarkBg = Color(0xFF1C1E22)
+private val DarkCardBg = Color(0xFF26282C)
+private val DarkSurfaceAlt = Color(0xFF303236)
+private val DarkFill = Color(0xFF3A3D44)
+private val DarkInk = Color(0xFFE6E8EB)
+private val DarkInk2 = Color(0xFFC3C8D0)
+private val DarkMuted = Color(0xFF9CA3AF)
+private val DarkLine = Color(0xFF3F4451)
+private val DarkFieldBorder = Color(0xFF6B7280)
+private val DarkAccent = Color(0xFF2DD4BF)
+private val DarkAccentSoft = Color(0xFF163B38)
+private val DarkAccentPressed = Color(0xFF0FB89E)
+private val DarkOnAccent = Color(0xFF04201C)
+private val DarkHeroBrush = Brush.linearGradient(listOf(Color(0xFF123B37), Color(0xFF1E2A2E), Color(0xFF26282C)))
+private val DarkHeroLine = Color(0x332DD4BF)
+private val DarkGreen = Color(0xFF34D399)
+private val DarkGreenSoft = Color(0xFF1F4D3D)
+private val DarkAmber = Color(0xFFFBBF24)
+private val DarkAmberSoft = Color(0xFF3F2E1A)
+private val DarkRed = Color(0xFFF87171)
+private val DarkRedSoft = Color(0xFF3D2326)
+private val DarkOnHeroMuted = Color(0xFF8B94A8)
+private val DarkOnHeroKicker = Color(0xFF9CA8BD)
+private val DarkBarBg = Color(0xFA1C1E22)
+
+// ---- 日间墨白（浅）：暖纸白底 + 深青强调，白天不刺眼、夜里开深色 ----
+private val LightBg = Color(0xFFF5F4EF)
+private val LightCardBg = Color(0xFFFFFFFF)
+private val LightSurfaceAlt = Color(0xFFEDEBE3)
+private val LightFill = Color(0xFFE2DFD5)
+private val LightInk = Color(0xFF23262B)
+private val LightInk2 = Color(0xFF464B54)
+private val LightMuted = Color(0xFF7C828C)
+private val LightLine = Color(0xFFE0DED4)
+private val LightFieldBorder = Color(0xFFA9ADB6)
+private val LightAccent = Color(0xFF0B8A7F)
+private val LightAccentSoft = Color(0xFFDCF0ED)
+private val LightAccentPressed = Color(0xFF096F66)
+private val LightOnAccent = Color(0xFFFFFFFF)
+private val LightHeroBrush = Brush.linearGradient(listOf(Color(0xFFD8EEEA), Color(0xFFEFEDE4), Color(0xFFFFFFFF)))
+private val LightHeroLine = Color(0x330B8A7F)
+private val LightGreen = Color(0xFF15803D)
+private val LightGreenSoft = Color(0xFFDCEFDD)
+private val LightAmber = Color(0xFF9A6B1F)
+private val LightAmberSoft = Color(0xFFFBF1DC)
+private val LightRed = Color(0xFFC0454D)
+private val LightRedSoft = Color(0xFFFBEDEE)
+private val LightOnHeroMuted = Color(0xFF6E7683)
+private val LightOnHeroKicker = Color(0xFF5B6472)
+private val LightBarBg = Color(0xFAFFFFFF)
+
+/** 深浅都成立的功能色（不随主题翻转）。 */
+val Scrim = Color(0x99000000)
+
+val Bg get() = if (night) DarkBg else LightBg
+val CardBg get() = if (night) DarkCardBg else LightCardBg
+val SurfaceAlt get() = if (night) DarkSurfaceAlt else LightSurfaceAlt
 /** 深色填充：按钮、hero card、强调底色（原 Ink 深色语义）。 */
-val Fill = Color(0xFF3A3D44)
-val Ink = Color(0xFFE6E8EB)
-val Ink2 = Color(0xFFC3C8D0)
-val Muted = Color(0xFF9CA3AF)
+val Fill get() = if (night) DarkFill else LightFill
+val Ink get() = if (night) DarkInk else LightInk
+val Ink2 get() = if (night) DarkInk2 else LightInk2
+val Muted get() = if (night) DarkMuted else LightMuted
 /** 装饰性 hairline：只用于分组。 */
-val Line = Color(0xFF3F4451)
+val Line get() = if (night) DarkLine else LightLine
 /** 输入框/可选控件的功能边框。 */
-val FieldBorder = Color(0xFF6B7280)
-val Accent = Color(0xFF2DD4BF)
-val AccentSoft = Color(0xFF163B38)
-val AccentPressed = Color(0xFF0FB89E)
-/** 强调色上的文字/图标：深墨绿，在 Accent 上对比 ≥ 9:1。 */
-val OnAccent = Color(0xFF04201C)
-/** 首页 / 知识库主卡：从青绿暗光过渡到卡片底色，是整套界面唯一的「光源」。 */
-val HeroBrush = Brush.linearGradient(listOf(Color(0xFF123B37), Color(0xFF1E2A2E), Color(0xFF26282C)))
-val HeroLine = Color(0x332DD4BF)
-val Green = Color(0xFF34D399)
-val GreenSoft = Color(0xFF1F4D3D)
-val Amber = Color(0xFFFBBF24)
-val AmberSoft = Color(0xFF3F2E1A)
-val Red = Color(0xFFF87171)
-val RedSoft = Color(0xFF3D2326)
-val OnHeroMuted = Color(0xFF8B94A8)
-val OnHeroKicker = Color(0xFF9CA8BD)
+val FieldBorder get() = if (night) DarkFieldBorder else LightFieldBorder
+val Accent get() = if (night) DarkAccent else LightAccent
+val AccentSoft get() = if (night) DarkAccentSoft else LightAccentSoft
+val AccentPressed get() = if (night) DarkAccentPressed else LightAccentPressed
+/** 强调色上的文字/图标。 */
+val OnAccent get() = if (night) DarkOnAccent else LightOnAccent
+/** 首页 / 知识库主卡：唯一的「光源」。 */
+val HeroBrush get() = if (night) DarkHeroBrush else LightHeroBrush
+val HeroLine get() = if (night) DarkHeroLine else LightHeroLine
+val Green get() = if (night) DarkGreen else LightGreen
+val GreenSoft get() = if (night) DarkGreenSoft else LightGreenSoft
+val Amber get() = if (night) DarkAmber else LightAmber
+val AmberSoft get() = if (night) DarkAmberSoft else LightAmberSoft
+val Red get() = if (night) DarkRed else LightRed
+val RedSoft get() = if (night) DarkRedSoft else LightRedSoft
+val OnHeroMuted get() = if (night) DarkOnHeroMuted else LightOnHeroMuted
+val OnHeroKicker get() = if (night) DarkOnHeroKicker else LightOnHeroKicker
+/** 底部导航栏底色。 */
+val BarBg get() = if (night) DarkBarBg else LightBarBg
 
 /** 三档圆角：卡片 20 / 控件 14 / 内嵌 10。WebView 卡片（.rt-card）同为 20px。 */
 val CardShape = RoundedCornerShape(20.dp)
@@ -112,45 +184,79 @@ object Space {
 
 @Composable
 fun TijianTheme(content: @Composable () -> Unit) {
+    val scheme = if (isNight) darkColorScheme(
+        primary = Accent,
+        onPrimary = OnAccent,
+        primaryContainer = AccentSoft,
+        onPrimaryContainer = Ink,
+        secondary = Green,
+        onSecondary = OnAccent,
+        secondaryContainer = GreenSoft,
+        onSecondaryContainer = Green,
+        background = Bg,
+        onBackground = Ink,
+        surface = CardBg,
+        onSurface = Ink,
+        surfaceVariant = SurfaceAlt,
+        onSurfaceVariant = Ink2,
+        outline = FieldBorder,
+        outlineVariant = Line,
+        error = Red,
+        onError = Color(0xFF2A0E10),
+        errorContainer = RedSoft,
+        onErrorContainer = Red,
+        surfaceTint = Color.Transparent,
+        surfaceDim = Bg,
+        surfaceBright = SurfaceAlt,
+        surfaceContainerLowest = Bg,
+        surfaceContainerLow = CardBg,
+        surfaceContainer = CardBg,
+        surfaceContainerHigh = SurfaceAlt,
+        surfaceContainerHighest = Fill,
+        inverseSurface = Ink,
+        inverseOnSurface = Bg,
+        inversePrimary = AccentPressed,
+        scrim = Color.Black,
+    ) else lightColorScheme(
+        primary = Accent,
+        onPrimary = OnAccent,
+        primaryContainer = AccentSoft,
+        onPrimaryContainer = Ink,
+        secondary = Green,
+        onSecondary = OnAccent,
+        secondaryContainer = GreenSoft,
+        onSecondaryContainer = Green,
+        background = Bg,
+        onBackground = Ink,
+        surface = CardBg,
+        onSurface = Ink,
+        surfaceVariant = SurfaceAlt,
+        onSurfaceVariant = Ink2,
+        outline = FieldBorder,
+        outlineVariant = Line,
+        error = Red,
+        onError = Color(0xFFFFEDEF),
+        errorContainer = RedSoft,
+        onErrorContainer = Red,
+        surfaceTint = Color.Transparent,
+        surfaceDim = Bg,
+        surfaceBright = SurfaceAlt,
+        surfaceContainerLowest = Bg,
+        surfaceContainerLow = CardBg,
+        surfaceContainer = CardBg,
+        surfaceContainerHigh = SurfaceAlt,
+        surfaceContainerHighest = Fill,
+        inverseSurface = Ink,
+        inverseOnSurface = Bg,
+        inversePrimary = AccentPressed,
+        scrim = Color.Black,
+    )
     MaterialTheme(
         shapes = androidx.compose.material3.Shapes(
             extraSmall = InnerShape, small = SmallShape, medium = SmallShape,
             large = CardShape, extraLarge = RoundedCornerShape(28.dp),
         ),
-        colorScheme = darkColorScheme(
-            primary = Accent,
-            onPrimary = OnAccent,
-            primaryContainer = AccentSoft,
-            onPrimaryContainer = Ink,
-            secondary = Green,
-            onSecondary = OnAccent,
-            secondaryContainer = GreenSoft,
-            onSecondaryContainer = Green,
-            background = Bg,
-            onBackground = Ink,
-            surface = CardBg,
-            onSurface = Ink,
-            surfaceVariant = SurfaceAlt,
-            onSurfaceVariant = Ink2,
-            outline = FieldBorder,
-            outlineVariant = Line,
-            error = Red,
-            onError = Color(0xFF2A0E10),
-            errorContainer = RedSoft,
-            onErrorContainer = Red,
-            surfaceTint = Color.Transparent,
-            surfaceDim = Bg,
-            surfaceBright = SurfaceAlt,
-            surfaceContainerLowest = Bg,
-            surfaceContainerLow = CardBg,
-            surfaceContainer = CardBg,
-            surfaceContainerHigh = SurfaceAlt,
-            surfaceContainerHighest = Fill,
-            inverseSurface = Ink,
-            inverseOnSurface = Bg,
-            inversePrimary = AccentPressed,
-            scrim = Color.Black,
-        ),
+        colorScheme = scheme,
         typography = Typography(
             displaySmall = Typography().displaySmall.copy(
                 fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold,

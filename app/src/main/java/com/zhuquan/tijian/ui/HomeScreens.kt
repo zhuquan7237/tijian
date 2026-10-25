@@ -515,13 +515,24 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                             Spacer(Modifier.width(14.dp))
                             Text(q.type.ifBlank { "—" }, fontSize = 12.sp, color = Ink2, modifier = Modifier.width(64.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             val tags = parseKnowledgeTags(q.tags)
-                            if (tags.isEmpty()) {
-                                Text("—", fontSize = 12.sp, color = Muted, modifier = Modifier.weight(1f))
-                            } else {
-                                Row(
-                                    Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
+                            Row(
+                                Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (q.customTag.isNotBlank()) {
+                                    Box(
+                                        Modifier.clip(RoundedCornerShape(6.dp))
+                                            .background(AmberSoft)
+                                            .border(1.dp, Amber.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 7.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(q.customTag, fontSize = 11.5.sp, color = Amber, maxLines = 1, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                                if (tags.isEmpty() && q.customTag.isBlank()) {
+                                    Text("—", fontSize = 12.sp, color = Muted)
+                                } else {
                                     tags.forEach { tag ->
                                         Box(
                                             Modifier.clip(RoundedCornerShape(6.dp)).background(AccentSoft)
@@ -689,7 +700,8 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             title = question.type.ifBlank { "题目" },
-            subtitle = question.categoryName,
+            subtitle = listOf(question.customTag, question.categoryName)
+                .filter { it.isNotBlank() }.joinToString(" · "),
             onBack = { vm.back() },
             actions = {
                 IconCircle(Icons.Rounded.Edit, "编辑") { editing = true }
@@ -899,9 +911,9 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                     }
                 }
             }
-            if (question.note.isNotBlank()) {
+            if (question.note.isNotBlank() || question.noteImages != "[]") {
                 Spacer(Modifier.height(16.dp))
-                LabelValue("笔记", question.note)
+                NoteCard(vm, question)
             }
             // 底部留出悬浮追问球的高度，最后一张卡（掌握度）能滚到球上方，不被压住。
             Spacer(Modifier.height(96.dp))
@@ -970,12 +982,15 @@ fun EditQuestionDialog(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
     var analysis by remember { mutableStateOf(q.analysis) }
     var note by remember { mutableStateOf(q.note) }
     var type by remember { mutableStateOf(q.type) }
+    var tag by remember { mutableStateOf(q.customTag) }
     var catId by remember { mutableStateOf(q.categoryId ?: "uncat") }
     AlertDialog(
         onDismissRequest = { onDone(q.copy()) },
         title = { Text("编辑题目", fontSize = 16.sp) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+                TjTextField(value = tag, onValueChange = { tag = it }, label = { Text("自定义标签（如：卷一 · 第 12 题）", fontSize = 12.sp) }, singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
                 TjTextField(value = stem, onValueChange = { stem = it }, label = { Text("题干", fontSize = 12.sp) }, minLines = 3, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
                 TjTextField(value = answer, onValueChange = { answer = it }, label = { Text("答案", fontSize = 12.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
@@ -1003,13 +1018,13 @@ fun EditQuestionDialog(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
                     it.updateQuestion(
                         id = q.id, stem = stem, answer = answer, analysis = analysis,
                         type = type, tags = q.tags, note = note,
-                        errorReasons = q.errorReasons, categoryId = catId
+                        errorReasons = q.errorReasons, categoryId = catId, customTag = tag
                     )
                 }
                 onDone(
                     q.copy(
                         stem = stem, answer = answer, analysis = analysis, note = note,
-                        type = type, categoryId = catId,
+                        type = type, customTag = tag.trim(), categoryId = catId,
                         categoryName = cats.firstOrNull { it.id == catId }?.name ?: q.categoryName
                     )
                 )
@@ -1038,7 +1053,10 @@ fun SearchRow(q: QuestionRow, onClick: () -> Unit) {
         Thumb(q.imagePath, Modifier.width(38.dp).height(46.dp))
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
             Text(cleanMathLite(q.stem).ifBlank { "（无题干）" }, fontSize = 13.sp, lineHeight = 19.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, color = Ink)
-            Text("${q.categoryName} · ${q.type}", fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
+            Text(
+                listOf(q.customTag, q.categoryName, q.type).filter { it.isNotBlank() }.joinToString(" · "),
+                fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp)
+            )
         }
     }
     HorizontalDivider(color = Line, thickness = 1.dp)
@@ -1078,6 +1096,105 @@ fun LabelValue(label: String, value: String) {
     Column {
         Text(label, fontSize = 11.sp, letterSpacing = 1.sp, color = Muted)
         Text(value, fontSize = 12.5.sp, lineHeight = 20.sp, color = Ink, modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
+/** 笔记编辑上下文：source 是待编辑的图，oldImageId 非空表示替换已有笔记图，tempFile 是拍照临时文件。 */
+private data class NoteEdit(val source: Uri, val oldImageId: String?, val tempFile: File?)
+
+/**
+ * 笔记卡：文字 + 手写拍照图片。图片走拍照/相册导入，统一先进原图编辑器
+ * （裁剪/标注）再入库；点缩略图可再次编辑，右上角 X 移除。
+ */
+@Composable
+private fun NoteCard(vm: AppVm, question: QuestionRow) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var refs by remember(question.noteImages) {
+        mutableStateOf<List<Pair<String, String>>>(emptyList())
+    }
+    LaunchedEffect(question.noteImages) {
+        refs = withContext(Dispatchers.IO) { vm.db.noteImageRefs(question.noteImages) }
+    }
+    var editing by remember { mutableStateOf<NoteEdit?>(null) }
+    var cameraFile by remember { mutableStateOf<File?>(null) }
+
+    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val f = cameraFile; cameraFile = null
+        if (ok && f != null && f.exists()) editing = NoteEdit(Uri.fromFile(f), null, f)
+        else f?.delete()
+    }
+    val pickNote = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) editing = NoteEdit(uri, null, null)
+    }
+
+    RichSection("笔记", "文字 · 手写拍照 · 可裁剪标注", Amber) {
+        if (question.note.isNotBlank()) {
+            Text(question.note, fontSize = 13.sp, lineHeight = 20.sp, color = Ink2)
+            Spacer(Modifier.height(10.dp))
+        }
+        if (refs.isNotEmpty()) {
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                refs.forEach { (id, path) ->
+                    Box(Modifier.size(84.dp)) {
+                        AsyncImage(
+                            model = File(path), contentDescription = "笔记图片",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize().clip(SmallShape)
+                                .border(1.dp, Line, SmallShape)
+                                .tjClickable(label = "编辑这张笔记图片") {
+                                    editing = NoteEdit(Uri.fromFile(File(path)), id, null)
+                                }
+                        )
+                        Box(
+                            Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp)
+                                .clip(CircleShape).background(Color(0xCC000000))
+                                .tjClickable(label = "移除这张笔记图片") {
+                                    vm.removeNoteImage(question.id, id)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Rounded.Close, "移除", tint = Color.White, modifier = Modifier.size(14.dp))
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TjButton("拍照导入", Modifier.weight(1f), style = ActionStyle.Secondary) {
+                val dir = File(ctx.cacheDir, "note_camera").apply { mkdirs() }
+                val f = File(dir, "note_${System.currentTimeMillis()}.jpg")
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    ctx, "${ctx.packageName}.fileprovider", f
+                )
+                cameraFile = f
+                runCatching { takePicture.launch(uri) }.onFailure {
+                    f.delete(); cameraFile = null; vm.toast = "无法打开相机，请从相册添加"
+                }
+            }
+            TjButton("从相册导入", Modifier.weight(1f), style = ActionStyle.Secondary) {
+                pickNote.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
+        }
+    }
+
+    editing?.let { e ->
+        ImageEditorDialog(
+            uri = e.source,
+            onDismiss = { e.tempFile?.delete(); editing = null },
+            onSaved = { uri ->
+                runCatching {
+                    if (e.oldImageId != null) vm.replaceNoteImage(question.id, e.oldImageId, uri)
+                    else vm.addNoteImage(question.id, uri)
+                    vm.refresh()
+                }.onFailure { vm.toast = "保存失败：${it.message}" }
+                e.tempFile?.delete()
+                editing = null
+            }
+        )
     }
 }
 
@@ -1177,7 +1294,10 @@ private fun RecentCard(q: QuestionRow, onClick: () -> Unit) {
                 fontSize = 13.sp, lineHeight = 19.sp, color = Ink,
                 maxLines = 2, overflow = TextOverflow.Ellipsis
             )
-            Text(q.categoryName, fontSize = 11.sp, color = Muted, modifier = Modifier.padding(top = 5.dp), maxLines = 1)
+            Text(
+                listOf(q.customTag, q.categoryName).filter { it.isNotBlank() }.joinToString(" · "),
+                fontSize = 11.sp, color = Muted, modifier = Modifier.padding(top = 5.dp), maxLines = 1
+            )
         }
     }
 }

@@ -54,4 +54,34 @@ class UiTextProcessingTest {
     @Test fun liteSubscript() {
         assertEquals("x₁+x₂", cleanMathLite("x_1+x_2"))
     }
+
+    @Test fun liteIntegralWithBounds() {
+        // 8.11.0：积分上下限组合，字母上标退回 ^(…) 而不是逐字符猜
+        val out = cleanMathLite("""$\int_0^{x-y}(x-y-t)f(t)dt$""")
+        assertTrue(out.contains("∫"))
+        assertTrue(out.contains("₀"))
+        assertTrue(out.contains("^(x-y)"))
+    }
+
+    @Test fun liteSubscriptBracesFallback() {
+        assertEquals("x_(i=1)", cleanMathLite("x_{i=1}"))
+    }
+
+    @Test fun liteSingleLetterSuperscriptStaysUnicode() {
+        assertEquals("eˣ", cleanMathLite("e^{x}"))
+        assertEquals("x³", cleanMathLite("x^{3}"))
+    }
+
+    @Test fun liteParenDelimitersStripped() {
+        val out = cleanMathLite("""\(x>1\)""")
+        assertFalse(out.contains("\\"))
+        assertTrue(out.contains("x>1"))
+    }
+
+    @Test fun litePartialDerivative() {
+        val out = cleanMathLite("""$\frac{\partial F}{\partial x}$""")
+        assertTrue(out.contains("∂"))
+        assertTrue(out.contains("F"))
+        assertTrue(out.contains("/"))
+    }
 }

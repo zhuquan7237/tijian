@@ -78,18 +78,24 @@ object RichTextRenderer {
         renderId: Int = 0,
         selectable: Boolean = false,
         sections: List<RichSectionSpec>? = null,
-        /** PDF 位图导出用浅色打印配色；界面始终是夜读台深色。 */
+        /** PDF 位图导出用浅色打印配色；界面按日/夜主题传 rt-day 或默认夜色。 */
         print: Boolean = false,
+        day: Boolean = false,
     ): String {
         val tpl = template ?: context.assets.open("richtext/renderer.html")
             .bufferedReader().use { it.readText() }.also { template = it }
+        val theme = when {
+            print -> "rt-print"
+            day -> "rt-day"
+            else -> ""
+        }
         return tpl
             .replace("__FONTSIZE__", fontSize.toString())
             .replace("__WIDTH__", widthDp.toString())
             .replace("__RENDER_ID__", renderId.toString())
             .replace("__SELECTABLE__", if (selectable) "true" else "false")
             .replace("__SECTIONS__", sectionsJson(sections))
-            .replace("__THEME__", if (print) "rt-print" else "")
+            .replace("__THEME__", theme)
             .replace("__CONTENT__", JSONObject.quote(markdown))
     }
 }
@@ -193,12 +199,14 @@ fun RichText(
     val widthDp = maxWidth.value.roundToInt().coerceAtLeast(1)
     val scaledFontSize = (fontSize * fontScale).roundToInt().coerceAtLeast(1)
     val normalized = remember(markdown) { Normalize.text(markdown) }
-    val renderId = remember(normalized, scaledFontSize, widthDp, selectable, sections) { RichTextRenderer.nextGeneration() }
+    val day = !isNight
+    // 主题切换要整页重渲染（CSS 类在 HTML 里），day 计入 renderId 的 key
+    val renderId = remember(normalized, scaledFontSize, widthDp, selectable, sections, day) { RichTextRenderer.nextGeneration() }
     val height = remember(renderId) {
         mutableIntStateOf(0)
     }
     val html = remember(normalized, scaledFontSize, widthDp, renderId) {
-        RichTextRenderer.html(context, normalized, scaledFontSize, widthDp, renderId, selectable, sections)
+        RichTextRenderer.html(context, normalized, scaledFontSize, widthDp, renderId, selectable, sections, day = day)
     }
     // AndroidView factory lives longer than this document: always route callbacks
     // to the current state, and check the generation again on the UI thread.
@@ -353,42 +361,58 @@ fun cleanMathLite(input: String): String {
         .replace("$$", "")
         .replace("$", "")
         .replace("\r\n", "\n")
+    // \(..\) 与 \[..\] 定界符直接去掉，正文保留
+    t = t.replace("\\(", "").replace("\\)", "")
+        .replace("\\[", "").replace("\\]", "")
     // JSON 多层转义：\\sin → \sin
     t = Regex("""\\\\(?=[A-Za-z])""").replace(t, """\""")
     t = expandLatex(t)
-    // 分数指数要整体保留：只把 2 变成上标会把 x^{2/3} 读成「x 的平方除以 3」。
-    t = Regex("""\^\{([^{}]+)\}""").replace(t) { m ->
+    // 上下标整体处理：纯数字/正负号或单个可映射字符 → Unicode 上标（x²、eˣ）；
+    // 多字符字母组合（如积分上限 x-y）退回 ^(x-y) 的可读形式，绝不逐字符拆散。
+    t = Regex("""\^\{([^{}]*)\}""").replace(t) { m ->
         val inner = m.groupValues[1]
-        if (inner.contains('/')) "^($inner)" else superscript(inner)
+        val simple = inner.isNotEmpty() && (
+            inner.all { superMap.containsKey(it) && !it.isLetter() } ||
+                (inner.length == 1 && superMap.containsKey(inner[0]))
+            )
+        if (simple) superscript(inner) else "^($inner)"
+    }
+    t = Regex("""_\{([^{}]*)\}""").replace(t) { m ->
+        val inner = m.groupValues[1]
+        if (inner.isNotEmpty() && inner.all { subMap.containsKey(it) }) subscript(inner)
+        else "_($inner)"
     }
     t = t.replace("{", "").replace("}", "")
     // 卡片空间有限，把常见的上下标转成 Unicode，至少读起来像公式而不是源码。
     t = Regex("\\^(\\d+)").replace(t) { superscript(it.groupValues[1]) }
     t = Regex("\\^([xyn])").replace(t) { superscript(it.groupValues[1]) }
     t = Regex("lim_([^\\s(]+)").replace(t) { "lim(${it.groupValues[1]})" }
-    t = Regex("""_([0-9n])""").replace(t) { subscript(it.groupValues[1]) }
+    t = Regex("""_([0-9a-zA-Z])""").replace(t) { m ->
+        val c = m.groupValues[1]
+        if (subMap.containsKey(c[0])) subMap[c[0]].toString() else "_" + c
+    }
     t = Regex("\\\\([A-Za-z]+)").replace(t) { it.groupValues[1] }
     t = t.replace("&", " ")
     t = Regex("[ \t]+").replace(t, " ")
     return t.trim()
 }
 
-private fun superscript(raw: String): String {
-    val map = mapOf(
-        '0' to '⁰', '1' to '¹', '2' to '²', '3' to '³', '4' to '⁴',
-        '5' to '⁵', '6' to '⁶', '7' to '⁷', '8' to '⁸', '9' to '⁹',
-        'x' to 'ˣ', 'y' to 'ʸ', 'n' to 'ⁿ', '+' to '⁺', '-' to '⁻'
-    )
-    return raw.map { map[it] ?: it }.joinToString("")
-}
+private val superMap = mapOf(
+    '0' to '⁰', '1' to '¹', '2' to '²', '3' to '³', '4' to '⁴',
+    '5' to '⁵', '6' to '⁶', '7' to '⁷', '8' to '⁸', '9' to '⁹',
+    'x' to 'ˣ', 'y' to 'ʸ', 'n' to 'ⁿ', '+' to '⁺', '-' to '⁻'
+)
 
-private fun subscript(raw: String): String {
-    val map = mapOf(
-        '0' to '₀', '1' to '₁', '2' to '₂', '3' to '₃', '4' to '₄',
-        '5' to '₅', '6' to '₆', '7' to '₇', '8' to '₈', '9' to '₉', 'n' to 'ₙ'
-    )
-    return raw.map { map[it] ?: it }.joinToString("")
-}
+private val subMap = mapOf(
+    '0' to '₀', '1' to '₁', '2' to '₂', '3' to '₃', '4' to '₄',
+    '5' to '₅', '6' to '₆', '7' to '₇', '8' to '₈', '9' to '₉', 'n' to 'ₙ'
+)
+
+private fun superscript(raw: String): String =
+    raw.map { superMap[it] ?: it }.joinToString("")
+
+private fun subscript(raw: String): String =
+    raw.map { subMap[it] ?: it }.joinToString("")
 
 private val latexSymbols = mapOf(
     "alpha" to "α", "beta" to "β", "gamma" to "γ", "delta" to "δ", "theta" to "θ",

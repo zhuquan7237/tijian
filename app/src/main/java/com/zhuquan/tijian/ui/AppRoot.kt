@@ -65,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zhuquan.tijian.BuildConfig
 import kotlinx.coroutines.delay
@@ -81,6 +82,19 @@ fun AppRoot(vm: AppVm = viewModel()) {
         android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
         1f
     ) == 0f
+
+    // 外观：跟随系统 / 浅色 / 深色（设置页可改）。系统深浅变化或用户切换都即时生效。
+    val sysDark = androidx.compose.foundation.isSystemInDarkTheme()
+    updateSystemNight(sysDark)
+    val nightNow = isNight
+    LaunchedEffect(nightNow) {
+        (ctx as? android.app.Activity)?.window?.let { w ->
+            WindowCompat.getInsetsController(w, w.decorView).apply {
+                isAppearanceLightStatusBars = !nightNow
+                isAppearanceLightNavigationBars = !nightNow
+            }
+        }
+    }
 
     // 回到前台刷新统计：待复习数跨午夜后不会自己变
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
@@ -245,7 +259,7 @@ private fun ImportOption(
 
 @Composable
 private fun BottomBar(route: Route, onHome: () -> Unit, onLibrary: () -> Unit, onSettings: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(Color(0xFA1C1E22))) {
+    Column(Modifier.fillMaxWidth().background(BarBg)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp), verticalAlignment = Alignment.CenterVertically) {
             TabItem(Icons.Rounded.MenuBook, "错题本", route is Route.Home, Modifier.weight(1f), onHome)
