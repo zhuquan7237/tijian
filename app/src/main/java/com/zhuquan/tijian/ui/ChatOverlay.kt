@@ -93,9 +93,10 @@ private fun ChatFab(vm: AppVm) {
         val sizePx = with(density) { size.toPx() }
         val maxW = constraints.maxWidth.toFloat()
         val maxH = constraints.maxHeight.toFloat()
+        // 位置挂在 AppVm 上：页面来回切不会把用户拖好的位置弹回右下角
         var pos by remember {
             mutableStateOf(
-                IntOffset(
+                vm.fabPos ?: IntOffset(
                     (maxW - sizePx - 18.dp.value * density.density).toInt(),
                     // 贴右下角（距底 24dp）；这一层只在详情/复习页出现，没有底部 tab 要避让。
                     (maxH - sizePx - 24.dp.value * density.density).toInt()
@@ -122,6 +123,7 @@ private fun ChatFab(vm: AppVm) {
                             (pos.x + drag.x).coerceIn(0f, (maxW - sizePx).coerceAtLeast(0f)).toInt(),
                             (pos.y + drag.y).coerceIn(0f, (maxH - sizePx).coerceAtLeast(0f)).toInt()
                         )
+                        vm.fabPos = pos
                     }
                 },
             contentAlignment = Alignment.Center

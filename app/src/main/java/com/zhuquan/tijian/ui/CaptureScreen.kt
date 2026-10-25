@@ -67,7 +67,8 @@ fun CaptureScreen(vm: AppVm) {
     }
 
     fun shoot() {
-        val dir = File(ctx.cacheDir, "camera").apply { mkdirs() }
+        // 落在 filesDir 的工作台目录：cache 可能被系统随时清理，拍一半丢一半
+        val dir = File(ctx.filesDir, "capture_staging").apply { mkdirs() }
         val f = File(dir, "cap_${System.currentTimeMillis()}.jpg")
         val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", f)
         pendingUri = uri

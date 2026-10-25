@@ -262,7 +262,8 @@ fun RichText(
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = false
                 settings.textZoom = 100
-                settings.allowFileAccess = true
+                // file:///android_asset/ 在新版系统上不受此开关限制，收紧到 false
+                settings.allowFileAccess = false
                 settings.allowContentAccess = false
                 settings.domStorageEnabled = false
                 settings.setSupportZoom(false)

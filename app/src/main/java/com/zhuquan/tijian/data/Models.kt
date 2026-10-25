@@ -1,5 +1,6 @@
 package com.zhuquan.tijian.data
 
+import java.security.MessageDigest
 import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
@@ -94,7 +95,22 @@ data class DraftQuestion(
 fun clampMastery(v: Int) = v.coerceIn(0, 5)
 fun colorFor(name: String): String {
     val palette = listOf("#E7EAF8", "#EDEAE1", "#E4EFE9", "#F2E7E3", "#E9E6F2", "#E8EEF2", "#F4EDE4")
-    return palette[abs(name.hashCode()) % palette.size]
+    // hashCode 可能是 Int.MIN_VALUE，abs 后仍为负，先取模再回正
+    val idx = ((name.hashCode() % palette.size) + palette.size) % palette.size
+    return palette[idx]
+}
+
+/**
+ * 题目内容指纹：题干 + 选项 + 答案归一后哈希。
+ * 只按题干前缀判重会把「下列说法正确的是」这类通用短题干全部误杀；
+ * 空题干（手动录入还没补文字）不参与判重，交给图片 sha256 那一层。
+ */
+fun contentHash(stem: String, options: String, answer: String): String {
+    val s = stem.trim()
+    if (s.isEmpty()) return ""
+    val key = s + "\u0000" + options.trim() + "\u0000" + answer.trim()
+    val md = MessageDigest.getInstance("SHA-256")
+    return md.digest(key.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 }
 
 /** Human-readable knowledge points from the JSON tag array stored in questions. */

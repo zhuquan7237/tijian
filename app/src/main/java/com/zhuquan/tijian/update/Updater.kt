@@ -96,9 +96,12 @@ object Updater {
         val code = o.optInt("versionCode", semverCode(v) ?: 0)
         val apk = o.optString("apkUrl")
         if (apk.isBlank() || code <= 0) return null
+        val sha = o.optString("sha256")
+        // 第三方镜像必须带哈希：镜像被劫持且无哈希时能直接诱导安装任意的 APK
+        if (source == "mirror" && sha.isBlank()) return null
         Info(
             version = v, versionCode = code, apkUrl = apk,
-            sha256 = o.optString("sha256"), size = o.optLong("size"),
+            sha256 = sha, size = o.optLong("size"),
             notes = o.optString("notes"), source = source
         )
     }.getOrNull()
@@ -113,12 +116,13 @@ object Updater {
         }
     }.getOrNull()
 
-    private fun semverCode(v: String): Int? {
-        val parts = v.split('.').mapNotNull { it.toIntOrNull() }
-        if (parts.isEmpty()) return null
-        val a = parts.getOrElse(0) { 0 }
-        val b = parts.getOrElse(1) { 0 }
-        val c = parts.getOrElse(2) { 0 }
+    internal fun semverCode(v: String): Int? {
+        // 任一段不是纯数字就整体判无效：丢掉非法段再拼位会把 "v8.9.2" 错读成 9.2
+        val parts = v.split('.')
+        if (parts.isEmpty() || parts.any { it.toIntOrNull() == null }) return null
+        val a = parts.getOrElse(0) { "0" }.toInt()
+        val b = parts.getOrElse(1) { "0" }.toInt()
+        val c = parts.getOrElse(2) { "0" }.toInt()
         return a * 1000000 + b * 10000 + c * 100
     }
 

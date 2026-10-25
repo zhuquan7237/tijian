@@ -146,7 +146,7 @@ fun SettingsScreen(vm: AppVm) {
         AlertDialog(
             onDismissRequest = { showBackup = false },
             title = { Text("备份与恢复", fontSize = 16.sp) },
-            text = { Text("导出会打包数据库和全部图片；恢复会覆盖当前数据，建议先导出一份。", fontSize = 12.sp, color = Muted) },
+            text = { Text("导出会打包数据库和全部图片（不含 AI API Key）；恢复会覆盖当前数据并重启应用，建议先导出一份。", fontSize = 12.sp, color = Muted) },
             confirmButton = {
                 TextButton(onClick = {
                     showBackup = false
@@ -165,7 +165,7 @@ fun SettingsScreen(vm: AppVm) {
     restoreUri?.let { uri ->
         AlertDialog(onDismissRequest = { restoreUri = null },
             title = { Text("恢复并覆盖当前数据？") },
-            text = { Text("恢复会替换本机错题、图片及设置。请确认已导出当前备份。") },
+            text = { Text("恢复会替换本机错题、图片及设置，完成后应用会自动重启。请确认已导出当前备份。") },
             confirmButton = { TextButton(onClick = { restoreUri = null; vm.importBackup(uri) }) { Text("恢复", color = Red) } },
             dismissButton = { TextButton(onClick = { restoreUri = null }) { Text("取消") } })
     }
@@ -228,11 +228,12 @@ fun SettingRow(icon: ImageVector, title: String, subtitle: String, onClick: () -
 
 @Composable
 fun ProviderScreen(vm: AppVm) {
-    var baseUrl by remember { mutableStateOf(vm.provider.baseUrl) }
-    var apiKey by remember { mutableStateOf(vm.provider.apiKey) }
-    var model by remember { mutableStateOf(vm.provider.model) }
-    var protocol by remember { mutableStateOf(vm.provider.protocol) }
-    var models by remember { mutableStateOf(vm.provider.models) }
+    // 以最新落库配置为初值；页面停留期间数据被别的入口改过也能跟得上
+    var baseUrl by remember(vm.provider) { mutableStateOf(vm.provider.baseUrl) }
+    var apiKey by remember(vm.provider) { mutableStateOf(vm.provider.apiKey) }
+    var model by remember(vm.provider) { mutableStateOf(vm.provider.model) }
+    var protocol by remember(vm.provider) { mutableStateOf(vm.provider.protocol) }
+    var models by remember(vm.provider) { mutableStateOf(vm.provider.models) }
     var showPicker by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var fetchError by remember { mutableStateOf<String?>(null) }
@@ -395,7 +396,8 @@ fun ProviderScreen(vm: AppVm) {
             Text(
                 "· 拉取模型走 GET {Base URL}/models，和你填的地址保持同源。\n" +
                     "· 拉取失败通常是 Key 无效、地址少了 /v1，或中转没开放 /models。\n" +
-                    "· API Key 只保存在本机数据库，不上传。",
+                    "· API Key 只保存在本机数据库，不上传。\n" +
+                    "· http:// 开头的地址是明文传输，公网服务请尽量用 https://。",
                 fontSize = 11.sp, lineHeight = 18.sp, color = Muted
             )
             Spacer(Modifier.height(50.dp))

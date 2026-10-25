@@ -87,6 +87,8 @@ fun ImportScreen(vm: AppVm) {
                 Spacer(Modifier.height(18.dp))
                 Text(vm.importLabel, fontSize = 13.sp, color = Ink)
                 Text("图片只在你配置的模型服务里处理", fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 6.dp))
+                Spacer(Modifier.height(22.dp))
+                TjButton("停止导入", style = ActionStyle.Secondary) { vm.cancelImport() }
             }
             return@Column
         }
@@ -199,8 +201,8 @@ private fun DraftCard(
                         }
                         Box(Modifier.size(6.dp).clip(CircleShape).background(color))
                         Text(
-                            "  ${(draft.confidence * 100).toInt()}%",
-                            fontSize = 11.sp, color = Muted
+                            "${(draft.confidence * 100).toInt()}%",
+                            fontSize = 11.sp, color = Muted, modifier = Modifier.padding(start = 4.dp)
                         )
                     }
                 }
@@ -449,13 +451,22 @@ fun CategoryPicker(
 @Composable
 fun ReviewScreen(vm: AppVm) {
     val q = vm.reviewQueue.getOrNull(vm.reviewIndex)
+    // 答完最后一题要给出明确的完成态，不能和「本来就没有到期题」混用同一个空界面
+    val finished = vm.reviewQueue.isNotEmpty() && vm.reviewIndex >= vm.reviewQueue.size
 
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             title = "复习",
-            subtitle = if (vm.reviewQueue.isEmpty()) "" else "${vm.reviewIndex + 1} / ${vm.reviewQueue.size}",
+            subtitle = if (vm.reviewQueue.isEmpty()) "" else "${minOf(vm.reviewIndex + 1, vm.reviewQueue.size)} / ${vm.reviewQueue.size}",
             onBack = { vm.home() }
         )
+
+        if (finished) {
+            EmptyState("这组复习完成", "已过完 ${vm.reviewQueue.size} 道题，掌握度已更新") {
+                BigButton("返回错题本", Modifier.width(160.dp)) { vm.home() }
+            }
+            return@Column
+        }
 
         if (q == null) {
             EmptyState("没有到期的错题", "掌握度高的题会自动延长间隔") {

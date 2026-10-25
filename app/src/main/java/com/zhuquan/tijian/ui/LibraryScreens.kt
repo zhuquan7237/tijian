@@ -75,7 +75,6 @@ fun LibraryScreen(vm: AppVm) {
     var deletingDoc by remember { mutableStateOf<DocRow?>(null) }
     var regeneratingDoc by remember { mutableStateOf<DocRow?>(null) }
     var pendingFile by remember { mutableStateOf<File?>(null) }
-    var pendingDoc by remember { mutableStateOf<DocRow?>(null) }
     val scope = rememberCoroutineScope()
 
     val createPdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri: Uri? ->
@@ -110,7 +109,6 @@ fun LibraryScreen(vm: AppVm) {
                         onRegenerate = { regeneratingDoc = doc },
                         onDelete = { deletingDoc = doc },
                         onPdf = {
-                            pendingDoc = doc
                             scope.launch {
                                 vm.withBusy("生成 PDF") {
                                     pendingFile = vm.buildDocPdf(doc)
@@ -368,26 +366,6 @@ fun DocScreen(vm: AppVm, route: Route.Doc? = vm.route as? Route.Doc) {
     if (vm.busy) BusyOverlay(vm.busyLabel)
 }
 
-
-@Composable
-fun MarkdownText(md: String) {
-    Column {
-        md.lineSequence().forEach { raw ->
-            val line = raw.trimEnd()
-            when {
-                line.startsWith("# ") -> Text(line.removePrefix("# "), fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 6.dp, bottom = 10.dp))
-                line.startsWith("## ") -> Text(line.removePrefix("## "), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.padding(top = 16.dp, bottom = 6.dp))
-                line.startsWith("- ") || line.startsWith("* ") -> Row(Modifier.padding(vertical = 2.dp)) {
-                    Text("·", fontSize = 12.sp, color = Muted, modifier = Modifier.width(12.dp))
-                    Text(line.drop(2), fontSize = 12.5.sp, lineHeight = 20.sp, color = Ink2)
-                }
-                line.startsWith("**") && line.endsWith("**") -> Text(line.trim('*'), fontSize = 11.sp, letterSpacing = 1.sp, color = Muted, modifier = Modifier.padding(top = 10.dp, bottom = 3.dp))
-                line.isBlank() -> Spacer(Modifier.height(6.dp))
-                else -> Text(line, fontSize = 12.5.sp, lineHeight = 21.sp, color = Ink2, modifier = Modifier.padding(vertical = 2.dp))
-            }
-        }
-    }
-}
 
 fun countPoints(md: String): Int = md.lineSequence().count { it.startsWith("## ") }
 

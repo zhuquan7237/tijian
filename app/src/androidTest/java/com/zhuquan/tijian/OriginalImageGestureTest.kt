@@ -44,14 +44,15 @@ class OriginalImageGestureTest {
     @Test fun pinchZoomChangesActualRenderedPixels() = withImage { view ->
         fun pixel(): Int {
             val image = Bitmap.createBitmap(800, 1000, Bitmap.Config.ARGB_8888)
-            view.draw(Canvas(image)); val color = image.getPixel(280, 500); image.recycle(); return color
+            view.draw(Canvas(image)); val color = image.getPixel(300, 500); image.recycle(); return color
         }
         assertEquals(Color.BLUE, pixel())
         val now = SystemClock.uptimeMillis()
         fun touch(action: Int, xs: List<Float>, offset: Long) {
             val props = xs.mapIndexed { i, _ -> MotionEvent.PointerProperties().apply { id = i; toolType = MotionEvent.TOOL_TYPE_FINGER } }.toTypedArray()
             val coords = xs.map { x -> MotionEvent.PointerCoords().apply { this.x = x; y = 500f; pressure = 1f; size = 1f } }.toTypedArray()
-            MotionEvent.obtain(now, now + offset, action, xs.size, props, coords, 0, 0, 1f, 1f, 0, 0, 0, 0)
+            MotionEvent.obtain(now, now + offset, action, xs.size, props, coords, 0, 0, 1f, 1f, 0, 0,
+                android.view.InputDevice.SOURCE_TOUCHSCREEN, 0)
                 .let { view.onTouchEvent(it); it.recycle() }
         }
         touch(MotionEvent.ACTION_DOWN, listOf(300f), 0)
@@ -59,6 +60,8 @@ class OriginalImageGestureTest {
         for (i in 1..10) touch(MotionEvent.ACTION_MOVE, listOf(300f - 25f * i, 500f + 25f * i), 20L + i * 20)
         touch(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), listOf(50f, 750f), 250)
         touch(MotionEvent.ACTION_UP, listOf(50f), 270)
+        // 采样点选在 zoom>=1.25 即变红的位置：Android 16 起合成事件流的累计缩放
+        // 只有几何跨度的一半左右（实测 1.4x），旧平台是 2.4x+；两种行为都必须判红。
         assertEquals("Pinch must enlarge actual image content", Color.RED, pixel())
     }
 }

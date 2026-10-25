@@ -11,6 +11,7 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import com.zhuquan.tijian.data.QuestionRow
+import com.zhuquan.tijian.data.orientBitmap
 import com.zhuquan.tijian.ui.cleanMath
 import java.io.File
 import java.io.FileOutputStream
@@ -111,10 +112,10 @@ object PdfExporter {
             // the fit is calculated. Count drawing offsets exactly once here.
             val blockH = headerH + stemLines.size * 17f + 6f + imgH + 4f + richStemH + 4f + richAnswerH + 18f
 
-            // The PDF must never drop answer/analysis. When a question is too tall
-            // for one page, all text stays readable and only the image shrinks; if
-            // that still overflows, the remaining page is flushed instead of omitted.
-            if (index > 0) pager.newPage()
+            // 一题一页时每题整页起排；紧凑版式只在题块放不下时才翻页
+            if (index > 0) {
+                if (opts.onePerPage) pager.newPage() else pager.ensure(headerH + 8f)
+            }
 
             // Compute after any page switch: the available height is the space left
             // below this page's actual starting cursor, not the whole page height.
@@ -159,6 +160,7 @@ object PdfExporter {
                 // Keep the scan's aspect ratio. Wide/tall source images may be far
                 // taller than the page; fit by the limiting dimension here.
                 pager.image(bmp, 1f, allowSlice = false, maxHeight = imageRoom)
+                bmp.recycle()
             }
             if (richAnswer != null) {
                 pager.ensure(richAnswerH + 6f)
@@ -399,7 +401,12 @@ object PdfExporter {
         BitmapFactory.decodeFile(path, bounds)
         var sample = 1
         while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2400) sample *= 2
-        BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
+        val raw = BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: return null
+        // 存的是带 EXIF 的原图：不转正的话竖拍照片在 PDF 里是躺倒的
+        val oriented = orientBitmap(raw, path)
+        if (oriented !== raw) raw.recycle()
+        oriented
     } catch (e: Exception) { null }
 
     private fun date(): String = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Date())

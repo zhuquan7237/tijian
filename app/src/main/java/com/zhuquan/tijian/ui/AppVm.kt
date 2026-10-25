@@ -3,6 +3,7 @@ package com.zhuquan.tijian.ui
 import android.app.Application
 import android.content.Context
 import android.net.Uri
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -15,6 +16,7 @@ import com.zhuquan.tijian.data.ProviderConfig
 import com.zhuquan.tijian.data.QuestionRow
 import com.zhuquan.tijian.data.parseKnowledgeTags
 import com.zhuquan.tijian.data.Stats
+import com.zhuquan.tijian.data.newId
 import com.zhuquan.tijian.export.PdfExporter
 import com.zhuquan.tijian.update.Updater
 import kotlinx.coroutines.Dispatchers
@@ -74,10 +76,57 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         private set
     var pendingBatch by androidx.compose.runtime.mutableStateOf<String?>(null)
         private set
+    private var importJob: kotlinx.coroutines.Job? = null
 
-    /** 连拍工作台：拍一张回到这里，可继续拍，最后一起识别 */
+    /** 连拍工作台：拍一张回到这里，可继续拍，最后一起识别。
+     *  文件落在 filesDir/capture_staging 并持久化清单，进程被杀也能接着用。 */
     var captureUris by androidx.compose.runtime.mutableStateOf<List<Uri>>(emptyList())
         private set
+
+    private val stagingDir = File(app.filesDir, "capture_staging").apply { mkdirs() }
+    private val manifestFile get() = File(stagingDir, "pending.json")
+
+    private fun saveCaptureManifest() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                manifestFile.writeText(org.json.JSONArray(captureUris.map { it.toString() }).toString())
+            }
+        }
+    }
+
+    private fun restoreCaptureManifest() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val uris = runCatching {
+                val arr = org.json.JSONArray(manifestFile.readText())
+                (0 until arr.length()).mapNotNull { i ->
+                    val s = arr.optString(i)
+                    val f = File(s.removePrefix("file://"))
+                    if (s.startsWith("file:") && f.exists()) Uri.fromFile(f) else null
+                }
+            }.getOrDefault(emptyList())
+            withContext(Dispatchers.Main) {
+                if (captureUris.isEmpty() && uris.isNotEmpty()) captureUris = uris
+            }
+        }
+    }
+
+    /** 相册/分享来的 uri 统一拷进工作台目录，避免 cache 被系统清理后引用悬空。 */
+    private suspend fun stageUri(uri: Uri): Uri = withContext(Dispatchers.IO) {
+        val target = File(stagingDir, "pick_${System.currentTimeMillis()}_${newId().take(6)}.img")
+        val ok = runCatching {
+            getApplication<Application>().contentResolver.openInputStream(uri)?.use { input ->
+                target.outputStream().use { input.copyTo(it) }
+            } != null
+        }.getOrDefault(false)
+        if (ok) Uri.fromFile(target) else uri
+    }
+
+    /** 清掉工作台目录里的暂存文件和清单（导入完成或用户清空时）。 */
+    private fun wipeStaging() {
+        viewModelScope.launch(Dispatchers.IO) {
+            stagingDir.listFiles()?.forEach { it.delete() }
+        }
+    }
 
     var reviewQueue by androidx.compose.runtime.mutableStateOf<List<QuestionRow>>(emptyList())
         private set
@@ -102,6 +151,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     init {
         refresh()
+        restoreCaptureManifest()
         val last = db.getSetting("update.lastCheck")?.toLongOrNull() ?: 0L
         if (System.currentTimeMillis() - last > 6 * 3600_000L) checkUpdate(silent = true)
     }
@@ -182,17 +232,49 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     fun addCapture(uri: Uri) {
         if (uri in captureUris) return
         if (captureUris.size >= 9) { toast = "一次最多导入 9 张图片"; return }
+        // 先同步入列（去重与上限都是同步语义），content:// 的拷贝后台补做
         captureUris = captureUris + uri
+        saveCaptureManifest()
+        if (uri.scheme != "file") {
+            viewModelScope.launch {
+                val staged = stageUri(uri)
+                if (staged != uri) {
+                    captureUris = captureUris.map { if (it == uri) staged else it }
+                    saveCaptureManifest()
+                }
+            }
+        }
     }
 
-    fun removeCapture(uri: Uri) { captureUris = captureUris - uri }
+    fun removeCapture(uri: Uri) {
+        captureUris = captureUris - uri
+        if (uri.scheme == "file") {
+            runCatching { uri.path?.let { File(it).takeIf { f -> f.parentFile == stagingDir }?.delete() } }
+        }
+        if (captureUris.isEmpty()) wipeStaging() else saveCaptureManifest()
+    }
 
-    fun clearCapture() { captureUris = emptyList() }
+    fun clearCapture() {
+        captureUris = emptyList()
+        wipeStaging()
+    }
 
     fun importCapture() {
         val list = captureUris
         if (list.isEmpty() || importing || busy) return
         importUris(list, "camera")
+    }
+
+    /** 识别中途停止：取消协程与在途 HTTP，已入库的图片保留。 */
+    fun cancelImport() {
+        if (!importing) return
+        importJob?.cancel()
+        importJob = null
+        ai.cancelActive()
+        importing = false
+        importLabel = ""
+        importProgress = 0f
+        toast = "已停止导入，可稍后继续"
     }
 
     fun importUris(uris: List<Uri>, source: String = "share") {
@@ -202,7 +284,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             toast = "请先确认或移除上一批题目，再导入新图片"
             return
         }
-        viewModelScope.launch {
+        importJob = viewModelScope.launch {
             importing = true
             importProgress = 0f
             importLabel = "准备中"
@@ -215,7 +297,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                     importLabel = label
                 }
                 if (out.errors.isEmpty() && out.drafts.isNotEmpty() && source == "camera") {
-                    captureUris = captureUris.filterNot { it in uris }
+                    // 连拍批次已全部识别完：工作台清空，暂存文件一并清掉
+                    captureUris = emptyList()
+                    wipeStaging()
                 }
                 pending = out.drafts
                 pendingBatch = out.batchId
@@ -226,6 +310,8 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 } else if (db.provider().ready()) {
                     autoClassify()
                 }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                importing = false
             } catch (e: Exception) {
                 importing = false
                 importErrors = listOf(e.message ?: "导入失败")
@@ -345,13 +431,12 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     fun rate(rating: Int) {
         val q = reviewQueue.getOrNull(reviewIndex) ?: return
+        // 先同步推进队列再落库：评分按钮立刻失效，连点不会对同一题记两次
+        reviewIndex++
+        revealAnswer = false
         viewModelScope.launch(Dispatchers.IO) {
             db.review(q.id, rating)
-            withContext(Dispatchers.Main) {
-                reviewIndex++
-                revealAnswer = false
-                if (reviewIndex >= reviewQueue.size) refresh()
-            }
+            if (reviewIndex >= reviewQueue.size) withContext(Dispatchers.Main) { refresh() }
         }
     }
 
@@ -561,10 +646,17 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     /** 最近一次打开过的题目，用于离开详情页后悬浮球仍能追问同一题。 */
     var lastQuestionId by androidx.compose.runtime.mutableStateOf<String?>(null)
 
-    /** 题目详情的内存缓存：返回/重进同一题时直接出内容，不再闪“正在读取题目…”。 */
-    private val questionCache = HashMap<String, QuestionRow>()
-    fun cachedQuestion(id: String): QuestionRow? = questionCache[id]
-    fun cacheQuestion(q: QuestionRow) { questionCache[q.id] = q }
+    /** 悬浮球拖动后的位置（px），跨页面保留；null 表示仍在默认右下角。 */
+    var fabPos by androidx.compose.runtime.mutableStateOf<IntOffset?>(null)
+
+    /** 题目详情的内存缓存：返回/重进同一题时直接出内容，不再闪“正在读取题目…”。
+     *  按 LRU 限量，题目全文不小，不能无限常驻。 */
+    private val questionCache = object : LinkedHashMap<String, QuestionRow>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, QuestionRow>?): Boolean =
+            size > 96
+    }
+    fun cachedQuestion(id: String): QuestionRow? = synchronized(questionCache) { questionCache[id] }
+    fun cacheQuestion(q: QuestionRow) { synchronized(questionCache) { questionCache[q.id] = q } }
 
     fun rememberQuestion(id: String) { lastQuestionId = id }
 
@@ -580,7 +672,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         chatQuote = quote
         viewModelScope.launch {
             // 没有打开题目时，用最近导入的一道题作为上下文，保证悬浮球随时可用
-            val resolved = id ?: withContext(Dispatchers.IO) { db.questions().firstOrNull()?.id }
+            val resolved = id ?: withContext(Dispatchers.IO) { db.recentQuestions(1).firstOrNull()?.id }
             if (resolved == null) { toast = "还没有错题可以追问"; return@launch }
             val q = withContext(Dispatchers.IO) { db.question(resolved) }
             if (q == null) { toast = "题目不存在"; return@launch }
@@ -655,13 +747,13 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     /**
      * 追问上下文：题目本身 + 需要掌握的知识点 + 本题掌握度 +
      * 同一知识点下其它题的掌握度（用来说明“你缺的是哪一块”）。
+     * 标签统计只取 tags+mastery 两列，不整题拉取。
      */
     private fun buildQuestionContext(q: QuestionRow): String {
-        val all = db.questions()
         val tagScores = LinkedHashMap<String, MutableList<Int>>()
-        all.forEach { item ->
-            parseKnowledgeTags(item.tags).forEach { tag ->
-                tagScores.getOrPut(tag) { mutableListOf() }.add(item.mastery)
+        db.tagMasteryPairs().forEach { (tags, mastery) ->
+            parseKnowledgeTags(tags).forEach { tag ->
+                tagScores.getOrPut(tag) { mutableListOf() }.add(mastery)
             }
         }
         val weak = tagScores.entries
@@ -739,9 +831,13 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     // ---------- provider ----------
 
     fun saveProvider(cfg: ProviderConfig) {
-        db.saveProvider(cfg)
-        provider = cfg
-        toast = "已保存"
+        viewModelScope.launch(Dispatchers.IO) {
+            db.saveProvider(cfg)
+            withContext(Dispatchers.Main) {
+                provider = cfg
+                toast = "已保存"
+            }
+        }
     }
 
     suspend fun testProvider(cfg: ProviderConfig): String = ai.test(cfg)
@@ -763,19 +859,18 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     }
 
     fun importBackup(uri: Uri) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val ctx = getApplication<Application>()
-                ctx.contentResolver.openInputStream(uri)?.use { input ->
-                    com.zhuquan.tijian.data.Backup.import(ctx, db, input)
+        viewModelScope.launch {
+            toast = "恢复完成，应用即将重启"
+            withContext(Dispatchers.IO) {
+                try {
+                    val ctx = getApplication<Application>()
+                    ctx.contentResolver.openInputStream(uri)?.use { input ->
+                        com.zhuquan.tijian.data.Backup.import(ctx, db, input)
+                    }
+                } catch (e: Exception) {
+                    // Backup.import 成功路径会直接重启进程；走到这里说明恢复失败
+                    withContext(Dispatchers.Main) { toast = "恢复失败：${e.message}" }
                 }
-                withContext(Dispatchers.Main) {
-                    refresh()
-                    home()
-                    toast = "已恢复备份"
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) { toast = "恢复失败：${e.message}" }
             }
         }
     }
@@ -793,7 +888,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 if (!silent) toast = "检查更新失败：${e.message}"
             } finally {
                 checkingUpdate = false
-                db.putSetting("update.lastCheck", System.currentTimeMillis().toString())
+                withContext(Dispatchers.IO) {
+                    db.putSetting("update.lastCheck", System.currentTimeMillis().toString())
+                }
             }
         }
     }

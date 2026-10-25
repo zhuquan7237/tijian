@@ -95,11 +95,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val GLYPHS = listOf("∫", "△", "∑", "∿", "∂", "√", "π", "⚗", "≈", "∞")
-
 @Composable
-fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
-    var searchOpen by rememberSaveable { mutableStateOf(false) }
+fun HomeScreen(vm: AppVm, onImport: () -> Unit) {    var searchOpen by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<List<QuestionRow>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
@@ -944,26 +941,6 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
 }
 
 @Composable
-private fun NeedLine(label: String, items: List<String>, color: Color) {
-    if (items.isEmpty()) return
-    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.Top) {
-        Text(
-            label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = color,
-            modifier = Modifier.width(34.dp).padding(top = 3.dp)
-        )
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items.forEach { item ->
-                Box(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                        .background(color.copy(alpha = 0.08f))
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
-                ) { RichText(item, fontSize = 13) }
-            }
-        }
-    }
-}
-
-@Composable
 fun RichSection(
     title: String,
     subtitle: String,
@@ -995,7 +972,7 @@ fun EditQuestionDialog(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
     var type by remember { mutableStateOf(q.type) }
     var catId by remember { mutableStateOf(q.categoryId ?: "uncat") }
     AlertDialog(
-        onDismissRequest = {},
+        onDismissRequest = { onDone(q.copy()) },
         title = { Text("编辑题目", fontSize = 16.sp) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -1218,13 +1195,12 @@ private fun OverviewCell(value: String, label: String, modifier: Modifier = Modi
 }
 
 
-/** 粗判 AI 输出是否被截断：未闭合的 $ 或 \begin 环境、以冒号逗号结尾。 */
+/** 粗判 AI 输出是否被截断：$ 未闭合或 \begin 环境没收尾。
+ *  不再按结尾标点判断：正常解析以冒号逗号收尾的误报太多。 */
 private fun looksTruncated(text: String): Boolean {
     val t = text.trim()
     if (t.length < 8) return false
     if (t.count { it == '$' } % 2 != 0) return true
     val bs = 0x5C.toChar().toString()
-    if (t.contains(bs + "begin{") && !t.contains(bs + "end{")) return true
-    if (t.endsWith("：") || t.endsWith(":") || t.endsWith("，") || t.endsWith(",")) return true
-    return false
+    return t.contains(bs + "begin{") && !t.contains(bs + "end{")
 }

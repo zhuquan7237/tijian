@@ -255,7 +255,8 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
     fun undoStroke() { if (strokes.isNotEmpty()) { strokes.removeAt(strokes.size - 1); invalidate() } }
     fun clearStrokes() { strokes.clear(); invalidate() }
 
-    /** Flatten the current view (oriented source + annotations) into a clean PNG at up to 2200px. */
+    /** Flatten the current view (oriented source + annotations) into a clean PNG at up to 2200px.
+     *  屏显 preview 只有 1600px，导出时按目标尺寸重新解码原图，标注副本才不会比纯裁剪的糊。 */
     fun exportWithStrokes(output: File): File {
         val maxDim = 2200f
         val scale = min(1f, maxDim / max(imageWidth, imageHeight))
@@ -269,9 +270,11 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
         m.set(orientation); m.postTranslate(-oriented.left, -oriented.top)
         m.postScale(scale, scale)
         val base = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        val source = Importer.decodeSampled(file, 2200) ?: preview
         canvas.save(); canvas.concat(m)
-        canvas.drawBitmap(preview, null, RectF(0f, 0f, decoder.width.toFloat(), decoder.height.toFloat()), base)
+        canvas.drawBitmap(source, null, RectF(0f, 0f, decoder.width.toFloat(), decoder.height.toFloat()), base)
         canvas.restore()
+        if (source !== preview) source.recycle()
         strokes.forEach { stroke ->
             val path = Path()
             stroke.points.forEachIndexed { index, point ->
@@ -308,7 +311,6 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
     var brushWidth by remember { mutableStateOf(0.006f) }
     var saving by remember { mutableStateOf(false) }
     var view by remember { mutableStateOf<OriginalImageView?>(null) }
-    var editRevision by remember { mutableIntStateOf(0) }
     LaunchedEffect(uri) {
         runCatching { withContext(Dispatchers.IO) {
             if (uri.scheme == "file") File(requireNotNull(uri.path)) else File.createTempFile("original_", ".image", context.cacheDir).also { dest ->
@@ -420,7 +422,7 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
                                 onSaved(Uri.fromFile(output))
                             } catch (cancelled: CancellationException) { throw cancelled }
                             catch (failure: Exception) { error = failure.message ?: "保存失败，请重试" }
-                            finally { output?.delete(); saving = false; editRevision++ }
+                            finally { output?.delete(); saving = false }
                         } else scope.launch { saving = true; try { onSaved(Uri.fromFile(source)) } finally { saving = false } }
                     }
                 }

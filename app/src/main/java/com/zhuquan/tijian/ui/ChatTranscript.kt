@@ -46,7 +46,7 @@ fun ChatTranscript(
                 setBackgroundColor(Color.TRANSPARENT)
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = false
-                settings.allowFileAccess = true
+                settings.allowFileAccess = false
                 settings.allowContentAccess = false
                 settings.setSupportZoom(false)
                 settings.builtInZoomControls = false

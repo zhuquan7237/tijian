@@ -6,14 +6,21 @@ import com.zhuquan.tijian.data.DraftQuestion
 import com.zhuquan.tijian.data.ProviderConfig
 import com.zhuquan.tijian.data.QuestionRow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class AiException(message: String) : Exception(message)
 
@@ -61,7 +68,9 @@ class AiClient {
         val builder = Request.Builder().url(url).get()
         if (cfg.apiKey.isNotBlank()) builder.header("Authorization", "Bearer ${cfg.apiKey}")
         val resp = try {
-            client.newCall(builder.build()).execute()
+            client.newCall(builder.build()).await()
+        } catch (e: AiException) {
+            throw e
         } catch (e: Exception) {
             throw AiException("网络错误：${e.message ?: e.javaClass.simpleName}")
         }
@@ -83,10 +92,6 @@ class AiClient {
                         ?: item?.optString("name")?.takeIf { it.isNotBlank() }
                         ?: arr.optString(i).takeIf { it.isNotBlank() }
                     if (id != null) out.add(id)
-                }
-            } else {
-                obj.optJSONArray("models")?.let { a ->
-                    for (i in 0 until a.length()) a.optString(i).takeIf { it.isNotBlank() }?.let(out::add)
                 }
             }
             out.distinct().sorted()
@@ -203,7 +208,7 @@ $list
                     put("temperature", 0.2); put("max_tokens", 8000)
                 }
             }
-            val raw = runCatching { call(cfg, body) }.getOrNull() ?: return@withContext items
+            val raw = call(cfg, body)
             val jsonText = extractJson(raw) ?: return@withContext items
             val json = runCatching { JSONObject(jsonText) }.getOrNull() ?: return@withContext items
             val arr = json.optJSONArray("items") ?: json.optJSONArray("questions") ?: return@withContext items
@@ -449,8 +454,22 @@ ${q.analysis.take(1600)}
 
     // ---------------- transport ----------------
 
+    /** OkHttp 同步调用包成可取消的挂起函数：协程取消时底层 HTTP 请求一并中断。 */
+    private suspend fun Call.await(): Response = suspendCancellableCoroutine { cont ->
+        cont.invokeOnCancellation { cancel() }
+        enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (cont.isActive) cont.resumeWithException(AiException("网络错误：${e.message ?: e.javaClass.simpleName}"))
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                if (cont.isActive) cont.resume(response)
+            }
+        })
+    }
+
     /** 返回正文与「是否被长度限制截断」；截断时界面会给出「继续」。 */
-    private fun callWithMeta(cfg: ProviderConfig, body: JSONObject): Pair<String, Boolean> {
+    private suspend fun callWithMeta(cfg: ProviderConfig, body: JSONObject): Pair<String, Boolean> {
         if (cfg.baseUrl.isBlank()) throw AiException("未配置 AI 接口")
         val base = normalizeBase(cfg.baseUrl)
         val url = when {
@@ -463,9 +482,7 @@ ${q.analysis.take(1600)}
         val call = client.newCall(builder.build())
         activeCall = call
         val resp = try {
-            call.execute()
-        } catch (e: Exception) {
-            throw AiException("网络错误：${e.message ?: e.javaClass.simpleName}")
+            call.await()
         } finally {
             activeCall = null
         }
@@ -488,7 +505,7 @@ ${q.analysis.take(1600)}
         }
     }
 
-    private fun call(cfg: ProviderConfig, body: JSONObject): String = callWithMeta(cfg, body).first
+    private suspend fun call(cfg: ProviderConfig, body: JSONObject): String = callWithMeta(cfg, body).first
 
     private fun extractText(raw: String): String {
         val obj = runCatching { JSONObject(raw) }.getOrElse { return raw }

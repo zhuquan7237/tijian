@@ -6,7 +6,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelper(context, databaseName, null, 4) {
+class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelper(context, databaseName, null, 5) {
 
     companion object {
         const val UNCAT = "uncat"
@@ -112,6 +112,23 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             )
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_chat_q ON chat_message(question_id, created_at)")
         }
+        if (oldVersion < 5) {
+            // 判重从「题干前 80 字」换成内容指纹：回填老数据，让升级后仍能识别重复。
+            // 旧库/半初始化库可能连 question 表都没有，ALTER 前必须先检查
+            if (hasTable(db, "question")) {
+                addColumnIfMissing(db, "question", "content_hash", "TEXT")
+                val rows = ArrayList<Array<String>>()
+                db.rawQuery("SELECT id, stem, options, answer FROM question", null).use { c ->
+                    while (c.moveToNext()) rows.add(arrayOf(c.getString(0), c.getString(1), c.getString(2), c.getString(3)))
+                }
+                rows.forEach { r ->
+                    val h = contentHash(r[1], r[2], r[3])
+                    if (h.isNotEmpty()) db.execSQL(
+                        "UPDATE question SET content_hash=? WHERE id=?", arrayOf(h, r[0])
+                    )
+                }
+            }
+        }
     }
 
     private fun hasTable(db: SQLiteDatabase, name: String): Boolean = db.rawQuery(
@@ -175,8 +192,20 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         }
     }
 
-    fun category(id: String): CategoryRow? =
-        categories().firstOrNull { it.id == id }
+    fun category(id: String): CategoryRow? = read(
+        """SELECT c.id, c.name, c.subject, c.auto_created, c.status, c.color,
+            (SELECT COUNT(*) FROM question q WHERE q.category_id=c.id AND q.deleted_at IS NULL),
+            (SELECT COUNT(*) FROM question q WHERE q.category_id=c.id AND q.deleted_at IS NULL AND q.mastery>=4)
+            FROM category c WHERE c.deleted_at IS NULL AND c.id=?""",
+        arrayOf(id)
+    ) { c ->
+        CategoryRow(
+            id = c.getString(0), name = c.getString(1), subject = c.getString(2),
+            autoCreated = c.getInt(3) == 1, status = c.getString(4),
+            color = c.getString(5).ifBlank { colorFor(c.getString(1)) },
+            count = c.getInt(6), mastered = c.getInt(7)
+        )
+    }.firstOrNull()
 
     fun ensureCategory(rawName: String, auto: Boolean = true): String {
         var name = rawName.trim()
@@ -230,6 +259,10 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                 arrayOf(UNCAT, System.currentTimeMillis(), id)
             )
             db.execSQL(
+                "UPDATE knowledge_doc SET category_id=NULL, updated_at=? WHERE category_id=?",
+                arrayOf(System.currentTimeMillis(), id)
+            )
+            db.execSQL(
                 "UPDATE category SET deleted_at=?, updated_at=? WHERE id=?",
                 arrayOf(System.currentTimeMillis(), System.currentTimeMillis(), id)
             )
@@ -246,6 +279,10 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         try {
             db.execSQL(
                 "UPDATE question SET category_id=?, updated_at=? WHERE category_id=?",
+                arrayOf(intoId, System.currentTimeMillis(), fromId)
+            )
+            db.execSQL(
+                "UPDATE knowledge_doc SET category_id=?, updated_at=? WHERE category_id=?",
                 arrayOf(intoId, System.currentTimeMillis(), fromId)
             )
             db.execSQL(
@@ -272,11 +309,18 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             "errors" -> where.append(" AND q.error_reasons IS NOT NULL AND q.error_reasons!='[]'")
         }
         if (query.isNotBlank()) {
-            where.append(" AND (q.stem LIKE ? OR q.knowledge_tags LIKE ?)")
-            args.add("%$query%"); args.add("%$query%")
+            // 用户输入可能带 % 或 _，不转义会让搜索结果错乱
+            val esc = query.trim().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            where.append(" AND (q.stem LIKE ? ESCAPE '\\' OR q.knowledge_tags LIKE ? ESCAPE '\\')")
+            args.add("%$esc%"); args.add("%$esc%")
         }
         return queryQuestions(where.toString(), args.toTypedArray(), "q.created_at DESC")
     }
+
+    /** 追问上下文用：只取知识点标签和掌握度，不拉整题。 */
+    fun tagMasteryPairs(): List<Pair<String, Int>> = read(
+        "SELECT knowledge_tags, mastery FROM question WHERE deleted_at IS NULL"
+    ) { it.getString(0) to it.getInt(1) }
 
     fun allQuestions(): List<QuestionRow> = questions()
 
@@ -291,11 +335,15 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             "q.next_review_at ASC LIMIT $limit"
         )
 
-    fun hasStem(stem: String): Boolean {
-        val key = stem.trim().take(80)
-        if (key.isBlank()) return false
-        return scalar("SELECT COUNT(*) FROM question WHERE deleted_at IS NULL AND substr(stem,1,80)='${key.replace("'", "''")}'") > 0
-    }
+    /** 内容指纹判重：题干+选项+答案完全一致才算重复（图片层面的重复由 sha256 那层负责）。 */
+    fun hasContentHash(hash: String): Boolean = hash.isNotEmpty() && scalar(
+        "SELECT COUNT(*) FROM question WHERE deleted_at IS NULL AND content_hash=?", arrayOf(hash)
+    ) > 0
+
+    private fun scalar(sql: String, args: Array<String> = emptyArray()): Int =
+        readableDatabase.rawQuery(sql, if (args.isEmpty()) null else args).use {
+            if (it.moveToFirst()) it.getInt(0) else 0
+        }
 
     fun question(id: String): QuestionRow? =
         queryQuestions("q.id=?", arrayOf(id), "q.created_at DESC").firstOrNull()
@@ -332,13 +380,21 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             var saved = 0
             var skipped = 0
             val seen = HashSet<String>()
+            // 指纹和分类一次性预取，避免每道草稿在事务里反复全表查询
+            val existingHashes = HashSet<String>()
+            sql.rawQuery(
+                "SELECT content_hash FROM question WHERE deleted_at IS NULL AND content_hash IS NOT NULL", null
+            ).use { c -> while (c.moveToNext()) existingHashes.add(c.getString(0)) }
+            val catCache = HashMap<String, String>()
             drafts.forEach { draft ->
-                val key = draft.stem.trim().take(80)
-                if (key.isNotBlank() && (!seen.add(key) || hasStem(key))) {
+                val hash = contentHash(draft.stem, draft.options, draft.answer)
+                if (hash.isNotEmpty() && (!seen.add(hash) || hash in existingHashes)) {
                     skipped++
                 } else {
-                    val categoryId = ensureCategory(draft.categoryName.ifBlank { "未分类" })
-                    insertQuestion(draft, categoryId, batchId, category(categoryId)?.subject.orEmpty())
+                    val catKey = draft.categoryName.ifBlank { "未分类" }
+                    val categoryId = catCache.getOrPut(catKey) { ensureCategory(catKey) }
+                    insertQuestion(draft, categoryId, batchId, categorySubject(categoryId), contentHashValue = hash)
+                    if (hash.isNotEmpty()) existingHashes.add(hash)
                     saved++
                 }
             }
@@ -349,9 +405,14 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         }
     }
 
+    private fun categorySubject(id: String): String = read(
+        "SELECT subject FROM category WHERE id=?", arrayOf(id)
+    ) { it.getString(0) }.firstOrNull().orEmpty()
+
     fun insertQuestion(
         draft: DraftQuestion, categoryId: String, batchId: String?, subject: String,
-        errorReasons: String = "[]", source: String = ""
+        errorReasons: String = "[]", source: String = "",
+        contentHashValue: String = contentHash(draft.stem, draft.options, draft.answer)
     ): String {
         val id = newId()
         val now = System.currentTimeMillis()
@@ -366,7 +427,8 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             put("error_reasons", errorReasons); put("source", source)
             put("captured_at", now); put("mastery", 0); put("review_count", 0)
             put("next_review_at", now); put("ai_confidence", draft.confidence)
-            put("image_id", draft.imageId); put("created_at", now); put("updated_at", now)
+            put("image_id", draft.imageId); put("content_hash", contentHashValue)
+            put("created_at", now); put("updated_at", now)
         })
         return id
     }
@@ -455,6 +517,12 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         return true
     }
 
+    /** 图片文件丢了但行还在时，把行重新绑到新文件，沿用原 id。 */
+    fun rebindImage(id: String, path: String, w: Int, h: Int, bytes: Long) = writableDatabase.execSQL(
+        "UPDATE image SET path=?, width=?, height=?, bytes=? WHERE id=?",
+        arrayOf(path, w, h, bytes, id)
+    )
+
     fun imagePath(id: String?): String? = if (id == null) null else read(
         "SELECT path FROM image WHERE id=?", arrayOf(id)
     ) { it.getString(0) }.firstOrNull()
@@ -490,7 +558,13 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         DocRow(c.getString(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4), c.getString(5), c.getLong(6))
     }
 
-    fun doc(id: String): DocRow? = docs().firstOrNull { it.id == id }
+    /** 单篇按主键取，不把整库文档全文读进内存。 */
+    fun doc(id: String): DocRow? = read(
+        "SELECT id,title,category_id,content_md,script_md,status,created_at FROM knowledge_doc WHERE deleted_at IS NULL AND id=?",
+        arrayOf(id)
+    ) { c ->
+        DocRow(c.getString(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4), c.getString(5), c.getLong(6))
+    }.firstOrNull()
 
     fun insertDoc(title: String, categoryId: String?, sourceRefs: String, content: String): String {
         val id = newId(); val now = System.currentTimeMillis()
@@ -521,7 +595,8 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
     // ---------- chat ----------
 
     fun chatMessages(questionId: String): List<Pair<String, String>> = read(
-        "SELECT role, content FROM chat_message WHERE question_id=? ORDER BY created_at ASC",
+        // 同一毫秒内连写的 user/assistant 消息按 rowid 保证先后
+        "SELECT role, content FROM chat_message WHERE question_id=? ORDER BY created_at ASC, rowid ASC",
         arrayOf(questionId)
     ) { it.getString(0) to it.getString(1) }
 

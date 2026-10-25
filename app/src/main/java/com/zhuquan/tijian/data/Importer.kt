@@ -3,12 +3,12 @@ package com.zhuquan.tijian.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Matrix
-import android.media.ExifInterface
 import android.net.Uri
 import com.zhuquan.tijian.ai.AiClient
 import com.zhuquan.tijian.ai.ParsedQuestion
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.io.ByteArrayOutputStream
@@ -39,6 +39,8 @@ class Importer(private val context: Context, private val db: Db, private val ai:
             var duplicates = 0
 
             uris.forEachIndexed { index, uri ->
+                // 用户点「停止」后立刻退出循环，不再发起下一张的识别请求
+                currentCoroutineContext().ensureActive()
                 onStep(index + 1, uris.size, "读取图片 ${index + 1}/${uris.size}")
                 val img = try {
                     ingest(uri)
@@ -59,15 +61,24 @@ class Importer(private val context: Context, private val db: Db, private val ai:
                     return@forEachIndexed
                 }
                 try {
+                    currentCoroutineContext().ensureActive()
                     val jpeg = downscaleJpeg(File(img.path), 1600)
                     var parsed = ai.recognize(cfg, jpeg)
                     // 照片里没印答案/解析时，识别结果会是空字段。这里自动补一次，
                     // 避免入库后详情页出现「有题目、没解析、没答案」。
                     if (parsed.any { it.answer.isBlank() || it.analysis.isBlank() }) {
                         onStep(index + 1, uris.size, "补全解析 ${index + 1}/${uris.size}")
-                        parsed = runCatching { ai.fillSolutions(cfg, parsed) }.getOrDefault(parsed)
+                        parsed = try {
+                            ai.fillSolutions(cfg, parsed)
+                        } catch (e: Exception) {
+                            // 补全失败不让整张图报废，但要告诉用户这批的解析是缺失的
+                            errors.add("第 ${index + 1} 张：答案/解析补全失败（${e.message ?: "网络错误"}），已保留识别结果")
+                            parsed
+                        }
                     }
                     parsed.forEachIndexed { i, p -> drafts.add(toDraft(img, p, i)) }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     drafts.add(emptyDraft(img))
                     errors.add("识别失败：${e.message ?: "未知错误"}")
@@ -108,36 +119,55 @@ class Importer(private val context: Context, private val db: Db, private val ai:
 
     private fun ingest(uri: Uri): ImportedImage {
         val raw = File(context.cacheDir, "import_${System.currentTimeMillis()}.bin")
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            raw.outputStream().use { output -> input.copyTo(output) }
-        } ?: throw IllegalStateException("无法打开图片")
-        val digest = MessageDigest.getInstance("SHA-256")
-        raw.inputStream().buffered().use { input ->
-            val buffer = ByteArray(64 * 1024)
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                digest.update(buffer, 0, count)
+        try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                raw.outputStream().use { output -> input.copyTo(output) }
+            } ?: throw IllegalStateException("无法打开图片")
+            val digest = MessageDigest.getInstance("SHA-256")
+            raw.inputStream().buffered().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
             }
-        }
-        val sha = digest.digest().joinToString("") { "%02x".format(it) }
+            val sha = digest.digest().joinToString("") { "%02x".format(it) }
 
-        db.imageIdBySha(sha)?.let { existing ->
-            val path = db.imagePath(existing)
-            if (path != null && File(path).exists()) {
-                val (w, h) = imageSize(path)
-                raw.delete()
-                return ImportedImage(existing, path, w, h, sha, duplicate = true)
+            db.imageIdBySha(sha)?.let { existing ->
+                val path = db.imagePath(existing)
+                if (path != null && File(path).exists()) {
+                    val (w, h) = imageSize(path)
+                    return ImportedImage(existing, path, w, h, sha, duplicate = true)
+                }
+                // 行还在、文件被清理了：把行重新绑到新落盘的文件并沿用原 id。
+                // 直接换个新 id 插入会被唯一索引挡掉，产生从未入库的「幻影 id」。
+                val (w2, h2) = imageSize(raw.absolutePath)
+                require(w2 > 0 && h2 > 0) { "图片格式无法读取" }
+                val file = File(dir, "$sha.original")
+                raw.copyTo(file, overwrite = true)
+                db.rebindImage(existing, file.absolutePath, w2, h2, file.length())
+                return ImportedImage(existing, file.absolutePath, w2, h2, sha, duplicate = true)
             }
-        }
 
-        val (w, h) = imageSize(raw.absolutePath)
-        require(w > 0 && h > 0) { "图片格式无法读取" }
-        val file = File(dir, "$sha.original")
-        try { raw.copyTo(file, overwrite = true) } finally { raw.delete() }
-        val id = newId()
-        db.insertImage(id, sha, file.absolutePath, w, h, file.length())
-        return ImportedImage(id, file.absolutePath, w, h, sha, duplicate = false)
+            val (w, h) = imageSize(raw.absolutePath)
+            require(w > 0 && h > 0) { "图片格式无法读取" }
+            val file = File(dir, "$sha.original")
+            raw.copyTo(file, overwrite = true)
+            val id = newId()
+            if (!db.insertImage(id, sha, file.absolutePath, w, h, file.length())) {
+                // 并发兜底：同 sha 的行刚好被别的线程插入了，回到已存在的行
+                val winner = db.imageIdBySha(sha)
+                if (winner != null) {
+                    val p = db.imagePath(winner) ?: file.absolutePath
+                    return ImportedImage(winner, p, w, h, sha, duplicate = true)
+                }
+            }
+            return ImportedImage(id, file.absolutePath, w, h, sha, duplicate = false)
+        } finally {
+            // 任何失败路径（包括「图片格式无法读取」）都不能把临时文件留在 cache 里
+            raw.delete()
+        }
     }
 
     private fun imageSize(path: String): Pair<Int, Int> {
@@ -192,20 +222,3 @@ class Importer(private val context: Context, private val db: Db, private val ai:
         }
     }
 }
-
-/** 相册/相机图片按 EXIF 摆正后再存 */
-fun Bitmap.rotateIfNeeded(degrees: Int): Bitmap =
-    if (degrees == 0) this else Bitmap.createBitmap(
-        this, 0, 0, width, height,
-        Matrix().apply { postRotate(degrees.toFloat()) }, true
-    )
-
-fun exifDegrees(path: String): Int = try {
-    val exif = ExifInterface(path)
-    when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 1)) {
-        ExifInterface.ORIENTATION_ROTATE_90 -> 90
-        ExifInterface.ORIENTATION_ROTATE_180 -> 180
-        ExifInterface.ORIENTATION_ROTATE_270 -> 270
-        else -> 0
-    }
-} catch (e: Exception) { 0 }

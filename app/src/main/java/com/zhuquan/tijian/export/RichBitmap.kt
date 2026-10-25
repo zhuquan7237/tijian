@@ -50,7 +50,7 @@ object RichBitmap {
             web.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
             web.setBackgroundColor(Color.WHITE)
             web.settings.javaScriptEnabled = true
-            web.settings.allowFileAccess = true
+            web.settings.allowFileAccess = false
             web.settings.domStorageEnabled = false
             web.settings.javaScriptCanOpenWindowsAutomatically = false
             web.setInitialScale(100)

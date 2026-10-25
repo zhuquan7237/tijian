@@ -82,6 +82,16 @@ fun AppRoot(vm: AppVm = viewModel()) {
         1f
     ) == 0f
 
+    // 回到前台刷新统计：待复习数跨午夜后不会自己变
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) vm.refresh()
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+
     val pickImages = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(9)
     ) { uris -> if (uris.isNotEmpty()) { vm.clearCapture(); uris.forEach { vm.addCapture(it) }; vm.go(Route.Capture) } }

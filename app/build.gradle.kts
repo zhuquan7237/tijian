@@ -56,6 +56,9 @@ android {
 dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("junit:junit:4.13.2")
+    testImplementation("junit:junit:4.13.2")
+    // JVM 单测里 org.json 用真实现，不用 android.jar 的 Stub
+    testImplementation("org.json:json:20240303")
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
 
