@@ -116,7 +116,12 @@ fun SettingsScreen(vm: AppVm) {
             SectionLabel("设置")
             CardBox(Modifier.fillMaxWidth()) {
                 Column {
-                SettingRow(Icons.Rounded.Key, "AI 接入", if (vm.provider.ready()) "${vm.provider.model} · ${vm.provider.protocol}" else "未配置，点此接入") {
+                SettingRow(Icons.Rounded.Key, "AI 接入", if (vm.provider.ready()) {
+                    val r = when (vm.provider.reasoning) {
+                        "low" -> " · 思考低"; "medium" -> " · 思考中"; "high" -> " · 思考高"; else -> ""
+                    }
+                    "${vm.provider.model} · ${vm.provider.protocol}$r"
+                } else "未配置，点此接入") {
                     vm.go(Route.Provider)
                 }
                 DividerSoft()
@@ -266,6 +271,7 @@ fun ProviderScreen(vm: AppVm) {
     var apiKey by remember(vm.provider) { mutableStateOf(vm.provider.apiKey) }
     var model by remember(vm.provider) { mutableStateOf(vm.provider.model) }
     var protocol by remember(vm.provider) { mutableStateOf(vm.provider.protocol) }
+    var reasoning by remember(vm.provider) { mutableStateOf(vm.provider.reasoning) }
     var models by remember(vm.provider) { mutableStateOf(vm.provider.models) }
     var showPicker by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
@@ -273,9 +279,11 @@ fun ProviderScreen(vm: AppVm) {
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
     var testError by remember { mutableStateOf<String?>(null) }
+    var namingProfile by remember { mutableStateOf(false) }
+    var profileName by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
-    fun cfg() = ProviderConfig(baseUrl, apiKey, model, protocol, models)
+    fun cfg() = ProviderConfig(baseUrl, apiKey, model, protocol, models, reasoning)
 
     fun pull() {
         if (baseUrl.isBlank()) { fetchError = "先填 Base URL"; return }
@@ -315,6 +323,27 @@ fun ProviderScreen(vm: AppVm) {
                 "接入任意 OpenAI 兼容服务。识别需要模型支持图片输入；分类、知识点整理会复用同一个模型。",
                 fontSize = 12.sp, lineHeight = 19.sp, color = Muted
             )
+
+            SectionLabel("常用提供商")
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (vm.profiles.isEmpty()) {
+                    Text(
+                        "填好地址和 Key 后点「保存当前」，多提供商一键切换",
+                        fontSize = 11.5.sp, color = Muted
+                    )
+                }
+                vm.profiles.forEach { p ->
+                    val active = baseUrl.trim() == p.baseUrl && apiKey.trim() == p.apiKey
+                    TjChip(if (active) "● ${p.name}" else p.name, selected = active) { vm.applyProfile(p.name) }
+                }
+                TjChip("＋ 保存当前", selected = false) {
+                    profileName = ""
+                    namingProfile = true
+                }
+            }
 
             SectionLabel("服务商")
             Row(
@@ -387,6 +416,19 @@ fun ProviderScreen(vm: AppVm) {
                         TjChip("chat/completions", protocol == "chat") { protocol = "chat" }
                         TjChip("responses", protocol == "responses") { protocol = "responses" }
                     }
+
+                    Spacer(Modifier.height(12.dp))
+                    FieldLabel("思考强度")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TjChip("默认", reasoning.isBlank()) { reasoning = "" }
+                        TjChip("低", reasoning == "low") { reasoning = "low" }
+                        TjChip("中", reasoning == "medium") { reasoning = "medium" }
+                        TjChip("高", reasoning == "high") { reasoning = "high" }
+                    }
+                    Text(
+                        "推理模型（R1 / o 系 / Qwen-Thinking 等）的思考档位，随每次请求发送；「默认」不发参数，由服务商自定。不支持该参数的服务请保持默认。",
+                        fontSize = 10.5.sp, lineHeight = 16.sp, color = Muted, modifier = Modifier.padding(top = 6.dp)
+                    )
                 }
             }
 
@@ -435,6 +477,34 @@ fun ProviderScreen(vm: AppVm) {
             )
             Spacer(Modifier.height(50.dp))
         }
+    }
+
+    if (namingProfile) {
+        AlertDialog(
+            onDismissRequest = { namingProfile = false },
+            title = { Text("保存为常用提供商", fontSize = 16.sp) },
+            text = {
+                Column {
+                    Text(
+                        "会把当前表单里的地址、Key、协议、思考强度和模型列表一起存下来。",
+                        fontSize = 11.5.sp, lineHeight = 17.sp, color = Muted
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    TjTextField(
+                        value = profileName, onValueChange = { profileName = it },
+                        placeholder = { Text("名字，如：DeepSeek 官方 / 硅基流动", fontSize = 12.5.sp, color = Muted) },
+                        singleLine = true, colors = tjFieldColors(), modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = profileName.isNotBlank(), onClick = {
+                    vm.saveCurrentAsProfile(profileName)
+                    namingProfile = false
+                }) { Text("保存", color = Accent, fontWeight = FontWeight.SemiBold) }
+            },
+            dismissButton = { TextButton(onClick = { namingProfile = false }) { Text("取消", color = Ink2) } }
+        )
     }
 
     if (showPicker) {

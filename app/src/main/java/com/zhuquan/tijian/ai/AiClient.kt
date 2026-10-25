@@ -468,7 +468,9 @@ ${q.analysis.take(1600)}
         })
     }
 
-    /** 返回正文与「是否被长度限制截断」；截断时界面会给出「继续」。 */
+    /** 返回正文与「是否被长度限制截断」；截断时界面会给出「继续」。
+     *  思考强度（reasoning）在这里统一注入：chat 协议用 reasoning_effort，
+     *  responses 协议用 reasoning.effort；「默认」档不发参数，走服务商自己的默认。 */
     private suspend fun callWithMeta(cfg: ProviderConfig, body: JSONObject): Pair<String, Boolean> {
         if (cfg.baseUrl.isBlank()) throw AiException("未配置 AI 接口")
         val base = normalizeBase(cfg.baseUrl)
@@ -476,6 +478,15 @@ ${q.analysis.take(1600)}
             base.endsWith("/chat/completions") || base.endsWith("/responses") -> base
             cfg.protocol == "responses" -> "$base/responses"
             else -> "$base/chat/completions"
+        }
+        if (cfg.reasoning.isNotBlank()) {
+            try {
+                if (cfg.protocol == "responses") {
+                    body.putOpt("reasoning", JSONObject().put("effort", cfg.reasoning))
+                } else {
+                    body.putOpt("reasoning_effort", cfg.reasoning)
+                }
+            } catch (_: Exception) {}
         }
         val builder = Request.Builder().url(url).post(body.toString().toRequestBody(JSON))
         if (cfg.apiKey.isNotBlank()) builder.header("Authorization", "Bearer ${cfg.apiKey}")

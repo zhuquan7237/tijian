@@ -486,8 +486,8 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
             Column {
                 Row(Modifier.fillMaxWidth().background(SurfaceAlt).padding(horizontal = 14.dp, vertical = 10.dp)) {
                     Text(if (selecting) "" else "题目", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(56.dp))
-                    Spacer(Modifier.width(14.dp))
-                    Text("题型", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(64.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text("题号", fontSize = 11.sp, color = Amber, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(76.dp))
                     Text("知识点", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                     Text("掌握", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(56.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
                 }
@@ -512,27 +512,30 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                                     Thumb(q.imagePath, Modifier.width(56.dp).height(70.dp))
                                 }
                             }
-                            Spacer(Modifier.width(14.dp))
-                            Text(q.type.ifBlank { "—" }, fontSize = 12.sp, color = Ink2, modifier = Modifier.width(64.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            val tags = parseKnowledgeTags(q.tags)
-                            Row(
-                                Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            Spacer(Modifier.width(10.dp))
+                            // 题号专列：用户手输的「卷一 · 第 12 题」，与 AI 识别的分类无关
+                            Column(Modifier.width(76.dp)) {
                                 if (q.customTag.isNotBlank()) {
-                                    Box(
-                                        Modifier.clip(RoundedCornerShape(6.dp))
-                                            .background(AmberSoft)
-                                            .border(1.dp, Amber.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
-                                            .padding(horizontal = 7.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(q.customTag, fontSize = 11.5.sp, color = Amber, maxLines = 1, fontWeight = FontWeight.SemiBold)
-                                    }
+                                    Text(
+                                        q.customTag, fontSize = 12.sp, lineHeight = 16.sp,
+                                        color = Amber, fontWeight = FontWeight.SemiBold, maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
-                                if (tags.isEmpty() && q.customTag.isBlank()) {
-                                    Text("—", fontSize = 12.sp, color = Muted)
-                                } else {
+                                Text(
+                                    q.type.ifBlank { "—" }, fontSize = 11.sp, color = Muted,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = if (q.customTag.isNotBlank()) 3.dp else 0.dp)
+                                )
+                            }
+                            val tags = parseKnowledgeTags(q.tags)
+                            if (tags.isEmpty()) {
+                                Text("—", fontSize = 12.sp, color = Muted, modifier = Modifier.weight(1f))
+                            } else {
+                                Row(
+                                    Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
                                     tags.forEach { tag ->
                                         Box(
                                             Modifier.clip(RoundedCornerShape(6.dp)).background(AccentSoft)

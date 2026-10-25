@@ -147,6 +147,10 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     var lastExport by androidx.compose.runtime.mutableStateOf<File?>(null)
     var lastExportName by androidx.compose.runtime.mutableStateOf("")
 
+    /** 常用提供商档案（init 里的 IO 协程会写它，声明必须先于 init）。 */
+    var profiles by androidx.compose.runtime.mutableStateOf<List<com.zhuquan.tijian.data.ProviderProfile>>(emptyList())
+        private set
+
     var updateInfo by androidx.compose.runtime.mutableStateOf<Updater.Info?>(null)
         private set
     var updateProgress by androidx.compose.runtime.mutableStateOf(-1)
@@ -161,6 +165,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         restoreCaptureManifest()
         // 外观偏好：0 跟随系统 / 1 浅色 / 2 深色
         tjAppearance.intValue = db.getSetting("appearance")?.toIntOrNull() ?: 0
+        viewModelScope.launch(Dispatchers.IO) { profiles = db.providerProfiles() }
         val last = db.getSetting("update.lastCheck")?.toLongOrNull() ?: 0L
         if (System.currentTimeMillis() - last > 6 * 3600_000L) checkUpdate(silent = true)
     }
@@ -887,6 +892,46 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.Main) {
                 provider = cfg
                 toast = "已保存"
+            }
+        }
+    }
+
+    /** 把当前表单配置存为一个常用提供商档案。 */
+    fun saveCurrentAsProfile(name: String) {
+        val n = name.trim()
+        if (n.isBlank()) { toast = "先给这个提供商起个名字"; return }
+        viewModelScope.launch(Dispatchers.IO) {
+            val cur = db.provider()
+            val rest = db.providerProfiles().filterNot { it.name == n }
+            db.saveProviderProfiles(rest + com.zhuquan.tijian.data.ProviderProfile(
+                name = n, baseUrl = cur.baseUrl, apiKey = cur.apiKey, model = cur.model,
+                protocol = cur.protocol, reasoning = cur.reasoning, models = cur.models,
+            ))
+            withContext(Dispatchers.Main) {
+                profiles = db.providerProfiles()
+                toast = "已保存「$n」，以后一点就能切换"
+            }
+        }
+    }
+
+    /** 一键切换到某个常用提供商（写入当前配置，表单随之刷新）。 */
+    fun applyProfile(name: String) {
+        val target = profiles.firstOrNull { it.name == name } ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            db.saveProvider(target.toConfig())
+            withContext(Dispatchers.Main) {
+                provider = target.toConfig()
+                toast = "已切换到「$name」"
+            }
+        }
+    }
+
+    fun deleteProfile(name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.saveProviderProfiles(db.providerProfiles().filterNot { it.name == name })
+            withContext(Dispatchers.Main) {
+                profiles = db.providerProfiles()
+                toast = "已删除「$name」"
             }
         }
     }

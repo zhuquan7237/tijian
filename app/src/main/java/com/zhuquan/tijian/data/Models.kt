@@ -72,8 +72,23 @@ data class ProviderConfig(
     val model: String = "",
     val protocol: String = "chat", // chat | responses
     val models: List<String> = emptyList(), // 上次从 /models 拉到的列表
+    /** 思考强度：""=服务默认 / low / medium / high（映射 reasoning_effort）。 */
+    val reasoning: String = "",
 ) {
     fun ready() = baseUrl.isNotBlank() && model.isNotBlank()
+}
+
+/** 常用提供商档案：一键切换，免去重填地址与 Key。 */
+data class ProviderProfile(
+    val name: String,
+    val baseUrl: String,
+    val apiKey: String,
+    val model: String,
+    val protocol: String,
+    val reasoning: String = "",
+    val models: List<String> = emptyList(),
+) {
+    fun toConfig() = ProviderConfig(baseUrl, apiKey, model, protocol, models, reasoning)
 }
 
 /** 识别阶段尚未入库的题目草稿 */

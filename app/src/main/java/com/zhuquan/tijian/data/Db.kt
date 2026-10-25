@@ -697,6 +697,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             val arr = org.json.JSONArray(getSetting("ai.models") ?: "[]")
             (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() }
         }.getOrElse { emptyList() },
+        reasoning = getSetting("ai.reasoning") ?: "",
     )
 
     fun saveProvider(cfg: ProviderConfig) {
@@ -705,6 +706,44 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         putSetting("ai.model", cfg.model.trim())
         putSetting("ai.protocol", cfg.protocol)
         putSetting("ai.models", org.json.JSONArray(cfg.models).toString())
+        putSetting("ai.reasoning", cfg.reasoning)
+    }
+
+    // ---------- provider profiles ----------
+
+    /** 常用提供商档案（setting 表 JSON 数组），Key 与当前配置一样只存本机。 */
+    fun providerProfiles(): List<ProviderProfile> = runCatching {
+        val arr = org.json.JSONArray(getSetting("ai.profiles") ?: "[]")
+        (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val baseUrl = o.optString("baseUrl")
+            if (baseUrl.isBlank()) return@mapNotNull null
+            val models = runCatching {
+                val m = o.optJSONArray("models")
+                if (m == null) emptyList() else (0 until m.length()).mapNotNull { m.optString(it).takeIf { s -> s.isNotBlank() } }
+            }.getOrElse { emptyList() }
+            ProviderProfile(
+                name = o.optString("name").ifBlank { baseUrl },
+                baseUrl = baseUrl,
+                apiKey = o.optString("apiKey"),
+                model = o.optString("model"),
+                protocol = o.optString("protocol").ifBlank { "chat" },
+                reasoning = o.optString("reasoning"),
+                models = models,
+            )
+        }
+    }.getOrElse { emptyList() }
+
+    fun saveProviderProfiles(profiles: List<ProviderProfile>) {
+        val arr = org.json.JSONArray()
+        profiles.forEach { p ->
+            arr.put(org.json.JSONObject().apply {
+                put("name", p.name); put("baseUrl", p.baseUrl); put("apiKey", p.apiKey)
+                put("model", p.model); put("protocol", p.protocol); put("reasoning", p.reasoning)
+                put("models", org.json.JSONArray(p.models))
+            })
+        }
+        putSetting("ai.profiles", arr.toString())
     }
 
     // ---------- helpers ----------
