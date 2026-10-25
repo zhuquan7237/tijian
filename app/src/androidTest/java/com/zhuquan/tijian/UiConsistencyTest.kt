@@ -2,6 +2,10 @@ package com.zhuquan.tijian
 
 import android.app.Application
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
 import android.net.Uri
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -11,11 +15,13 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import com.zhuquan.tijian.ui.*
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
+import java.io.File
 
 class UiConsistencyTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
@@ -70,6 +76,46 @@ class UiConsistencyTest {
             assertFalse(vm.busy)
             assertEquals("", vm.busyLabel)
             assertEquals("模拟导出失败", vm.toast)
+        }
+    }
+
+    @Test fun replaceCaptureSurvivesStagingIdentitySwap() {
+        // 8.10.1 的真机回归：相册图 addCapture 后条目被异步暂存副本换掉身份，
+        // 编辑保存时 replaceCapture 必须仍能找到条目，否则裁剪结果被静默丢弃。
+        val app = instrumentation.targetContext.applicationContext as Application
+        val ctx = instrumentation.targetContext
+        val dir = File(ctx.filesDir, "capture_staging").apply { mkdirs() }
+        val src = File(dir, "replace-test-src.img")
+        val edited = File(ctx.cacheDir, "replace-test-edited.png")
+        fun makeBitmap(file: File, color: Int) {
+            Bitmap.createBitmap(40, 40, Bitmap.Config.ARGB_8888).let { b ->
+                Canvas(b).drawColor(color); b.compress(Bitmap.CompressFormat.PNG, 100, file.outputStream()); b.recycle()
+            }
+        }
+        makeBitmap(src, Color.BLUE); makeBitmap(edited, Color.RED)
+        val contentUri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", src)
+        lateinit var vm: AppVm
+        instrumentation.runOnMainSync { vm = AppVm(app); vm.addCapture(contentUri) }
+        try {
+            // 暂存在主线程协程里换掉条目身份；主线程保持空闲，轮询等它落地
+            val deadline = android.os.SystemClock.elapsedRealtime() + 5000
+            while (android.os.SystemClock.elapsedRealtime() < deadline) {
+                val first = vm.captureUris.firstOrNull()
+                if (first != null && first != contentUri && first.scheme == "file") break
+                Thread.sleep(50)
+            }
+            val staged = vm.captureUris.singleOrNull() ?: fail("capture list empty")
+            assertTrue("entry must have been restaged", staged != contentUri)
+            instrumentation.runOnMainSync {
+                runBlocking { vm.replaceCapture(contentUri, Uri.fromFile(edited)) }
+            }
+            assertEquals(1, vm.captureUris.size)
+            val out = BitmapFactory.decodeFile(vm.captureUris.single().path!!)
+            assertEquals("workbench must hold the EDITED content", Color.RED, out.getPixel(5, 5))
+            out.recycle()
+        } finally {
+            instrumentation.runOnMainSync { vm.clearCapture() }
+            src.delete(); edited.delete()
         }
     }
     @Test fun captureProductionScreensForVisualReview() {

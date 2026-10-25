@@ -58,9 +58,17 @@ fun CaptureScreen(vm: AppVm) {
     var confirmClear by rememberSaveable { mutableStateOf(false) }
     var editingUri by remember { mutableStateOf<Uri?>(null) }
     var pendingUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+    // TakePicture 的回调里要用真实文件路径入列：file:// 身份稳定，
+    // 不会被 addCapture 的异步暂存换掉，编辑后 replaceCapture 才找得到条目
+    var pendingCameraFile by remember { mutableStateOf<File?>(null) }
 
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
-        if (ok) pendingUri?.let { vm.addCapture(it); editingUri = it }
+        val f = pendingCameraFile
+        pendingUri = null; pendingCameraFile = null
+        if (ok && f != null && f.exists()) {
+            val fileUri = Uri.fromFile(f)
+            vm.addCapture(fileUri); editingUri = fileUri
+        }
     }
     val pickMore = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(9)) { uris ->
         uris.forEach { vm.addCapture(it) }
@@ -71,9 +79,9 @@ fun CaptureScreen(vm: AppVm) {
         val dir = File(ctx.filesDir, "capture_staging").apply { mkdirs() }
         val f = File(dir, "cap_${System.currentTimeMillis()}.jpg")
         val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", f)
-        pendingUri = uri
+        pendingUri = uri; pendingCameraFile = f
         runCatching { takePicture.launch(uri) }.onFailure {
-            f.delete(); pendingUri = null; vm.toast = "无法打开相机，请从相册添加"
+            f.delete(); pendingUri = null; pendingCameraFile = null; vm.toast = "无法打开相机，请从相册添加"
         }
     }
 

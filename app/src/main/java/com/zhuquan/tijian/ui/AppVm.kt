@@ -121,6 +121,13 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         if (ok) Uri.fromFile(target) else uri
     }
 
+    /** 暂存前的原始 uri → 暂存后的文件 uri。条目被暂存副本替换后，
+     *  replaceCapture 靠它找回当前条目，否则编辑结果替换不到、裁剪看起来像没生效。 */
+    private val stagedByOriginal = HashMap<Uri, Uri>()
+
+    /** 进行中的暂存任务；replaceCapture 先等它结束，避免和条目替换赛跑。 */
+    private val stagingJobs = HashMap<Uri, kotlinx.coroutines.Job>()
+
     /** 清掉工作台目录里的暂存文件和清单（导入完成或用户清空时）。 */
     private fun wipeStaging() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -222,11 +229,17 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     }
 
     suspend fun replaceCapture(source: Uri, edited: Uri) {
+        // 等这条 uri 的暂存落地（如果还在进行），条目身份才稳定
+        synchronized(stagingJobs) { stagingJobs[source] }?.join()
         val copy = withContext(Dispatchers.IO) {
             val original = importer.ingestOnly(source)
             importer.ingestOnly(edited).also { db.linkOriginal(it.id, original.id) }
         }
-        captureUris = captureUris.map { if (it == source) Uri.fromFile(File(copy.path)) else it }
+        // 条目可能已被暂存副本换掉了身份（相册图异步暂存），原始 uri 和暂存 uri 都要认
+        val key = synchronized(stagedByOriginal) { stagedByOriginal.remove(source) } ?: source
+        val replaced = Uri.fromFile(File(copy.path))
+        captureUris = captureUris.map { if (it == key || it == source) replaced else it }
+        saveCaptureManifest()
     }
 
     fun addCapture(uri: Uri) {
@@ -236,26 +249,33 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         captureUris = captureUris + uri
         saveCaptureManifest()
         if (uri.scheme != "file") {
-            viewModelScope.launch {
+            val job = viewModelScope.launch {
                 val staged = stageUri(uri)
                 if (staged != uri) {
+                    synchronized(stagedByOriginal) { stagedByOriginal[uri] = staged }
                     captureUris = captureUris.map { if (it == uri) staged else it }
                     saveCaptureManifest()
                 }
+                synchronized(stagingJobs) { stagingJobs.remove(uri) }
             }
+            synchronized(stagingJobs) { stagingJobs[uri] = job }
         }
     }
 
     fun removeCapture(uri: Uri) {
+        synchronized(stagingJobs) { stagingJobs.remove(uri)?.cancel() }
         captureUris = captureUris - uri
+        synchronized(stagedByOriginal) { stagedByOriginal.entries.removeAll { it.value == uri } }
         if (uri.scheme == "file") {
             runCatching { uri.path?.let { File(it).takeIf { f -> f.parentFile == stagingDir }?.delete() } }
         }
-        if (captureUris.isEmpty()) wipeStaging() else saveCaptureManifest()
+        if (captureUris.isEmpty()) { synchronized(stagedByOriginal) { stagedByOriginal.clear() }; wipeStaging() } else saveCaptureManifest()
     }
 
     fun clearCapture() {
+        synchronized(stagingJobs) { stagingJobs.values.forEach { it.cancel() }; stagingJobs.clear() }
         captureUris = emptyList()
+        synchronized(stagedByOriginal) { stagedByOriginal.clear() }
         wipeStaging()
     }
 
