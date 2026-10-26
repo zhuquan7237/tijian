@@ -59,7 +59,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        if (uris.isNotEmpty()) vm.importUris(uris, "share")
+        if (uris.isNotEmpty()) vm.receiveImages(uris)
     }
 
     private fun extractedStreams(intent: Intent): List<Uri>? {

@@ -193,12 +193,13 @@ fun RichText(
 ) {
     if (sections == null && markdown.isBlank()) return
     val context = LocalContext.current
-    val fontScale = LocalDensity.current.fontScale
+    val fontScale = LocalDensity.current.fontScale * (readingSize.intValue / 15f)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     BoxWithConstraints(modifier.fillMaxWidth()) {
     val widthDp = maxWidth.value.roundToInt().coerceAtLeast(1)
     val scaledFontSize = (fontSize * fontScale).roundToInt().coerceAtLeast(1)
     val normalized = remember(markdown) { Normalize.text(markdown) }
+    val scaledSections = sections?.map { it.copy(fontSize = (it.fontSize * fontScale).roundToInt()) }
     val day = !isNight
     // 主题切换要整页重渲染（CSS 类在 HTML 里），day 计入 renderId 的 key
     val renderId = remember(normalized, scaledFontSize, widthDp, selectable, sections, day) { RichTextRenderer.nextGeneration() }
@@ -206,7 +207,7 @@ fun RichText(
         mutableIntStateOf(0)
     }
     val html = remember(normalized, scaledFontSize, widthDp, renderId) {
-        RichTextRenderer.html(context, normalized, scaledFontSize, widthDp, renderId, selectable, sections, day = day)
+        RichTextRenderer.html(context, normalized, scaledFontSize, widthDp, renderId, selectable, scaledSections, day = day)
     }
     // AndroidView factory lives longer than this document: always route callbacks
     // to the current state, and check the generation again on the UI thread.

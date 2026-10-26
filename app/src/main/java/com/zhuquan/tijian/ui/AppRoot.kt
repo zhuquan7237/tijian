@@ -163,6 +163,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
                             is Route.Library -> LibraryScreen(vm)
                             is Route.Doc -> DocScreen(vm, route)
                             is Route.Settings -> SettingsScreen(vm)
+                            is Route.Trash -> TrashScreen(vm)
                             is Route.Provider -> ProviderScreen(vm)
                         }
                     }
@@ -184,7 +185,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
                 Box(
                     Modifier.semantics { liveRegion = LiveRegionMode.Polite }.clip(RoundedCornerShape(12.dp)).background(Color(0xF23A3D44))
                         .padding(horizontal = 16.dp, vertical = 11.dp)
-                ) { Text(msg, fontSize = 12.5.sp, lineHeight = 18.sp, color = Color.White) }
+                ) { Text(msg, fontSize = 13.sp, lineHeight = 18.sp, color = Color.White) }
             }
         }
 
@@ -193,6 +194,14 @@ fun AppRoot(vm: AppVm = viewModel()) {
             BusyOverlay(vm.busyLabel)
         }
 
+        if (vm.reviewSetup) ReviewSetup(vm)
+        if (vm.deletedIds.isNotEmpty()) {
+            LaunchedEffect(vm.deletedIds) { delay(6000); vm.deletedIds = emptyList() }
+            androidx.compose.material3.Snackbar(Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp, start = 16.dp, end = 16.dp),
+                action = { androidx.compose.material3.TextButton(onClick = { vm.undoDelete() }) { Text("撤销") } }) {
+                Text("已移入回收站 ${vm.deletedIds.size} 题")
+            }
+        }
         if (vm.updateInfo != null) UpdateDialog(vm)
 
         // 全局追问：悬浮球在所有页面可见；面板打开时接管整个屏幕
@@ -202,7 +211,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
             ModalBottomSheet(onDismissRequest = { showImport = false }, containerColor = CardBg) {
                 Column(Modifier.blockSheetDrag().padding(horizontal = Space.page).padding(bottom = 26.dp)) {
                     Text("导入错题", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink, letterSpacing = (-0.3).sp)
-                    Text("可以一次选 9 张，AI 会自动切题", fontSize = 12.5.sp, color = Muted, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
+                    Text("可以一次选 9 张，AI 会自动切题", fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
                     ImportOption(Icons.Rounded.PhotoLibrary, "从相册选择", "支持多选，原图会保留") {
                         showImport = false; pickImages.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     }
@@ -211,7 +220,10 @@ fun AppRoot(vm: AppVm = viewModel()) {
                         vm.clearCapture()
                         vm.go(Route.Capture)
                     }
-                    ImportOption(Icons.Rounded.EditNote, "手动录入", "只存图片，题干自己填") {
+                    ImportOption(Icons.Rounded.EditNote, "直接输入文字", "无需图片，自动保存草稿") {
+                        showImport = false; vm.addTextDraft()
+                    }
+                    ImportOption(Icons.Rounded.PhotoLibrary, "只保存图片", "不调用 AI，稍后补录") {
                         showImport = false
                         pickOne.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     }
@@ -252,7 +264,7 @@ private fun ImportOption(
         ) { Icon(icon, null, tint = Ink2, modifier = Modifier.size(21.dp)) }
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(title, fontSize = 15.sp, color = Ink, fontWeight = FontWeight.SemiBold)
-            Text(subtitle, fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
+            Text(subtitle, fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
         }
     }
 }
@@ -313,7 +325,7 @@ private fun TabItem(
             Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
         }
         Text(
-            label, fontSize = 11.sp, color = tint,
+            label, fontSize = 13.sp, color = tint,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             modifier = Modifier.padding(top = 2.dp)
         )

@@ -127,6 +127,24 @@ class AiClient {
         "${if (text.isBlank()) "连接成功" else text.take(40)} · ${ms}ms"
     }
 
+    suspend fun testVision(cfg: ProviderConfig, jpeg: ByteArray, expected: String): String = withContext(Dispatchers.IO) {
+        val url = "data:image/jpeg;base64," + android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP)
+        val content = JSONArray().put(JSONObject().apply {
+            put("type", if(cfg.protocol == "responses") "input_text" else "text")
+            put("text", "只抄写图片中的四位数字，不要解释。")
+        }).put(JSONObject().apply {
+            put("type", if(cfg.protocol == "responses") "input_image" else "image_url")
+            put("image_url", if(cfg.protocol == "responses") url else JSONObject().put("url", url))
+        })
+        val messages = JSONArray().put(JSONObject().put("role", "user").put("content", content))
+        val body = JSONObject().put("model", cfg.model)
+            .put(if(cfg.protocol == "responses") "input" else "messages", messages)
+            .put(if(cfg.protocol == "responses") "max_output_tokens" else "max_tokens", 512)
+        val result = call(cfg, body)
+        check(result.contains(expected)) { "图片识别验证未通过，请确认模型支持 vision 图片输入" }
+        "图片识别验证通过，可以开始导入"
+    }
+
     suspend fun recognize(cfg: ProviderConfig, jpeg: ByteArray): List<ParsedQuestion> =
         withContext(Dispatchers.IO) {
             val b64 = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP)

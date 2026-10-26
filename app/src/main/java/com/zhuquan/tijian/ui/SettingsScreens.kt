@@ -134,7 +134,19 @@ fun SettingsScreen(vm: AppVm) {
                     if (vm.checkingUpdate) "检查中…" else "当前 ${Updater.currentName()}"
                 ) { vm.checkUpdate(silent = false) }
                 DividerSoft()
-                SettingRow(Icons.Rounded.Backup, "备份与恢复", "数据库 + 图片，整包 zip") { showBackup = true }
+                SettingRow(Icons.Rounded.Backup, "导出恢复前快照", "保留最近一次恢复前的数据") { vm.shareRecoveryBackup() }
+                DividerSoft()
+                SettingRow(Icons.Rounded.Info, "回收站", "恢复误删题目，或彻底删除") { vm.go(Route.Trash) }
+                DividerSoft()
+                Column(Modifier.padding(16.dp)) {
+                    Text("阅读字号", color = Ink, fontSize = 15.sp)
+                    Row(Modifier.horizontalScroll(rememberScrollState())) {
+                        listOf(15, 17, 19, 22).forEach { n -> TjChip("${n}", readingSize.intValue == n) { vm.setReadingSize(n) } }
+                    }
+                    Text("题干、公式与解析同步调整，也跟随系统字体缩放。", color = Muted, fontSize = 13.sp)
+                }
+                DividerSoft()
+                SettingRow(Icons.Rounded.Backup, "备份与恢复", vm.backupSummary.ifBlank { "尚未备份 · 数据库 + 图片" }) { showBackup = true }
                 }
             }
 
@@ -146,7 +158,7 @@ fun SettingsScreen(vm: AppVm) {
             Spacer(Modifier.height(20.dp))
             Text(
                 "题笺 v${Updater.currentName()} · 全部数据保存在本机\n识别与分类由你配置的模型完成，请自行评估隐私与费用。",
-                fontSize = 12.sp, lineHeight = 19.sp, color = Muted
+                fontSize = 13.sp, lineHeight = 19.sp, color = Muted
             )
             Spacer(Modifier.height(24.dp))
         }
@@ -184,7 +196,7 @@ fun SettingsScreen(vm: AppVm) {
         AlertDialog(
             onDismissRequest = { showBackup = false },
             title = { Text("备份与恢复", fontSize = 16.sp) },
-            text = { Text("导出会打包数据库和全部图片（不含 AI API Key）；恢复会覆盖当前数据并重启应用，建议先导出一份。", fontSize = 12.sp, color = Muted) },
+            text = { Text("导出会打包数据库和全部图片（不含 AI API Key）；恢复前会自动保存当前快照，再覆盖数据并重启应用。", fontSize = 13.sp, color = Muted) },
             confirmButton = {
                 TextButton(onClick = {
                     showBackup = false
@@ -203,7 +215,7 @@ fun SettingsScreen(vm: AppVm) {
     restoreUri?.let { uri ->
         AlertDialog(onDismissRequest = { restoreUri = null },
             title = { Text("恢复并覆盖当前数据？") },
-            text = { Text("恢复会替换本机错题、图片及设置，完成后应用会自动重启。请确认已导出当前备份。") },
+            text = { Text("恢复会替换本机错题、图片及设置，完成后应用会自动重启。恢复前会自动创建快照，可在设置里导出。") },
             confirmButton = { TextButton(onClick = { restoreUri = null; vm.importBackup(uri) }) { Text("恢复", color = Red) } },
             dismissButton = { TextButton(onClick = { restoreUri = null }) { Text("取消") } })
     }
@@ -214,12 +226,12 @@ fun SettingsScreen(vm: AppVm) {
             title = { Text("题笺", fontSize = 18.sp) },
             text = {
                 Column {
-                    Text("拍 → 认 → 分 → 练。", fontSize = 12.5.sp, color = Ink)
+                    Text("拍 → 认 → 分 → 练。", fontSize = 13.sp, color = Ink)
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "错题识别、自动分类、PDF 导出、间隔复习、知识点整理。\n" +
                             "所有数据保存在本机；AI 请求只会发往你填写的接口。",
-                        fontSize = 11.5.sp, lineHeight = 19.sp, color = Muted
+                        fontSize = 13.sp, lineHeight = 19.sp, color = Muted
                     )
                 }
             },
@@ -239,7 +251,7 @@ private fun StatCell(value: String, label: String, modifier: Modifier = Modifier
             value, fontSize = 24.sp, fontWeight = FontWeight.SemiBold,
             color = if (value == "0") Muted else Ink
         )
-        Text(label, fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
+        Text(label, fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
     }
 }
 
@@ -258,7 +270,7 @@ fun SettingRow(icon: ImageVector, title: String, subtitle: String, onClick: () -
         ) { Icon(icon, null, tint = Ink2, modifier = Modifier.size(18.dp)) }
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(title, fontSize = 15.sp, color = Ink, fontWeight = FontWeight.Medium)
-            Text(subtitle, fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 3.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 3.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Icon(Icons.Rounded.ChevronRight, null, tint = Muted, modifier = Modifier.size(18.dp))
     }
@@ -271,6 +283,7 @@ fun ProviderScreen(vm: AppVm) {
     var apiKey by remember(vm.provider) { mutableStateOf(vm.provider.apiKey) }
     var model by remember(vm.provider) { mutableStateOf(vm.provider.model) }
     var protocol by remember(vm.provider) { mutableStateOf(vm.provider.protocol) }
+    var advanced by remember { mutableStateOf(false) }
     var reasoning by remember(vm.provider) { mutableStateOf(vm.provider.reasoning) }
     var models by remember(vm.provider) { mutableStateOf(vm.provider.models) }
     var showPicker by remember { mutableStateOf(false) }
@@ -321,7 +334,7 @@ fun ProviderScreen(vm: AppVm) {
         ) {
             Text(
                 "接入任意 OpenAI 兼容服务。识别需要模型支持图片输入；分类、知识点整理会复用同一个模型。",
-                fontSize = 12.sp, lineHeight = 19.sp, color = Muted
+                fontSize = 13.sp, lineHeight = 19.sp, color = Muted
             )
 
             SectionLabel("常用提供商")
@@ -332,7 +345,7 @@ fun ProviderScreen(vm: AppVm) {
                 if (vm.profiles.isEmpty()) {
                     Text(
                         "填好地址和 Key 后点「保存当前」，多提供商一键切换",
-                        fontSize = 11.5.sp, color = Muted
+                        fontSize = 13.sp, color = Muted
                     )
                 }
                 vm.profiles.forEach { p ->
@@ -364,7 +377,7 @@ fun ProviderScreen(vm: AppVm) {
                     FieldLabel("接口地址")
                     TjTextField(
                         value = baseUrl, onValueChange = { baseUrl = it; models = emptyList(); fetchError = null; testResult = null; testError = null },
-                        placeholder = { Text("https://api.example.com/v1", fontSize = 12.5.sp, color = Muted) },
+                        placeholder = { Text("https://api.example.com/v1", fontSize = 13.sp, color = Muted) },
                         singleLine = true, modifier = Modifier.fillMaxWidth(),
                         shape = SmallShape
                     )
@@ -372,7 +385,7 @@ fun ProviderScreen(vm: AppVm) {
                     FieldLabel("API Key")
                     TjTextField(
                         value = apiKey, onValueChange = { apiKey = it },
-                        placeholder = { Text("sk-…", fontSize = 12.5.sp, color = Muted) },
+                        placeholder = { Text("sk-…", fontSize = 13.sp, color = Muted) },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true, modifier = Modifier.fillMaxWidth(),
                         shape = SmallShape
@@ -382,7 +395,7 @@ fun ProviderScreen(vm: AppVm) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TjTextField(
                             value = model, onValueChange = { model = it },
-                            placeholder = { Text("点右侧拉取，或手动输入", fontSize = 12.sp, color = Muted) },
+                            placeholder = { Text("点右侧拉取，或手动输入", fontSize = 13.sp, color = Muted) },
                             singleLine = true, modifier = Modifier.weight(1f),
                             shape = SmallShape
                         )
@@ -399,18 +412,20 @@ fun ProviderScreen(vm: AppVm) {
                                 models.isEmpty() -> "还没有拉取过模型"
                                 else -> "已拉取 ${models.size} 个模型"
                             },
-                            fontSize = 11.5.sp, color = Muted
+                            fontSize = 13.sp, color = Muted
                         )
                         Spacer(Modifier.weight(1f))
                         if (models.isNotEmpty()) {
                             Text(
-                                "浏览", fontSize = 11.5.sp, color = Accent,
+                                "浏览", fontSize = 13.sp, color = Accent,
                                 modifier = Modifier.tjClickable { showPicker = true }.padding(4.dp)
                             )
                         }
                     }
 
                     Spacer(Modifier.height(12.dp))
+                    TjButton(if(advanced) "收起高级设置" else "高级设置", style = ActionStyle.Quiet) { advanced = !advanced }
+                    if(advanced) {
                     FieldLabel("协议")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TjChip("chat/completions", protocol == "chat") { protocol = "chat" }
@@ -427,44 +442,45 @@ fun ProviderScreen(vm: AppVm) {
                     }
                     Text(
                         "推理模型（R1 / o 系 / Qwen-Thinking 等）的思考档位，随每次请求发送；「默认」不发参数，由服务商自定。不支持该参数的服务请保持默认。",
-                        fontSize = 10.5.sp, lineHeight = 16.sp, color = Muted, modifier = Modifier.padding(top = 6.dp)
+                        fontSize = 13.sp, lineHeight = 16.sp, color = Muted, modifier = Modifier.padding(top = 6.dp)
                     )
                 }
             }
 
+            }
             fetchError?.let {
                 Spacer(Modifier.height(12.dp))
                 Column(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(RedSoft)
                         .padding(12.dp)
                 ) {
-                    Text(it, fontSize = 11.sp, lineHeight = 17.sp, color = Red)
+                    Text(it, fontSize = 13.sp, lineHeight = 17.sp, color = Red)
                     Text(
-                        "重试", fontSize = 11.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                        "重试", fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.tjClickable { pull() }.padding(top = 6.dp)
                     )
                 }
             }
 
             Spacer(Modifier.height(16.dp))
-            TjButton("测试连接", Modifier.fillMaxWidth(), enabled = cfg().ready(),
+            TjButton("验证图片识别（会调用模型）", Modifier.fillMaxWidth(), enabled = cfg().ready(),
                 loading = testing, style = ActionStyle.Secondary) {
                 testing = true; testError = null; testResult = null
                 scope.launch {
                     try { testResult = vm.testProvider(cfg()) }
                     catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                    catch (e: Exception) { testError = e.message ?: "连接失败" }
+                    catch (e: Exception) { testError = providerError(e.message.orEmpty()) }
                     finally { testing = false }
                 }
             }
             testResult?.let {
                 Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.CheckCircle, null, tint = Green, modifier = Modifier.size(14.dp))
-                    Text(it, fontSize = 11.sp, color = Green, modifier = Modifier.padding(start = 5.dp))
+                    Text(it, fontSize = 13.sp, color = Green, modifier = Modifier.padding(start = 5.dp))
                 }
             }
             testError?.let {
-                Text(it, fontSize = 11.sp, lineHeight = 17.sp, color = Red, modifier = Modifier.padding(top = 10.dp))
+                Text(it, fontSize = 13.sp, lineHeight = 17.sp, color = Red, modifier = Modifier.padding(top = 10.dp))
             }
 
             SectionLabel("说明")
@@ -473,7 +489,7 @@ fun ProviderScreen(vm: AppVm) {
                     "· 拉取失败通常是 Key 无效、地址少了 /v1，或中转没开放 /models。\n" +
                     "· API Key 只保存在本机数据库，不上传。\n" +
                     "· http:// 开头的地址是明文传输，公网服务请尽量用 https://。",
-                fontSize = 11.sp, lineHeight = 18.sp, color = Muted
+                fontSize = 13.sp, lineHeight = 18.sp, color = Muted
             )
             Spacer(Modifier.height(50.dp))
         }
@@ -487,12 +503,12 @@ fun ProviderScreen(vm: AppVm) {
                 Column {
                     Text(
                         "会把当前表单里的地址、Key、协议、思考强度和模型列表一起存下来。",
-                        fontSize = 11.5.sp, lineHeight = 17.sp, color = Muted
+                        fontSize = 13.sp, lineHeight = 17.sp, color = Muted
                     )
                     Spacer(Modifier.height(10.dp))
                     TjTextField(
                         value = profileName, onValueChange = { profileName = it },
-                        placeholder = { Text("名字，如：DeepSeek 官方 / 硅基流动", fontSize = 12.5.sp, color = Muted) },
+                        placeholder = { Text("名字，如：DeepSeek 官方 / 硅基流动", fontSize = 13.sp, color = Muted) },
                         singleLine = true, colors = tjFieldColors(), modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -529,7 +545,7 @@ private val PRESETS = listOf(
 @Composable
 private fun FieldLabel(text: String) {
     Text(
-        text, fontSize = 12.sp, color = Ink2, fontWeight = FontWeight.SemiBold,
+        text, fontSize = 13.sp, color = Ink2, fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(bottom = 6.dp)
     )
 }
@@ -553,18 +569,18 @@ private fun ModelPickerSheet(
                     Text("选择模型", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
                     Text(
                         if (models.isEmpty()) "从 /models 拉取" else "共 ${models.size} 个 · 点击选用",
-                        fontSize = 11.sp, color = Muted, modifier = Modifier.padding(top = 3.dp)
+                        fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 3.dp)
                     )
                 }
                 Text(
-                    if (loading) "拉取中…" else "刷新", fontSize = 12.sp, color = Accent,
+                    if (loading) "拉取中…" else "刷新", fontSize = 13.sp, color = Accent,
                     modifier = Modifier.tjClickable { if (!loading) onRefresh() }.padding(8.dp)
                 )
             }
             Spacer(Modifier.height(10.dp))
             TjTextField(
                 value = query, onValueChange = { query = it },
-                placeholder = { Text("搜索模型", fontSize = 12.sp, color = Muted) },
+                placeholder = { Text("搜索模型", fontSize = 13.sp, color = Muted) },
                 singleLine = true, modifier = Modifier.fillMaxWidth(),
                 shape = SmallShape
             )
@@ -574,15 +590,15 @@ private fun ModelPickerSheet(
                     CircularProgressIndicator(Modifier.size(26.dp), color = Accent, strokeWidth = 2.dp)
                 }
                 error != null && models.isEmpty() -> Column(Modifier.fillMaxWidth().padding(vertical = 28.dp)) {
-                    Text(error, fontSize = 11.5.sp, lineHeight = 18.sp, color = Red)
+                    Text(error, fontSize = 13.sp, lineHeight = 18.sp, color = Red)
                     Text(
-                        "重试", fontSize = 12.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                        "重试", fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.tjClickable { onRefresh() }.padding(top = 10.dp)
                     )
                 }
                 filtered.isEmpty() -> Text(
                     if (models.isEmpty()) "还没有拉取到模型" else "没有匹配的模型",
-                    fontSize = 12.sp, color = Muted, modifier = Modifier.padding(vertical = 28.dp)
+                    fontSize = 13.sp, color = Muted, modifier = Modifier.padding(vertical = 28.dp)
                 )
                 else -> LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
                     items(filtered, key = { it }) { m ->
@@ -592,8 +608,8 @@ private fun ModelPickerSheet(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(m, fontSize = 12.5.sp, color = Ink, maxLines = 1)
-                                if (m == current) Text("当前使用", fontSize = 11.sp, color = Accent, modifier = Modifier.padding(top = 2.dp))
+                                Text(m, fontSize = 13.sp, color = Ink, maxLines = 1)
+                                if (m == current) Text("当前使用", fontSize = 13.sp, color = Accent, modifier = Modifier.padding(top = 2.dp))
                             }
                             if (m == current) Icon(Icons.Rounded.CheckCircle, null, tint = Accent, modifier = Modifier.size(17.dp))
                         }
@@ -617,18 +633,18 @@ fun UpdateDialog(vm: AppVm) {
         title = { Text("发现新版本 ${info.version}", fontSize = 16.sp) },
         text = {
             Column {
-                Text("当前 ${Updater.currentName()} → ${info.version}", fontSize = 11.5.sp, color = Muted)
+                Text("当前 ${Updater.currentName()} → ${info.version}", fontSize = 13.sp, color = Muted)
                 if (info.notes.isNotBlank()) {
-                    Text(info.notes.take(400), fontSize = 11.sp, lineHeight = 18.sp, color = Ink2, modifier = Modifier.padding(top = 8.dp))
+                    Text(info.notes.take(400), fontSize = 13.sp, lineHeight = 18.sp, color = Ink2, modifier = Modifier.padding(top = 8.dp))
                 }
                 if (downloading) {
                     Spacer(Modifier.height(12.dp))
                     LinearProgressIndicator(progress = { vm.updateProgress / 100f }, modifier = Modifier.fillMaxWidth(), color = Accent)
-                    Text("下载中 ${vm.updateProgress}%", fontSize = 11.sp, color = Muted, modifier = Modifier.padding(top = 6.dp))
+                    Text("下载中 ${vm.updateProgress}%", fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 6.dp))
                 }
                 if (ready != null) {
                     Spacer(Modifier.height(10.dp))
-                    Text("下载完成，点「安装」交给系统安装器。", fontSize = 11.sp, color = Green)
+                    Text("下载完成，点「安装」交给系统安装器。", fontSize = 13.sp, color = Green)
                 }
             }
         },
@@ -651,4 +667,12 @@ fun UpdateDialog(vm: AppVm) {
             TextButton(onClick = { vm.clearUpdate() }, enabled = !downloading) { Text("稍后") }
         }
     )
+}
+
+private fun providerError(raw: String): String = when {
+    raw.contains("401") || raw.contains("403") -> "密钥无效或无权限，请检查 API Key 和服务商权限。"
+    raw.contains("429") -> "请求过多或余额不足，请稍后重试并检查服务商额度。"
+    raw.contains("image", true) || raw.contains("vision", true) -> "模型可能不支持图片，请选择支持视觉输入的模型。"
+    raw.contains("timeout", true) -> "连接超时，请检查网络后重试。"
+    else -> "验证失败，请检查地址、密钥和模型。详情：" + raw.take(240)
 }
