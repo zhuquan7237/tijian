@@ -758,8 +758,8 @@ fun ReviewScreen(vm: AppVm) {
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     RateButton("不会", "明天再来", Red, Modifier.weight(1f)) { vm.rate(0) }
-                    RateButton("不熟", "${intervalLabel(vm.db.previewIntervalDays(q.mastery, 1))}", Amber, Modifier.weight(1f)) { vm.rate(1) }
-                    RateButton("掌握", "${intervalLabel(vm.db.previewIntervalDays(q.mastery, 2))}后", Green, Modifier.weight(1f)) { vm.rate(2) }
+                    RateButton("不熟", intervalLabel(vm.db.previewIntervalDays(q.mastery, 1)), Amber, Modifier.weight(1f)) { vm.rate(1) }
+                    RateButton("掌握", intervalLabel(vm.db.previewIntervalDays(q.mastery, 2)), Green, Modifier.weight(1f)) { vm.rate(2) }
                 }
                 Text(
                     "点错了？点顶部「撤销上一题」",
@@ -773,7 +773,7 @@ fun ReviewScreen(vm: AppVm) {
     }
 }
 
-private fun intervalLabel(days: Long): String = if (days <= 1L) "明天" else "约 $days 天"
+private fun intervalLabel(days: Long): String = if (days <= 1L) "明天" else "约 $days 天后"
 
 @Composable
 private fun RateButton(text: String, sub: String, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
