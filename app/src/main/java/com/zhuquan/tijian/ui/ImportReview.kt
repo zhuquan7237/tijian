@@ -767,7 +767,8 @@ fun ReviewScreen(vm: AppVm) {
                     modifier = Modifier.padding(top = 8.dp).align(Alignment.CenterHorizontally)
                 )
             }
-            Spacer(Modifier.height(16.dp))
+            // 底部留出追问悬浮球的高度，别让它压住自评按钮
+            Spacer(Modifier.height(84.dp))
         }
     }
 }
