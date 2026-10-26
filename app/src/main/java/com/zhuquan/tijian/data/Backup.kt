@@ -39,6 +39,7 @@ object Backup {
         try {
             if (tmpDb.exists()) {
                 SQLiteDatabase.openDatabase(tmpDb.path, null, SQLiteDatabase.OPEN_READWRITE).use { t ->
+                    t.execSQL("PRAGMA secure_delete=ON")
                     t.execSQL("DELETE FROM setting WHERE k='ai.apiKey'")
                     t.rawQuery("SELECT v FROM setting WHERE k='ai.profiles'", null).use { c ->
                         if(c.moveToFirst()) {
@@ -47,6 +48,8 @@ object Backup {
                             t.execSQL("UPDATE setting SET v=? WHERE k='ai.profiles'", arrayOf(profiles.toString()))
                         }
                     }
+                    // Rebuild pages too: deleted credentials must not survive in free space.
+                    t.execSQL("VACUUM")
                 }
             }
             var count = 0

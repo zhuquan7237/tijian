@@ -38,6 +38,9 @@ class BackupSafetyTest {
                 }
                 sql.rawQuery("SELECT COUNT(*) FROM question", null).use { it.moveToFirst(); assertEquals(1, it.getInt(0)) }
             }
+            val raw = extracted.readBytes().toString(Charsets.ISO_8859_1)
+            assertFalse(raw.contains("secret-current"))
+            assertFalse(raw.contains("secret-saved"))
             assertEquals("secret-current", db.provider().apiKey)
         } finally { db.close(); ctx.deleteDatabase(name); extracted.delete() }
     }

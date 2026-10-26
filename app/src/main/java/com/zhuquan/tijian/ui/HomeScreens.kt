@@ -1121,7 +1121,7 @@ fun EditQuestionDialog(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
     var saving by remember { mutableStateOf(false) }
     var preview by remember { mutableStateOf(false) }
     FullEditor(
-        onDismissRequest = { onDone(q.copy()) },
+        onDismissRequest = { if (!saving) onDone(q.copy()) },
         title = { Text("编辑题目", fontSize = 16.sp) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -1163,7 +1163,7 @@ fun EditQuestionDialog(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
                 }
             }) { Text(if(saving) "保存中…" else "保存") }
         },
-        dismissButton = { TextButton(onClick = { onDone(q.copy()) }) { Text("稍后继续") } }
+        dismissButton = { TextButton(enabled = !saving, onClick = { onDone(q.copy()) }) { Text("稍后继续") } }
     )
 }
 

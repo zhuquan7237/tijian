@@ -414,6 +414,13 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                     saved++
                 }
             }
+            // Commit questions and removal from the durable inbox atomically.
+            getSetting("drafts.v1")?.let { raw ->
+                val committed = drafts.map { it.id }.toSet()
+                val remaining = SessionCodec.decodeDrafts(raw).filterNot { it.id in committed }
+                putSetting("drafts.v1", SessionCodec.encodeDrafts(remaining))
+                if (remaining.isEmpty()) putSetting("drafts.batch", "")
+            }
             sql.setTransactionSuccessful()
             return saved to skipped
         } finally {

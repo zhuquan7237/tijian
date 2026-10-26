@@ -17,7 +17,7 @@ object SessionCodec {
     }.toString()
 
     fun decodeDrafts(raw: String): List<DraftQuestion> {
-        val arr = JSONArray(raw)
+        val arr = JSONArray(raw.ifBlank { "[]" })
         return (0 until arr.length()).map { i ->
             val d = arr.getJSONObject(i)
             DraftQuestion(id = d.getString("id"), imageId = d.optString("imageId"), imagePath = d.optString("imagePath"),

@@ -226,7 +226,12 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val out = importer.import(listOf(Uri.fromFile(File(draft.imagePath))), "retry") { _, _, _ -> }
-                pending = pending.flatMap { if (it.id == id) out.drafts.ifEmpty { listOf(it) } else listOf(it) }
+                pending = pending.flatMap { existing ->
+                    if (existing.id != id) listOf(existing)
+                    else out.drafts.mapIndexed { index, replacement ->
+                        if (index == 0) replacement.copy(customTag = existing.customTag) else replacement
+                    }.ifEmpty { listOf(existing) }
+                }
                 importErrors = out.errors; persistPending()
             } catch (e: Exception) { toast = "重试失败，原草稿已保留：${e.message}" }
             finally { busy = false }

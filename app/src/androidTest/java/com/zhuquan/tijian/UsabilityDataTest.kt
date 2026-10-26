@@ -14,7 +14,9 @@ class UsabilityDataTest {
     }
     @Test fun textOnlyImportIsIdempotentAndSearchesLiteralQuestionNumber() = withDb { db ->
         val draft = DraftQuestion(imageId = "", imagePath = "", stem = "例题", customTag = "A_10%")
+        db.putSetting("drafts.v1", SessionCodec.encodeDrafts(listOf(draft)))
         assertEquals(1 to 0, db.saveDrafts(listOf(draft), null))
+        assertEquals("[]", db.getSetting("drafts.v1"))
         assertEquals(0 to 1, db.saveDrafts(listOf(draft), null))
         assertNull(db.question(draft.id)!!.imageId)
         assertEquals(draft.id, db.questions(query = "A_10%").single().id)

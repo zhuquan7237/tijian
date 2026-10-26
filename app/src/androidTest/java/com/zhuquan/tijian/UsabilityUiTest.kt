@@ -51,4 +51,57 @@ class UsabilityUiTest {
             screen.recycle()
         } finally { instrumentation.runOnMainSync { host.finish() } }
     }
+    @Test fun learningListAndTableFitSmallScreenAndPreserveNavigation() {
+        val context = instrumentation.targetContext
+        val app = context.applicationContext as App
+        val draft = com.zhuquan.tijian.data.DraftQuestion(imageId = "", imagePath = "",
+            stem = "求极限：当 x 趋于零时，sin(x) / x 的极限是多少？", answer = "1",
+            analysis = "利用重要极限求解。", categoryName = "数学/界面回归", customTag = "卷一 · 12")
+        app.db.saveDrafts(listOf(draft), null)
+        val categoryId = app.db.question(draft.id)!!.categoryId!!
+        val host = instrumentation.startActivitySync(Intent(context, RichTextRegressionActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as RichTextRegressionActivity
+        val store = androidx.lifecycle.ViewModelStore()
+        lateinit var vm: AppVm
+        fun screenshot(name: String) {
+            instrumentation.waitForIdleSync()
+            Thread.sleep(600)
+            val bitmap = instrumentation.uiAutomation.takeScreenshot()
+            val dir = context.getExternalFilesDir("usability")!!.apply { mkdirs() }
+            File(dir, name + ".png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        try {
+            instrumentation.runOnMainSync {
+                vm = AppVm(app); store.put("vm", vm)
+                host.setContent {
+                    TijianTheme {
+                        CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.3f)) {
+                            Box(Modifier.width(androidx.compose.ui.unit.Dp(320f)).fillMaxHeight()) { AppRoot(vm) }
+                        }
+                    }
+                }
+            }
+            Thread.sleep(700)
+            screenshot("home-small-screen")
+            instrumentation.runOnMainSync { vm.go(Route.Category(categoryId)) }
+            screenshot("learning-list-small-screen")
+            val root = instrumentation.uiAutomation.rootInActiveWindow
+            assertTrue(root.findAccessibilityNodeInfosByText("学习列表").isNotEmpty())
+            val chips = root.findAccessibilityNodeInfosByText("整理表格")
+            assertTrue(chips.isNotEmpty())
+            var node: android.view.accessibility.AccessibilityNodeInfo? = chips.first()
+            while(node != null && !node.isClickable) node = node.parent
+            assertTrue(node?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true)
+            screenshot("table-small-screen")
+            instrumentation.runOnMainSync { vm.go(Route.Detail(draft.id)) }
+            screenshot("detail-small-screen")
+            instrumentation.runOnMainSync { vm.back() }
+            assertEquals(Route.Category(categoryId), vm.route)
+        } finally {
+            instrumentation.runOnMainSync { store.clear(); host.finish() }
+            app.db.deleteQuestion(draft.id); app.db.purgeQuestion(draft.id)
+        }
+    }
+
 }
