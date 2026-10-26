@@ -127,6 +127,80 @@ class AiClient {
         "${if (text.isBlank()) "连接成功" else text.take(40)} · ${ms}ms"
     }
 
+    /**
+     * 验证「能否识别图片」——导入识别是本应用的核心链路，只测文本聊天会漏掉
+     * 「模型不支持视觉输入」这一最常见的坑。成功返回耗时；失败抛出带下一步指引的 AiException。
+     */
+    suspend fun testVision(cfg: ProviderConfig): String = withContext(Dispatchers.IO) {
+        // 1x1 红色像素的 JPEG，足够让视觉模型回答，又几乎不耗 token
+        val jpeg = android.util.Base64.decode(
+            "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD3+iiigD//2Q==",
+            android.util.Base64.DEFAULT
+        )
+        val b64 = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP)
+        val prompt = "这张图片是什么颜色？只回答颜色名称。"
+        val body = if (cfg.protocol == "responses") {
+            JSONObject().apply {
+                put("model", cfg.model)
+                put("input", JSONArray().put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", JSONArray()
+                        .put(JSONObject().apply { put("type", "input_text"); put("text", prompt) })
+                        .put(JSONObject().apply {
+                            put("type", "input_image")
+                            put("image_url", "data:image/jpeg;base64,$b64")
+                        }))
+                }))
+                put("max_output_tokens", 30)
+            }
+        } else {
+            JSONObject().apply {
+                put("model", cfg.model)
+                put("messages", JSONArray().put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", JSONArray()
+                        .put(JSONObject().apply { put("type", "text"); put("text", prompt) })
+                        .put(JSONObject().apply {
+                            put("type", "image_url")
+                            put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$b64"))
+                        }))
+                }))
+                put("max_tokens", 30)
+            }
+        }
+        val started = System.currentTimeMillis()
+        try {
+            val text = call(cfg, body)
+            val ms = System.currentTimeMillis() - started
+            if (text.isBlank()) throw AiException("模型返回了空内容")
+            "能识别图片 · ${ms}ms"
+        } catch (e: AiException) {
+            throw AiException(classifyFailure(e.message ?: ""))
+        } catch (e: Exception) {
+            throw AiException(classifyFailure(e.message ?: e.javaClass.simpleName))
+        }
+    }
+
+    /** 把底层报错翻译成「下一步该做什么」。 */
+    private fun classifyFailure(raw: String): String {
+        val msg = raw.lowercase()
+        return when {
+            "401" in msg || "403" in msg || "invalid api key" in msg || "unauthorized" in msg || "密钥" in raw ->
+                "密钥无效或已过期。回到上方检查 API Key 是否复制完整，改好后重新验证。"
+            "404" in msg && ("model" in msg || "not found" in msg || "不存在" in raw) ->
+                "服务商没有这个模型。点「拉取」查看可用列表，换一个模型名。"
+            "404" in msg ->
+                "接口地址不存在。检查是否漏了结尾的 /v1，或中转站路径不对。"
+            "429" in msg || "rate" in msg ->
+                "请求太频繁或额度不足。稍等片刻再验证，或去服务商控制台确认余额。"
+            "image" in msg && ("not support" in msg || "unsupported" in msg || "does not support" in msg || "multimodal" in msg || "vision" in msg) ->
+                "这个模型不支持图片输入。换一个支持视觉的模型（名字常带 vl / vision / 4o / gemini 等字样）。"
+            "timeout" in msg || "timed out" in msg || "unable to resolve" in msg || "network" in msg || "econn" in msg || "网络" in raw ->
+                "连不上服务商。检查网络后重试；地址必须是 https:// 开头的完整接口地址。"
+            else -> raw.take(200)
+        }
+    }
+
     suspend fun recognize(cfg: ProviderConfig, jpeg: ByteArray): List<ParsedQuestion> =
         withContext(Dispatchers.IO) {
             val b64 = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP)

@@ -38,6 +38,7 @@ sealed interface Route {
     data object Review : Route
     data class Doc(val id: String) : Route
     data object Provider : Route
+    data object Trash : Route
 }
 
 class AppVm(app: Application) : AndroidViewModel(app) {
@@ -77,6 +78,54 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     var pendingBatch by androidx.compose.runtime.mutableStateOf<String?>(null)
         private set
     private var importJob: kotlinx.coroutines.Job? = null
+
+    /** 上一次导入里识别失败的原图：只重跑失败的那几张，已完成的不动。 */
+    var lastFailedUris by androidx.compose.runtime.mutableStateOf<List<Uri>>(emptyList())
+        private set
+
+    /** 待确认草稿自动落盘：进程被系统回收后，校对进度照常恢复。 */
+    private val draftsFile get() = File(getApplication<Application>().filesDir, "import_drafts.json")
+
+    private fun saveDraftState() {
+        val snapshot = pending
+        val batch = pendingBatch
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                if (snapshot.isEmpty()) {
+                    draftsFile.delete()
+                } else {
+                    val root = org.json.JSONObject()
+                    root.put("batch", batch ?: "")
+                    root.put("drafts", org.json.JSONArray().apply { snapshot.forEach { put(it.toJson()) } })
+                    draftsFile.writeText(root.toString())
+                }
+            }
+        }
+    }
+
+    private fun restoreDrafts() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val restored = runCatching {
+                val root = org.json.JSONObject(draftsFile.readText())
+                val arr = root.optJSONArray("drafts") ?: return@runCatching null
+                val list = ArrayList<DraftQuestion>()
+                for (i in 0 until arr.length()) {
+                    arr.optJSONObject(i)?.let { list.add(DraftQuestion.fromJson(it)) }
+                }
+                // 图片文件可能已被系统清理；丢了图的草稿仍保留文字部分
+                val cleaned = list.map { d ->
+                    if (d.imagePath != null && !File(d.imagePath).exists()) d.copy(imagePath = null, imageId = null) else d
+                }
+                cleaned to root.optString("batch").takeIf { it.isNotBlank() }
+            }.getOrNull()
+            withContext(Dispatchers.Main) {
+                if (pending.isEmpty() && restored != null && restored.first.isNotEmpty()) {
+                    pending = restored.first
+                    pendingBatch = restored.second
+                }
+            }
+        }
+    }
 
     /** 连拍工作台：拍一张回到这里，可继续拍，最后一起识别。
      *  文件落在 filesDir/capture_staging 并持久化清单，进程被杀也能接着用。 */
@@ -135,13 +184,6 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    var reviewQueue by androidx.compose.runtime.mutableStateOf<List<QuestionRow>>(emptyList())
-        private set
-    var reviewIndex by androidx.compose.runtime.mutableStateOf(0)
-        private set
-    var revealAnswer by androidx.compose.runtime.mutableStateOf(false)
-        private set
-
     var busy by androidx.compose.runtime.mutableStateOf(false)
     var busyLabel by androidx.compose.runtime.mutableStateOf("")
     var lastExport by androidx.compose.runtime.mutableStateOf<File?>(null)
@@ -160,11 +202,68 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     var updateReady by androidx.compose.runtime.mutableStateOf<File?>(null)
         private set
 
+    /** 阅读字号缩放：1f 标准 / 1.1f 大 / 1.2f 特大（题干、解析、复习页）。 */
+    var readingScaleValue by androidx.compose.runtime.mutableFloatStateOf(1f)
+        private set
+
+    /** 配置 AI 后要回到的导入任务（Capture 工作台或 Import 校对页）。 */
+    var returnAfterProvider by androidx.compose.runtime.mutableStateOf<Route?>(null)
+
+    /** 删除后的撤销条：文案 + 恢复动作，几秒后自动消失。 */
+    var undoMsg by androidx.compose.runtime.mutableStateOf<String?>(null)
+        private set
+    private var undoAction: (() -> Unit)? = null
+    private var undoJob: kotlinx.coroutines.Job? = null
+
+    fun showUndo(msg: String, action: () -> Unit) {
+        undoMsg = msg
+        undoAction = action
+        undoJob?.cancel()
+        undoJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(6000)
+            if (undoMsg == msg) { undoMsg = null; undoAction = null }
+        }
+    }
+
+    fun runUndo() {
+        undoAction?.invoke()
+        undoJob?.cancel()
+        undoMsg = null
+        undoAction = null
+    }
+
+    // ---------- 回收站 ----------
+
+    var trashCount by androidx.compose.runtime.mutableIntStateOf(0)
+        private set
+
+    fun refreshTrash() {
+        viewModelScope.launch(Dispatchers.IO) { trashCount = db.trashCount() }
+    }
+
+    fun restoreQuestions(ids: List<String>) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            ids.forEach { db.restoreQuestion(it) }
+            withContext(Dispatchers.Main) { refresh(); refreshTrash() }
+        }
+    }
+
+    fun purgeQuestions(ids: List<String>) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            ids.forEach { db.purgeQuestion(it) }
+            withContext(Dispatchers.Main) { refresh(); refreshTrash() }
+        }
+    }
+
     init {
         refresh()
         restoreCaptureManifest()
+        restoreDrafts()
         // 外观偏好：0 跟随系统 / 1 浅色 / 2 深色
         tjAppearance.intValue = db.getSetting("appearance")?.toIntOrNull() ?: 0
+        readingScaleValue = db.getSetting("readingScale")?.toFloatOrNull() ?: 1f
         viewModelScope.launch(Dispatchers.IO) { profiles = db.providerProfiles() }
         val last = db.getSetting("update.lastCheck")?.toLongOrNull() ?: 0L
         if (System.currentTimeMillis() - last > 6 * 3600_000L) checkUpdate(silent = true)
@@ -177,6 +276,122 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun setReadingScale(scale: Float) {
+        readingScaleValue = scale.coerceIn(0.9f, 1.4f)
+        viewModelScope.launch(Dispatchers.IO) { db.putSetting("readingScale", readingScaleValue.toString()) }
+    }
+
+    /** 分类页视图：0 学习列表（默认，看题干）/ 1 整理表格（批量改题号、导出）。 */
+    var categoryView by androidx.compose.runtime.mutableIntStateOf(
+        db.getSetting("category.view")?.toIntOrNull() ?: 0
+    )
+        private set
+
+    fun chooseCategoryView(v: Int) {
+        categoryView = v.coerceIn(0, 1)
+        viewModelScope.launch(Dispatchers.IO) { db.putSetting("category.view", categoryView.toString()) }
+    }
+
+    /** 详情页折叠偏好（全局记住用户选择）：答案解析 / 笔记 默认展开。 */
+    var answerExpanded by androidx.compose.runtime.mutableStateOf(db.getSetting("ui.answerExpanded") != "0")
+        private set
+    var noteExpanded by androidx.compose.runtime.mutableStateOf(db.getSetting("ui.noteExpanded") != "0")
+        private set
+
+    fun chooseAnswerExpanded(v: Boolean) {
+        answerExpanded = v
+        viewModelScope.launch(Dispatchers.IO) { db.putSetting("ui.answerExpanded", if (v) "1" else "0") }
+    }
+
+    fun chooseNoteExpanded(v: Boolean) {
+        noteExpanded = v
+        viewModelScope.launch(Dispatchers.IO) { db.putSetting("ui.noteExpanded", if (v) "1" else "0") }
+    }
+
+    // ---------- 首次使用引导 ----------
+
+    var showOnboarding by androidx.compose.runtime.mutableStateOf(false)
+        private set
+
+    fun maybeShowOnboarding() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val seen = db.getSetting("onboarded") != null
+            val total = db.stats().total
+            withContext(Dispatchers.Main) {
+                if (!seen && total == 0) showOnboarding = true
+            }
+        }
+    }
+
+    fun dismissOnboarding() {
+        showOnboarding = false
+        viewModelScope.launch(Dispatchers.IO) { db.putSetting("onboarded", "1") }
+    }
+
+    /** 「体验示例题」：不依赖 AI，内置三道典型题让用户先摸清复习闭环。 */
+    fun loadSampleQuestions() {
+        viewModelScope.launch {
+            busy = true; busyLabel = "载入示例题"
+            try {
+                val n = withContext(Dispatchers.IO) {
+                    val drafts = sampleDrafts()
+                    val (saved, _) = db.saveDrafts(drafts, null)
+                    saved
+                }
+                dismissOnboarding()
+                refresh()
+                toast = "已载入 $n 道示例题，去「今日复习」试试流程"
+            } finally {
+                busy = false; busyLabel = ""
+            }
+        }
+    }
+
+    private fun sampleDrafts(): List<DraftQuestion> {
+        fun arr(vararg items: String) = org.json.JSONArray(items.toList()).toString()
+        return listOf(
+            DraftQuestion(
+                type = "选择题",
+                stem = "函数 ${'$'}f(x)=x^2-2x${'$'} 在区间 ${'$'}[0,3]${'$'} 上的最大值为（　）",
+                options = arr("A. 0", "B. 2", "C. 3", "D. 4"),
+                answer = "C",
+                analysis = "思路：先求驻点，再比较驻点与端点处的函数值。\n1. 求导：${'$'}f'(x)=2x-2${'$'}，令 ${'$'}f'(x)=0${'$'} 得驻点 ${'$'}x=1${'$'}。\n2. 计算各点函数值：${'$'}f(0)=0${'$'}，${'$'}f(1)=-1${'$'}，${'$'}f(3)=3${'$'}。\n3. 三者比较，最大值在端点 ${'$'}x=3${'$'} 处取得。\n易错：只比较驻点值、漏掉端点是本题最常见的失分点。\n结论：最大值为 3，选 C。",
+                tags = arr("二次函数", "闭区间最值"),
+                needFormulas = arr("求导公式 ${'$'}(x^2)'=2x${'$'}"),
+                needConcepts = arr("闭区间上的最值要比较驻点与端点"),
+                needMethods = arr("求导找驻点，再比较端点"),
+                categoryName = "数学/函数与导数",
+                customTag = "示例 1",
+                confidence = 1.0,
+            ),
+            DraftQuestion(
+                type = "解答题",
+                stem = "求极限 ${'$'}\\lim_{x\\to 0}\\dfrac{\\sin x - x}{x^3}${'$'}。",
+                answer = "${'$'}-\\dfrac{1}{6}${'$'}",
+                analysis = "思路：${'$'}\\sin x${'$'} 用泰勒展开比反复洛必达更快。\n1. 展开：${'$'}\\sin x = x-\\dfrac{x^3}{6}+o(x^3)${'$'}。\n2. 代入分子：${'$'}\\sin x - x = -\\dfrac{x^3}{6}+o(x^3)${'$'}。\n3. 与 ${'$'}x^3${'$'} 相除得极限 ${'$'}-\\dfrac{1}{6}${'$'}。\n易错：等价无穷小 ${'$'}\\sin x\\sim x${'$'} 只能用于乘除因子，相减时直接替换会得到 ${'$'}0${'$'}。\n结论：${'$'}-\\dfrac{1}{6}${'$'}。",
+                tags = arr("极限", "泰勒展开"),
+                needFormulas = arr("${'$'}\\sin x = x-\\dfrac{x^3}{6}+o(x^3)${'$'}"),
+                needConcepts = arr("等价无穷小替换的适用条件"),
+                needMethods = arr("泰勒展开求极限"),
+                categoryName = "数学/极限",
+                customTag = "示例 2",
+                confidence = 1.0,
+            ),
+            DraftQuestion(
+                type = "解答题",
+                stem = "简述面心立方（FCC）结构的配位数与致密度，并与体心立方（BCC）作比较。",
+                answer = "FCC：配位数 12，致密度 0.74；BCC：配位数 8，致密度 0.68。",
+                analysis = "思路：从两种结构的硬球堆积方式入手。\n1. FCC 中每个原子与 12 个最近邻原子相切，配位数为 12。\n2. 按硬球模型计算，FCC 致密度为 ${'$'}\\dfrac{\\pi}{\\sqrt{18}}\\approx 0.74${'$'}。\n3. BCC 每个原子只有 8 个最近邻，致密度 ${'$'}\\approx 0.68${'$'}，堆积更松。\n易错：把 BCC 的配位数 8 记成 12，两种结构的致密度容易混淆。\n结论：FCC 堆积更密（0.74 > 0.68），配位数 12 > 8。",
+                tags = arr("晶体结构", "金属晶体"),
+                needConcepts = arr("配位数的定义", "致密度的定义"),
+                needMethods = arr("硬球堆积模型"),
+                categoryName = "专业课/晶体结构",
+                customTag = "示例 3",
+                confidence = 1.0,
+            ),
+        )
+    }
+
     var dataRevision by androidx.compose.runtime.mutableIntStateOf(0)
         private set
 
@@ -186,8 +401,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             val st = db.stats()
             val ds = db.docs()
             val p = db.provider()
+            val trash = db.trashCount()
             withContext(Dispatchers.Main) {
-                categories = cats; stats = st; docs = ds; provider = p; dataRevision++
+                categories = cats; stats = st; docs = ds; provider = p; trashCount = trash; dataRevision++
             }
         }
     }
@@ -321,16 +537,24 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         importUris(list, "camera")
     }
 
-    /** 识别中途停止：取消协程与在途 HTTP，已入库的图片保留。 */
+    /** 识别中途停止：取消协程与在途 HTTP；已识别完成的草稿保留为待确认。 */
     fun cancelImport() {
         if (!importing) return
         importJob?.cancel()
         importJob = null
         ai.cancelActive()
+        val (done, errs) = importer.consumePartial()
         importing = false
         importLabel = ""
         importProgress = 0f
-        toast = "已停止导入，可稍后继续"
+        if (done.isNotEmpty()) {
+            pending = pending + done
+            importErrors = errs
+            saveDraftState()
+            toast = "已停止识别，${done.size} 道题已存为待确认"
+        } else {
+            toast = "已停止导入，可稍后继续"
+        }
     }
 
     fun importUris(uris: List<Uri>, source: String = "share") {
@@ -340,11 +564,19 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             toast = "请先确认或移除上一批题目，再导入新图片"
             return
         }
+        // 没配 AI 就直接进识别只会得到一堆空草稿；先去配置，配好自动回到导入任务
+        if (!db.provider().ready()) {
+            returnAfterProvider = if (captureUris.isNotEmpty()) Route.Capture else Route.Import
+            toast = "先配置 AI 接口，保存后自动回到刚才的导入"
+            go(Route.Provider)
+            return
+        }
         importJob = viewModelScope.launch {
             importing = true
             importProgress = 0f
             importLabel = "准备中"
             importErrors = emptyList()
+            lastFailedUris = emptyList()
             pending = emptyList()
             route = Route.Import
             try {
@@ -360,7 +592,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 pending = out.drafts
                 pendingBatch = out.batchId
                 importErrors = out.errors
+                lastFailedUris = out.failedUris
                 importing = false
+                saveDraftState()
                 if (pending.isEmpty()) {
                     toast = "没有可入库的题目"
                 } else if (db.provider().ready()) {
@@ -371,7 +605,41 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 importing = false
                 importErrors = listOf(e.message ?: "导入失败")
+                saveDraftState()
                 toast = "导入失败：${e.message}"
+            }
+        }
+    }
+
+    /** 只重跑上次识别失败的几张图，已完成的草稿保持不动。 */
+    fun retryFailedImports() {
+        val uris = lastFailedUris
+        if (uris.isEmpty() || importing || busy) return
+        importJob = viewModelScope.launch {
+            importing = true
+            importProgress = 0f
+            importLabel = "重试失败的图片"
+            importErrors = emptyList()
+            lastFailedUris = emptyList()
+            route = Route.Import
+            try {
+                val out = importer.import(uris, "retry") { done, total, label ->
+                    importProgress = done.toFloat() / total.coerceAtLeast(1)
+                    importLabel = label
+                }
+                pending = pending + out.drafts
+                if (pendingBatch == null) pendingBatch = out.batchId
+                importErrors = out.errors
+                lastFailedUris = out.failedUris
+                importing = false
+                saveDraftState()
+                if (db.provider().ready()) autoClassify()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                importing = false
+            } catch (e: Exception) {
+                importing = false
+                importErrors = listOf(e.message ?: "重试失败")
+                toast = "重试失败：${e.message}"
             }
         }
     }
@@ -386,6 +654,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             try {
                 val map = ai.classify(provider, list, categories)
                 pending = pending.map { d -> map[d.id]?.let { d.copy(categoryName = it) } ?: d }
+                saveDraftState()
             } catch (e: Exception) {
                 toast = "自动分类失败，可手动选择"
             } finally {
@@ -396,10 +665,41 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     fun updateDraft(updated: DraftQuestion) {
         pending = pending.map { if (it.id == updated.id) updated else it }
+        saveDraftState()
     }
 
     fun removeDraft(id: String) {
         pending = pending.filter { it.id != id }
+        saveDraftState()
+    }
+
+    /** 丢弃整批待确认题目（含草稿文件），需要用户在界面上明确确认过。 */
+    fun discardPending() {
+        pending = emptyList()
+        pendingBatch = null
+        importErrors = emptyList()
+        lastFailedUris = emptyList()
+        saveDraftState()
+        toast = "已丢弃本批待确认题目"
+    }
+
+    /** 给无图草稿补一张图（手动录入的图片是选填项）。 */
+    fun attachDraftImage(draftId: String, uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val img = withContext(Dispatchers.IO) { importer.ingestOnly(uri) }
+                pending = pending.map { if (it.id == draftId) it.copy(imageId = img.id, imagePath = img.path) else it }
+                saveDraftState()
+            } catch (e: Exception) {
+                toast = "图片保存失败：${e.message}"
+            }
+        }
+    }
+
+    /** 移除草稿上的图片（文字保留）。 */
+    fun detachDraftImage(draftId: String) {
+        pending = pending.map { if (it.id == draftId) it.copy(imageId = null, imagePath = null) else it }
+        saveDraftState()
     }
 
     fun confirmPending(only: List<DraftQuestion>? = null) {
@@ -415,6 +715,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 val completed = list.map { it.id }.toSet()
                 pending = pending.filterNot { it.id in completed }
                 if (pending.isEmpty()) { pendingBatch = null; home() }
+                saveDraftState()
                 refresh()
                 toast = if (skipped > 0) "已入库 $saved 题 · 跳过 $skipped 道重复" else "已入库 $saved 题"
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -448,6 +749,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 )
                 pendingBatch = null
                 importing = false
+                saveDraftState()
                 route = Route.Import
             } catch (e: Exception) {
                 importing = false
@@ -456,28 +758,124 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** 真正的手动录入：直接输入文字，图片是选填项（可之后再补）。 */
+    fun addManualText() {
+        if (importing || busy) return
+        if (pending.isNotEmpty()) {
+            route = Route.Import
+            toast = "请先处理上一批待确认题目"
+            return
+        }
+        pending = listOf(DraftQuestion(type = "", stem = "", categoryName = ""))
+        pendingBatch = null
+        importErrors = emptyList()
+        saveDraftState()
+        route = Route.Import
+    }
+
     // ---------- review ----------
 
-    fun startReview(includeAll: Boolean = false) {
+    /** 复习模式：到期复习（队列）／专项练习（某个分类）／自由练习（全部题）。 */
+    enum class ReviewMode(val label: String) {
+        DUE("到期复习"), CATEGORY("专项练习"), FREE("自由练习"),
+    }
+
+    var reviewQueue by androidx.compose.runtime.mutableStateOf<List<QuestionRow>>(emptyList())
+        private set
+    var reviewIndex by androidx.compose.runtime.mutableStateOf(0)
+        private set
+    var revealAnswer by androidx.compose.runtime.mutableStateOf(false)
+        private set
+    var reviewMode by androidx.compose.runtime.mutableStateOf(ReviewMode.DUE)
+        private set
+
+    /** 本轮自评「不会」的题：完成页可针对它们再练一轮。 */
+    val wrongThisRound = androidx.compose.runtime.mutableStateListOf<String>()
+
+    /** 评分历史：支持「撤销上一题评分」，点错不再无法挽回。 */
+    private val rateHistory = ArrayDeque<Pair<QuestionRow, com.zhuquan.tijian.data.Db.ReviewSnapshot>>()
+
+    /** 是否还有可撤销的评分（复习页显示「撤销上一题」按钮用）。 */
+    var canUndoRate by androidx.compose.runtime.mutableStateOf(false)
+        private set
+
+    /** 题量偏好：5 / 10 / 0=全部；记住上次的选择。 */
+    var reviewCountPref by androidx.compose.runtime.mutableIntStateOf(
+        db.getSetting("review.count")?.toIntOrNull()?.takeIf { it == 5 || it == 10 || it == 0 } ?: 10
+    )
+        private set
+
+    /** 揭晓答案前是否直接展示原图。默认隐藏：原图里可能有手写答案或老师批注。 */
+    var showImageBeforeReveal by androidx.compose.runtime.mutableStateOf(
+        db.getSetting("review.showImage") == "1"
+    )
+        private set
+
+    fun chooseReviewCount(n: Int) {
+        reviewCountPref = n
+        viewModelScope.launch(Dispatchers.IO) { db.putSetting("review.count", n.toString()) }
+    }
+
+    fun chooseShowImage(v: Boolean) {
+        showImageBeforeReveal = v
+        viewModelScope.launch(Dispatchers.IO) { db.putSetting("review.showImage", if (v) "1" else "0") }
+    }
+
+    /** 上一轮没复习完时，首页给「继续上次复习」入口。 */
+    val canResumeReview: Boolean
+        get() = reviewQueue.isNotEmpty() && reviewIndex in 1 until reviewQueue.size
+
+    fun resumeReview() { if (canResumeReview) { revealAnswer = false; route = Route.Review } }
+
+    /** 一轮结束回到首页：清掉队列，避免「继续上次复习」残留。 */
+    fun clearReviewSession() {
+        reviewQueue = emptyList(); reviewIndex = 0; revealAnswer = false
+        wrongThisRound.clear(); rateHistory.clear(); canUndoRate = false
+    }
+
+    fun startReview(mode: ReviewMode = ReviewMode.DUE, count: Int = reviewCountPref, categoryId: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
-            val list = if (includeAll) db.questions().take(40) else db.dueQuestions(40)
+            val base = when (mode) {
+                ReviewMode.DUE -> db.dueQuestions(if (count > 0) count else 200)
+                ReviewMode.CATEGORY -> {
+                    val all = db.questions(categoryId)
+                    all.filter { it.mastery < 4 }.ifEmpty { all }
+                }
+                ReviewMode.FREE -> db.questions()
+            }
+            val list = if (mode == ReviewMode.DUE || count <= 0) base else base.take(count)
             withContext(Dispatchers.Main) {
                 reviewQueue = list
                 reviewIndex = 0
                 revealAnswer = false
+                reviewMode = mode
+                wrongThisRound.clear()
+                rateHistory.clear()
+                canUndoRate = false
                 route = Route.Review
             }
         }
     }
 
     fun startReviewFor(categoryId: String) {
+        startReview(ReviewMode.CATEGORY, reviewCountPref, categoryId)
+    }
+
+    /** 完成页「再练这些题」：只练本轮自评不会的题。 */
+    fun retryWrongQuestions() {
+        val ids = wrongThisRound.toList()
+        if (ids.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
-            val all = db.questions(categoryId)
-            val list = all.filter { it.mastery < 4 }.ifEmpty { all }
+            val list = ids.mapNotNull { db.question(it) }
             withContext(Dispatchers.Main) {
+                if (list.isEmpty()) { toast = "没有需要重练的题"; return@withContext }
                 reviewQueue = list
                 reviewIndex = 0
                 revealAnswer = false
+                reviewMode = ReviewMode.FREE
+                wrongThisRound.clear()
+                rateHistory.clear()
+                canUndoRate = false
                 route = Route.Review
             }
         }
@@ -488,12 +886,31 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     fun rate(rating: Int) {
         val q = reviewQueue.getOrNull(reviewIndex) ?: return
         // 先同步推进队列再落库：评分按钮立刻失效，连点不会对同一题记两次
-        reviewIndex++
-        revealAnswer = false
         viewModelScope.launch(Dispatchers.IO) {
+            val snapshot = db.snapshotForReview(q.id)
+            withContext(Dispatchers.Main) {
+                if (snapshot != null) {
+                    rateHistory.addLast(q to snapshot)
+                    if (rateHistory.size > 20) rateHistory.removeFirst()
+                    canUndoRate = true
+                }
+                if (rating == 0) wrongThisRound.add(q.id)
+                reviewIndex++
+                revealAnswer = false
+            }
             db.review(q.id, rating)
             if (reviewIndex >= reviewQueue.size) withContext(Dispatchers.Main) { refresh() }
         }
+    }
+
+    /** 撤销上一题评分：题目状态还原，队列退回上一题。 */
+    fun undoRating() {
+        val (q, snapshot) = rateHistory.removeLastOrNull() ?: return
+        wrongThisRound.remove(q.id)
+        if (reviewIndex > 0) reviewIndex--
+        revealAnswer = false
+        canUndoRate = rateHistory.isNotEmpty()
+        viewModelScope.launch(Dispatchers.IO) { db.revertReview(snapshot) }
     }
 
     var needsBusyFor by androidx.compose.runtime.mutableStateOf<String?>(null)
@@ -670,7 +1087,12 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         if (ids.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
             ids.forEach { db.deleteQuestion(it) }
-            withContext(Dispatchers.Main) { refresh() }
+            withContext(Dispatchers.Main) {
+                refresh(); refreshTrash()
+                showUndo(
+                    if (ids.size == 1) "已删除 1 道题" else "已删除 ${ids.size} 道题"
+                ) { restoreQuestions(ids) }
+            }
         }
     }
 
@@ -715,6 +1137,21 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     fun cacheQuestion(q: QuestionRow) { synchronized(questionCache) { questionCache[q.id] = q } }
 
     fun rememberQuestion(id: String) { lastQuestionId = id }
+
+    // ---------- 题目编辑草稿 ----------
+    // 完整编辑页里随手改的内容自动暂存：误触返回、进程被杀都不丢，保存成功后清除。
+
+    fun loadEditDraft(id: String): String? = db.getSetting("edit.draft.$id")
+
+    fun saveEditDraft(id: String, json: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (json.isBlank()) db.putSetting("edit.draft.$id", "") else db.putSetting("edit.draft.$id", json)
+        }
+    }
+
+    fun clearEditDraft(id: String) {
+        viewModelScope.launch(Dispatchers.IO) { db.putSetting("edit.draft.$id", "") }
+    }
 
     fun openChat(quote: String = "") {
         val id = when (val r = route) {
@@ -938,15 +1375,37 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     suspend fun testProvider(cfg: ProviderConfig): String = ai.test(cfg)
 
+    /** 验证「能否识别图片」：导入链路真正的硬门槛，失败信息带下一步指引。 */
+    suspend fun testVisionProvider(cfg: ProviderConfig): String = ai.testVision(cfg)
+
     // ---------- backup ----------
+
+    var lastBackupAt by androidx.compose.runtime.mutableStateOf(0L)
+        private set
+    var lastBackupCount by androidx.compose.runtime.mutableStateOf(0)
+        private set
+
+    fun loadBackupInfo() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val at = db.getSetting("backup.lastAt")?.toLongOrNull() ?: 0L
+            val count = db.getSetting("backup.lastCount")?.toIntOrNull() ?: 0
+            withContext(Dispatchers.Main) { lastBackupAt = at; lastBackupCount = count }
+        }
+    }
 
     fun exportBackup(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val ctx = getApplication<Application>()
-                (ctx.contentResolver.openOutputStream(uri) ?: error("无法写入所选文件")).use { out ->
-                    val n = com.zhuquan.tijian.data.Backup.export(ctx, db, out)
-                    withContext(Dispatchers.Main) { toast = "备份完成（$n 个文件）" }
+                val n = (ctx.contentResolver.openOutputStream(uri) ?: error("无法写入所选文件")).use { out ->
+                    com.zhuquan.tijian.data.Backup.export(ctx, db, out)
+                }
+                val total = db.stats().total
+                db.putSetting("backup.lastAt", System.currentTimeMillis().toString())
+                db.putSetting("backup.lastCount", total.toString())
+                withContext(Dispatchers.Main) {
+                    lastBackupAt = System.currentTimeMillis(); lastBackupCount = total
+                    toast = "备份完成（$n 个文件 · $total 道题）"
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { toast = "备份失败：${e.message}" }
@@ -956,10 +1415,21 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     fun importBackup(uri: Uri) {
         viewModelScope.launch {
-            toast = "恢复完成，应用即将重启"
             withContext(Dispatchers.IO) {
                 try {
                     val ctx = getApplication<Application>()
+                    // 恢复是覆盖性操作：先把当前数据在本机存一份快照，后悔了还有救
+                    val snapDir = File(ctx.filesDir, "auto_backup").apply { mkdirs() }
+                    val snap = File(snapDir, "before_restore_${System.currentTimeMillis()}.zip")
+                    try {
+                        snap.outputStream().use { com.zhuquan.tijian.data.Backup.export(ctx, db, it) }
+                        // 只保留最近两份自动快照
+                        snapDir.listFiles()?.sortedByDescending { it.name }?.drop(2)?.forEach { it.delete() }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) { toast = "无法保存当前数据快照，已取消恢复（${e.message}）" }
+                        return@withContext
+                    }
+                    withContext(Dispatchers.Main) { toast = "已自动保存当前快照，正在恢复…" }
                     ctx.contentResolver.openInputStream(uri)?.use { input ->
                         com.zhuquan.tijian.data.Backup.import(ctx, db, input)
                     }

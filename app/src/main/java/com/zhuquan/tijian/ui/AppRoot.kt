@@ -38,9 +38,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PhotoLibrary
@@ -116,6 +118,9 @@ fun AppRoot(vm: AppVm = viewModel()) {
 
     BackHandler(enabled = !vm.chatOpen && vm.route != Route.Home) { if (!vm.back()) vm.home() }
 
+    // 首次打开：给三条都走得通的路，别让人卡在配置页
+    LaunchedEffect(Unit) { vm.maybeShowOnboarding() }
+
     Box(Modifier.fillMaxSize().background(Bg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         // Retain page state, but draw only the active page. Never snapshot WebViews:
         // full-screen readback adds latency and can capture stale AndroidView frames.
@@ -164,6 +169,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
                             is Route.Doc -> DocScreen(vm, route)
                             is Route.Settings -> SettingsScreen(vm)
                             is Route.Provider -> ProviderScreen(vm)
+                            is Route.Trash -> TrashScreen(vm)
                         }
                     }
                     if (isPeerRoute(route)) BottomBar(route,
@@ -185,6 +191,25 @@ fun AppRoot(vm: AppVm = viewModel()) {
                     Modifier.semantics { liveRegion = LiveRegionMode.Polite }.clip(RoundedCornerShape(12.dp)).background(Color(0xF23A3D44))
                         .padding(horizontal = 16.dp, vertical = 11.dp)
                 ) { Text(msg, fontSize = 12.5.sp, lineHeight = 18.sp, color = Color.White) }
+            }
+        }
+
+        // 删除后的撤销条：点一下就恢复，几秒不点自动消失
+        vm.undoMsg?.let { msg ->
+            Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 92.dp, start = 20.dp, end = 20.dp)) {
+                Row(
+                    Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                        .clip(RoundedCornerShape(12.dp)).background(Color(0xF23A3D44))
+                        .tjClickable(label = "撤销刚才的删除") { vm.runUndo() }
+                        .padding(horizontal = 16.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(msg, fontSize = 12.5.sp, color = Color.White)
+                    Text(
+                        "撤销", fontSize = 12.5.sp, color = Color(0xFF5EEAD4),
+                        fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 12.dp)
+                    )
+                }
             }
         }
 
@@ -211,7 +236,12 @@ fun AppRoot(vm: AppVm = viewModel()) {
                         vm.clearCapture()
                         vm.go(Route.Capture)
                     }
-                    ImportOption(Icons.Rounded.EditNote, "手动录入", "只存图片，题干自己填") {
+                    // 名副其实的手动录入：直接写文字，图片想补随时补
+                    ImportOption(Icons.Rounded.EditNote, "手动录入", "直接输入文字，图片是选填项") {
+                        showImport = false
+                        vm.addManualText()
+                    }
+                    ImportOption(Icons.Rounded.Add, "只存一张图片", "先留个底，题干以后再补") {
                         showImport = false
                         pickOne.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     }
@@ -229,6 +259,43 @@ fun AppRoot(vm: AppVm = viewModel()) {
                     }
                 }
             }
+        }
+
+        if (vm.showOnboarding) {
+            OnboardingSheet(
+                onTry = { vm.loadSampleQuestions() },
+                onImport = { vm.dismissOnboarding(); showImport = true },
+                onConfigure = { vm.dismissOnboarding(); vm.go(Route.Provider) },
+                onSkip = { vm.dismissOnboarding() },
+            )
+        }
+    }
+}
+
+/** 首次打开的三岔口：体验示例 / 直接收录 / 配置 AI，都不依赖彼此。 */
+@Composable
+private fun OnboardingSheet(
+    onTry: () -> Unit,
+    onImport: () -> Unit,
+    onConfigure: () -> Unit,
+    onSkip: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onSkip, containerColor = CardBg) {
+        Column(Modifier.blockSheetDrag().padding(horizontal = Space.page).padding(bottom = 22.dp)) {
+            Text("欢迎使用题笺", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Ink, letterSpacing = (-0.4).sp)
+            Text(
+                "拍下错题 → AI 识别归类 → 按记忆曲线复习。\n三件事按你的节奏来，先选一件：",
+                fontSize = 13.sp, lineHeight = 21.sp, color = Muted, modifier = Modifier.padding(top = 6.dp, bottom = 12.dp)
+            )
+            ImportOption(Icons.Rounded.AutoAwesome, "体验示例题", "不用配置 AI，先看看复习怎么用") { onTry() }
+            ImportOption(Icons.Rounded.PhotoLibrary, "直接收录错题", "拍照或选图导入，稍后再配 AI") { onImport() }
+            ImportOption(Icons.Rounded.Key, "配置 AI", "填一个 OpenAI 兼容接口，当场验证能否识别图片") { onConfigure() }
+            Text(
+                "跳过，自己逛逛",
+                fontSize = 12.5.sp, color = Muted,
+                modifier = Modifier.padding(top = 10.dp).align(Alignment.CenterHorizontally)
+                    .tjClickable(label = "跳过引导") { onSkip() }.padding(horizontal = 12.dp, vertical = 6.dp)
+            )
         }
     }
 }
@@ -313,7 +380,7 @@ private fun TabItem(
             Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
         }
         Text(
-            label, fontSize = 11.sp, color = tint,
+            label, fontSize = 12.sp, color = tint,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             modifier = Modifier.padding(top = 2.dp)
         )

@@ -64,6 +64,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.math.roundToInt
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -347,7 +348,7 @@ fun DocScreen(vm: AppVm, route: Route.Doc? = vm.route as? Route.Doc) {
             }
         )
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.page)) {
-            RichText(d.contentMd, fontSize = 14)
+            RichText(d.contentMd, fontSize = (14 * vm.readingScaleValue).roundToInt())
             Spacer(Modifier.height(18.dp))
             Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TjButton("生成并分享", Modifier.weight(1f).fillMaxHeight(), style = ActionStyle.Secondary, enabled = !vm.busy) {

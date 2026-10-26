@@ -83,6 +83,7 @@ fun TjTextField(
     modifier: Modifier = Modifier,
     label: (@Composable () -> Unit)? = null,
     placeholder: (@Composable () -> Unit)? = null,
+    leadingIcon: (@Composable () -> Unit)? = null,
     singleLine: Boolean = false,
     minLines: Int = 1,
     maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
@@ -95,7 +96,8 @@ fun TjTextField(
 ) {
     OutlinedTextField(
         value = value, onValueChange = onValueChange, modifier = modifier,
-        label = label, placeholder = placeholder, singleLine = singleLine,
+        label = label, placeholder = placeholder, leadingIcon = leadingIcon,
+        singleLine = singleLine,
         minLines = minLines, maxLines = maxLines, textStyle = textStyle,
         colors = colors, shape = shape, visualTransformation = visualTransformation,
         keyboardOptions = keyboardOptions, keyboardActions = keyboardActions,

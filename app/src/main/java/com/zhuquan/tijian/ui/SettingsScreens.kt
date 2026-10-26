@@ -37,9 +37,12 @@ import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.RestoreFromTrash
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -49,6 +52,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,6 +81,7 @@ fun SettingsScreen(vm: AppVm) {
     var showAppearance by remember { mutableStateOf(false) }
     var restoreUri by remember { mutableStateOf<Uri?>(null) }
     val ctx = LocalContext.current
+    LaunchedEffect(Unit) { vm.loadBackupInfo() }
 
     val exportZip = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri: Uri? ->
         if (uri != null) vm.exportBackup(uri)
@@ -117,12 +122,13 @@ fun SettingsScreen(vm: AppVm) {
             CardBox(Modifier.fillMaxWidth()) {
                 Column {
                 SettingRow(Icons.Rounded.Key, "AI 接入", if (vm.provider.ready()) {
-                    val r = when (vm.provider.reasoning) {
-                        "low" -> " · 思考低"; "medium" -> " · 思考中"; "high" -> " · 思考高"; else -> ""
-                    }
-                    "${vm.provider.model} · ${vm.provider.protocol}$r"
+                    "已就绪 · ${vm.provider.model}"
                 } else "未配置，点此接入") {
                     vm.go(Route.Provider)
+                }
+                DividerSoft()
+                SettingRow(Icons.Rounded.RestoreFromTrash, "回收站", if (vm.trashCount > 0) "${vm.trashCount} 道已删除的题可恢复" else "删除的题目会先到这里") {
+                    vm.go(Route.Trash)
                 }
                 DividerSoft()
                 SettingRow(Icons.Rounded.Info, "外观", if (tjAppearance.intValue == 1) "浅色" else if (tjAppearance.intValue == 2) "深色" else "跟随系统") {
@@ -173,10 +179,18 @@ fun SettingsScreen(vm: AppVm) {
                             Text(label, fontSize = 14.sp, color = Ink, modifier = Modifier.padding(start = 10.dp))
                         }
                     }
+                    HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Line)
+                    Text("阅读字号", fontSize = 13.sp, color = Ink, fontWeight = FontWeight.Medium)
+                    Text("题干、解析、复习页的文字大小", fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 2.dp, bottom = 4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TjChip("标准", vm.readingScaleValue <= 1.01f) { vm.setReadingScale(1f) }
+                        TjChip("大", vm.readingScaleValue in 1.02f..1.11f) { vm.setReadingScale(1.1f) }
+                        TjChip("特大", vm.readingScaleValue >= 1.12f) { vm.setReadingScale(1.2f) }
+                    }
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { showAppearance = false }) { Text("取消", color = Ink2) } }
+            dismissButton = { TextButton(onClick = { showAppearance = false }) { Text("完成", color = Accent, fontWeight = FontWeight.SemiBold) } }
         )
     }
 
@@ -184,12 +198,28 @@ fun SettingsScreen(vm: AppVm) {
         AlertDialog(
             onDismissRequest = { showBackup = false },
             title = { Text("备份与恢复", fontSize = 16.sp) },
-            text = { Text("导出会打包数据库和全部图片（不含 AI API Key）；恢复会覆盖当前数据并重启应用，建议先导出一份。", fontSize = 12.sp, color = Muted) },
+            text = {
+                Column {
+                    if (vm.lastBackupAt > 0) {
+                        Text(
+                            "上次备份：${formatBackupTime(vm.lastBackupAt)} · 包含 ${vm.lastBackupCount} 道题",
+                            fontSize = 12.sp, color = Green
+                        )
+                    } else {
+                        Text("还没有导出过备份", fontSize = 12.sp, color = Muted)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "导出会打包数据库和全部图片（不含 AI API Key）。\n恢复会覆盖当前数据并重启应用；恢复前会自动把现在的数据在本机存一份快照，后悔了还有救。",
+                        fontSize = 12.sp, lineHeight = 19.sp, color = Muted
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     showBackup = false
                     exportZip.launch("tijian-backup-${dateStamp()}.zip")
-                }) { Text("导出备份") }
+                }) { Text("导出备份", color = Accent, fontWeight = FontWeight.SemiBold) }
             },
             dismissButton = {
                 TextButton(onClick = {
@@ -281,6 +311,8 @@ fun ProviderScreen(vm: AppVm) {
     var testError by remember { mutableStateOf<String?>(null) }
     var namingProfile by remember { mutableStateOf(false) }
     var profileName by remember { mutableStateOf("") }
+    // 新手只需要服务商 + Key + 模型三件事；协议和思考强度收进高级设置
+    var showAdvanced by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun cfg() = ProviderConfig(baseUrl, apiKey, model, protocol, models, reasoning)
@@ -311,7 +343,10 @@ fun ProviderScreen(vm: AppVm) {
             actions = {
                 TjButton("保存", enabled = cfg().ready()) {
                     vm.saveProvider(cfg().copy(baseUrl = baseUrl.trim(), apiKey = apiKey.trim(), model = model.trim()))
-                    vm.back()
+                    // 从导入任务跳过来配置的：配好直接回去接着导入
+                    val back = vm.returnAfterProvider
+                    vm.returnAfterProvider = null
+                    if (back != null) vm.replace(back) else vm.back()
                 }
             }
         )
@@ -411,24 +446,45 @@ fun ProviderScreen(vm: AppVm) {
                     }
 
                     Spacer(Modifier.height(12.dp))
-                    FieldLabel("协议")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TjChip("chat/completions", protocol == "chat") { protocol = "chat" }
-                        TjChip("responses", protocol == "responses") { protocol = "responses" }
+                    // 高级设置默认折叠：先让人用起来，协议/思考强度是进阶话题
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                            .tjClickable(label = if (showAdvanced) "收起高级设置" else "展开高级设置") { showAdvanced = !showAdvanced }
+                            .padding(horizontal = 4.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("高级设置", fontSize = 12.5.sp, color = Ink2, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "协议 · 思考强度", fontSize = 11.5.sp, color = Muted,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Icon(
+                            if (showAdvanced) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                            contentDescription = if (showAdvanced) "收起" else "展开",
+                            tint = Muted, modifier = Modifier.size(18.dp)
+                        )
                     }
+                    if (showAdvanced) {
+                        FieldLabel("协议")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TjChip("chat/completions", protocol == "chat") { protocol = "chat" }
+                            TjChip("responses", protocol == "responses") { protocol = "responses" }
+                        }
 
-                    Spacer(Modifier.height(12.dp))
-                    FieldLabel("思考强度")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TjChip("默认", reasoning.isBlank()) { reasoning = "" }
-                        TjChip("低", reasoning == "low") { reasoning = "low" }
-                        TjChip("中", reasoning == "medium") { reasoning = "medium" }
-                        TjChip("高", reasoning == "high") { reasoning = "high" }
+                        Spacer(Modifier.height(12.dp))
+                        FieldLabel("思考强度")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TjChip("默认", reasoning.isBlank()) { reasoning = "" }
+                            TjChip("低", reasoning == "low") { reasoning = "low" }
+                            TjChip("中", reasoning == "medium") { reasoning = "medium" }
+                            TjChip("高", reasoning == "high") { reasoning = "high" }
+                        }
+                        Text(
+                            "推理模型（R1 / o 系 / Qwen-Thinking 等）的思考档位，随每次请求发送；「默认」不发参数，由服务商自定。不支持该参数的服务请保持默认。",
+                            fontSize = 11.sp, lineHeight = 17.sp, color = Muted, modifier = Modifier.padding(top = 6.dp)
+                        )
                     }
-                    Text(
-                        "推理模型（R1 / o 系 / Qwen-Thinking 等）的思考档位，随每次请求发送；「默认」不发参数，由服务商自定。不支持该参数的服务请保持默认。",
-                        fontSize = 10.5.sp, lineHeight = 16.sp, color = Muted, modifier = Modifier.padding(top = 6.dp)
-                    )
                 }
             }
 
@@ -447,24 +503,33 @@ fun ProviderScreen(vm: AppVm) {
             }
 
             Spacer(Modifier.height(16.dp))
-            TjButton("测试连接", Modifier.fillMaxWidth(), enabled = cfg().ready(),
+            TjButton("验证能否识别图片", Modifier.fillMaxWidth(), enabled = cfg().ready(),
                 loading = testing, style = ActionStyle.Secondary) {
                 testing = true; testError = null; testResult = null
                 scope.launch {
-                    try { testResult = vm.testProvider(cfg()) }
+                    try { testResult = vm.testVisionProvider(cfg()) }
                     catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                    catch (e: Exception) { testError = e.message ?: "连接失败" }
+                    catch (e: Exception) { testError = e.message ?: "验证失败" }
                     finally { testing = false }
                 }
             }
+            Text(
+                "发一张 1px 测试图给模型——导入识别靠的是看图，只测聊天会漏掉「模型不支持视觉」这个坑",
+                fontSize = 11.sp, lineHeight = 17.sp, color = Muted, modifier = Modifier.padding(top = 6.dp)
+            )
             testResult?.let {
                 Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.CheckCircle, null, tint = Green, modifier = Modifier.size(14.dp))
-                    Text(it, fontSize = 11.sp, color = Green, modifier = Modifier.padding(start = 5.dp))
+                    Text(it, fontSize = 12.sp, color = Green, modifier = Modifier.padding(start = 5.dp))
                 }
             }
             testError?.let {
-                Text(it, fontSize = 11.sp, lineHeight = 17.sp, color = Red, modifier = Modifier.padding(top = 10.dp))
+                Column(
+                    Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(10.dp))
+                        .background(RedSoft).padding(10.dp)
+                ) {
+                    Text(it, fontSize = 12.sp, lineHeight = 18.sp, color = Red)
+                }
             }
 
             SectionLabel("说明")
@@ -516,6 +581,9 @@ fun ProviderScreen(vm: AppVm) {
         )
     }
 }
+
+private fun formatBackupTime(ms: Long): String =
+    java.text.SimpleDateFormat("M月d日 HH:mm", java.util.Locale.CHINA).format(java.util.Date(ms))
 
 private val PRESETS = listOf(
     "自定义" to "",

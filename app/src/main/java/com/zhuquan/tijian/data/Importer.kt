@@ -29,18 +29,37 @@ data class ImportOutcome(
     val drafts: List<DraftQuestion>,
     val errors: List<String>,
     val duplicates: Int,
+    /** 读取/识别失败的原图；「重试失败图片」只重跑这些。 */
+    val failedUris: List<Uri> = emptyList(),
 )
 
 class Importer(private val context: Context, private val db: Db, private val ai: AiClient) {
 
     private val dir = File(context.filesDir, "images").apply { mkdirs() }
 
+    /** 已完成图片的草稿累积器：中途「停止识别」时，已识别的部分不丢。 */
+    private val partialDrafts = java.util.Collections.synchronizedList(ArrayList<DraftQuestion>())
+    private val partialErrors = java.util.Collections.synchronizedList(ArrayList<String>())
+    private val partialFailed = java.util.Collections.synchronizedList(ArrayList<Uri>())
+
+    /** 停止识别后取走已完成的部分；取完即清空。 */
+    fun consumePartial(): Pair<List<DraftQuestion>, List<String>> {
+        val drafts = synchronized(partialDrafts) { val out = ArrayList(partialDrafts); partialDrafts.clear(); out }
+        val errors = synchronized(partialErrors) { val out = ArrayList(partialErrors); partialErrors.clear(); out }
+        synchronized(partialFailed) { partialFailed.clear() }
+        return drafts to errors
+    }
+
     suspend fun import(uris: List<Uri>, source: String, onStep: (Int, Int, String) -> Unit): ImportOutcome =
         withContext(Dispatchers.IO) {
             val batchId = db.createBatch(source, uris.size)
             val errors = java.util.Collections.synchronizedList(ArrayList<String>())
+            val failed = java.util.Collections.synchronizedList(ArrayList<Uri>())
             val done = java.util.concurrent.atomic.AtomicInteger()
             val total = uris.size
+            synchronized(partialDrafts) { partialDrafts.clear() }
+            synchronized(partialErrors) { partialErrors.clear() }
+            synchronized(partialFailed) { partialFailed.clear() }
 
             // 逐张串发太慢：固定 3 路并发识别（含补全解析），单张失败不影响其他。
             // 用信号量限流，避免触发服务商的并发/限速限制。
@@ -49,14 +68,25 @@ class Importer(private val context: Context, private val db: Db, private val ai:
                 uris.mapIndexed { index, uri ->
                     async {
                         gate.withPermit {
-                            try {
+                            // 每张图自己的错误列表：聚合到全量 errors，也快照到 partial，不互相重复
+                            val localErrors = ArrayList<String>()
+                            val result: Pair<List<DraftQuestion>, Boolean>? = try {
                                 currentCoroutineContext().ensureActive()
                                 onStep(done.get() + 1, total, "识别第 ${index + 1}/$total 张")
-                                processImage(uri, index, errors)
+                                val r = processImage(uri, index, localErrors)
+                                if (r == null) {
+                                    failed.add(uri); partialFailed.add(uri)
+                                } else {
+                                    partialDrafts.addAll(r.first)
+                                }
+                                errors.addAll(localErrors)
+                                partialErrors.addAll(localErrors)
+                                r
                             } finally {
                                 val d = done.incrementAndGet()
                                 onStep(d, total, "已完成 $d/$total 张")
                             }
+                            result
                         }
                     }
                 }.awaitAll()
@@ -72,7 +102,7 @@ class Importer(private val context: Context, private val db: Db, private val ai:
                 }
             }
             db.finishBatch(batchId, "review", db.provider().model)
-            ImportOutcome(batchId, drafts, errors.toList(), duplicates)
+            ImportOutcome(batchId, drafts, errors.toList(), duplicates, failed.toList())
         }
 
     /** 处理单张图片：入库 → 识别 → 补全解析。返回 (草稿, 是否重复图)；null 表示图片本身读取失败。 */

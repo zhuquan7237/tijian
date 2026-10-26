@@ -312,6 +312,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         if (categoryId != null) { where.append(" AND q.category_id=?"); args.add(categoryId) }
         when (filter) {
             "weak" -> where.append(" AND q.mastery<4")
+            "due" -> where.append(" AND q.next_review_at IS NOT NULL AND q.next_review_at<=${System.currentTimeMillis()}")
             "week" -> where.append(" AND q.created_at>=?").also {
                 args.add((System.currentTimeMillis() - 7L * 86400_000).toString())
             }
@@ -462,6 +463,12 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         arrayOf(tag.trim(), System.currentTimeMillis(), id)
     )
 
+    /** 错因标签（JSON 字符串数组）：「这道题错在哪」比「属于哪章」更能帮下次做对。 */
+    fun updateQuestionErrorReasons(id: String, reasons: String) = writableDatabase.execSQL(
+        "UPDATE question SET error_reasons=?, updated_at=? WHERE id=?",
+        arrayOf(reasons, System.currentTimeMillis(), id)
+    )
+
     // ---------- note images ----------
 
     private fun readNoteIds(noteImages: String): List<String> = try {
@@ -523,6 +530,30 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         arrayOf(System.currentTimeMillis(), System.currentTimeMillis(), id)
     )
 
+    // ---------- 回收站（软删除的题目可恢复 / 可彻底清除） ----------
+
+    fun deletedQuestions(): List<QuestionRow> =
+        queryQuestions("q.deleted_at IS NOT NULL", emptyArray(), "q.deleted_at DESC")
+
+    fun trashCount(): Int = scalar("SELECT COUNT(*) FROM question WHERE deleted_at IS NOT NULL")
+
+    fun restoreQuestion(id: String) = writableDatabase.execSQL(
+        "UPDATE question SET deleted_at=NULL, updated_at=? WHERE id=?",
+        arrayOf(System.currentTimeMillis(), id)
+    )
+
+    /** 彻底清除：连复习记录与追问记录一起删；图片文件保留在原目录，供其他题目复用。 */
+    fun purgeQuestion(id: String) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.execSQL("DELETE FROM review_log WHERE question_id=?", arrayOf(id))
+            db.execSQL("DELETE FROM chat_message WHERE question_id=?", arrayOf(id))
+            db.execSQL("DELETE FROM question WHERE id=?", arrayOf(id))
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
     fun review(id: String, rating: Int, mode: String = "card") {
         val q = question(id) ?: return
         val now = System.currentTimeMillis()
@@ -547,6 +578,48 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             })
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
+    }
+
+    /** 评分前的题目快照：「撤销上一题评分」据此把题目还原到评分前。 */
+    data class ReviewSnapshot(
+        val id: String, val mastery: Int, val reviewCount: Int,
+        val lastReviewAt: Long?, val nextReviewAt: Long?,
+    )
+
+    fun snapshotForReview(id: String): ReviewSnapshot? = read(
+        "SELECT mastery, review_count, last_review_at, next_review_at FROM question WHERE id=?", arrayOf(id)
+    ) { ReviewSnapshot(id, it.getInt(0), it.getInt(1), it.getLong(2).takeIf { v -> v > 0 }, it.getLong(3).takeIf { v -> v > 0 }) }
+        .firstOrNull()
+
+    /** 撤销评分：还原题目字段并删掉刚写入的那条复习记录。 */
+    fun revertReview(snapshot: ReviewSnapshot) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.execSQL(
+                "UPDATE question SET mastery=?, review_count=?, last_review_at=?, next_review_at=?, updated_at=? WHERE id=?",
+                arrayOf(
+                    snapshot.mastery, snapshot.reviewCount,
+                    snapshot.lastReviewAt ?: 0, snapshot.nextReviewAt ?: 0,
+                    System.currentTimeMillis(), snapshot.id
+                )
+            )
+            db.execSQL(
+                "DELETE FROM review_log WHERE id IN (SELECT id FROM review_log WHERE question_id=? ORDER BY reviewed_at DESC, rowid DESC LIMIT 1)",
+                arrayOf(snapshot.id)
+            )
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
+    /** 某档自评后预计间隔的天数；复习页展示「下次复习时间」提示用。 */
+    fun previewIntervalDays(mastery: Int, rating: Int): Long {
+        val m = clampMastery(mastery)
+        return when (rating) {
+            0 -> 1L
+            1 -> maxOf(1, INTERVALS[m] / 2).toLong()
+            else -> INTERVALS[(m + 1).coerceAtMost(5)].toLong()
+        }
     }
 
     fun setMastery(id: String, value: Int) = writableDatabase.execSQL(

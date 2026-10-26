@@ -94,8 +94,9 @@ data class ProviderProfile(
 /** 识别阶段尚未入库的题目草稿 */
 data class DraftQuestion(
     val id: String = newId(),
-    val imageId: String,
-    val imagePath: String,
+    /** 纯文字录入的草稿没有图片；图片始终是选填项。 */
+    val imageId: String? = null,
+    val imagePath: String? = null,
     val type: String = "",
     val stem: String = "",
     val options: String = "",
@@ -111,7 +112,43 @@ data class DraftQuestion(
     val customTag: String = "",
     val confidence: Double = 0.0,
     val bbox: List<Double>? = null,
-)
+) {
+    /** 落盘成 JSON：进程被杀后恢复待确认草稿用。 */
+    fun toJson(): org.json.JSONObject = org.json.JSONObject().apply {
+        put("id", id)
+        put("imageId", imageId ?: "")
+        put("imagePath", imagePath ?: "")
+        put("type", type); put("stem", stem); put("options", options)
+        put("answer", answer); put("analysis", analysis); put("tags", tags)
+        put("needFormulas", needFormulas); put("needConcepts", needConcepts); put("needMethods", needMethods)
+        put("difficulty", difficulty); put("categoryName", categoryName); put("customTag", customTag)
+        put("confidence", confidence)
+        bbox?.let { put("bbox", org.json.JSONArray(it)) }
+    }
+
+    companion object {
+        fun fromJson(o: org.json.JSONObject): DraftQuestion {
+            val bboxArr = o.optJSONArray("bbox")
+            return DraftQuestion(
+                id = o.optString("id").ifBlank { newId() },
+                imageId = o.optString("imageId").takeIf { it.isNotBlank() },
+                imagePath = o.optString("imagePath").takeIf { it.isNotBlank() },
+                type = o.optString("type"), stem = o.optString("stem"),
+                options = o.optString("options"), answer = o.optString("answer"),
+                analysis = o.optString("analysis"), tags = o.optString("tags"),
+                needFormulas = o.optString("needFormulas", "[]").ifBlank { "[]" },
+                needConcepts = o.optString("needConcepts", "[]").ifBlank { "[]" },
+                needMethods = o.optString("needMethods", "[]").ifBlank { "[]" },
+                difficulty = o.optInt("difficulty", 3),
+                categoryName = o.optString("categoryName"),
+                customTag = o.optString("customTag"),
+                confidence = o.optDouble("confidence", 0.0),
+                bbox = if (bboxArr != null && bboxArr.length() == 4)
+                    (0 until 4).map { bboxArr.optDouble(it) } else null,
+            )
+        }
+    }
+}
 
 fun clampMastery(v: Int) = v.coerceIn(0, 5)
 fun colorFor(name: String): String {
