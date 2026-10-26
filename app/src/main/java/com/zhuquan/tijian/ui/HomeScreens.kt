@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -406,6 +407,8 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
     var pendingBatchDelete by remember { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
     var pendingFile by remember { mutableStateOf<File?>(null) }
+    // 题号行内编辑：记录正在填的行号，对话框支持「保存并下一题」连续填写
+    var tagEditIndex by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
 
     val listState = androidx.compose.foundation.lazy.rememberLazyListState(
@@ -492,7 +495,7 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                     Text("掌握", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(56.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
                 }
                 LazyColumn(Modifier.weight(1f), state = listState) {
-                    items(rows, key = { it.id }) { q ->
+                    itemsIndexed(rows, key = { _, q -> q.id }) { idx, q ->
                         val isSel = selected.value.contains(q.id)
                         val rowSrc = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
                         Row(
@@ -513,19 +516,27 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                                 }
                             }
                             Spacer(Modifier.width(10.dp))
-                            // 题号专列：用户手输的「卷一 · 第 12 题」，与 AI 识别的分类无关
-                            Column(Modifier.width(76.dp)) {
+                            // 题号专列：点击直接行内编辑，不用打开题目再点编辑
+                            Column(
+                                Modifier.width(76.dp)
+                                    .tjClickable(label = "填写题号") { tagEditIndex = idx }
+                            ) {
                                 if (q.customTag.isNotBlank()) {
                                     Text(
                                         q.customTag, fontSize = 12.sp, lineHeight = 16.sp,
                                         color = Amber, fontWeight = FontWeight.SemiBold, maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
                                     )
+                                } else {
+                                    Text(
+                                        "＋题号", fontSize = 11.5.sp, color = Muted,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                                 Text(
                                     q.type.ifBlank { "—" }, fontSize = 11.sp, color = Muted,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(top = if (q.customTag.isNotBlank()) 3.dp else 0.dp)
+                                    modifier = Modifier.padding(top = if (q.customTag.isNotBlank()) 3.dp else 2.dp)
                                 )
                             }
                             val tags = parseKnowledgeTags(q.tags)
@@ -608,6 +619,53 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                     contentAlignment = Alignment.Center
                 ) { Text("导出 PDF", fontSize = 11.5.sp, color = OnAccent, fontWeight = FontWeight.SemiBold) }
             }
+        }
+    }
+
+    tagEditIndex?.let { idx ->
+        val q = rows.getOrNull(idx)
+        if (q == null) {
+            tagEditIndex = null
+        } else {
+            var text by remember(idx, q.id) { mutableStateOf(q.customTag) }
+            fun save(next: Boolean) {
+                val cur = idx
+                vm.write { it.updateQuestionTag(q.id, text) }
+                if (next) {
+                    val n = cur + 1
+                    if (n < rows.size) tagEditIndex = n else tagEditIndex = null
+                } else tagEditIndex = null
+            }
+            AlertDialog(
+                onDismissRequest = { tagEditIndex = null },
+                title = { Text("填写题号", fontSize = 16.sp) },
+                text = {
+                    Column {
+                        Text(
+                            "第 ${idx + 1}/${rows.size} 题 · ${q.type.ifBlank { "题目" }}",
+                            fontSize = 11.5.sp, color = Muted
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        TjTextField(
+                            value = text, onValueChange = { text = it },
+                            placeholder = { Text("如：12 或 三(7)", fontSize = 12.5.sp, color = Muted) },
+                            singleLine = true, colors = tjFieldColors(), modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "题号只用于你自己对照卷子，AI 分类不受影响。",
+                            fontSize = 10.5.sp, color = Muted
+                        )
+                    }
+                },
+                confirmButton = {
+                    Row {
+                        TextButton(onClick = { save(true) }) { Text("保存并下一题", color = Accent) }
+                        TextButton(onClick = { save(false) }) { Text("保存", color = Accent, fontWeight = FontWeight.SemiBold) }
+                    }
+                },
+                dismissButton = { TextButton(onClick = { tagEditIndex = null }) { Text("取消", color = Ink2) } }
+            )
         }
     }
 

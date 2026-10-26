@@ -7,8 +7,12 @@ import android.net.Uri
 import com.zhuquan.tijian.ai.AiClient
 import com.zhuquan.tijian.ai.ParsedQuestion
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.io.ByteArrayOutputStream
@@ -34,59 +38,84 @@ class Importer(private val context: Context, private val db: Db, private val ai:
     suspend fun import(uris: List<Uri>, source: String, onStep: (Int, Int, String) -> Unit): ImportOutcome =
         withContext(Dispatchers.IO) {
             val batchId = db.createBatch(source, uris.size)
-            val drafts = ArrayList<DraftQuestion>()
-            val errors = ArrayList<String>()
-            var duplicates = 0
+            val errors = java.util.Collections.synchronizedList(ArrayList<String>())
+            val done = java.util.concurrent.atomic.AtomicInteger()
+            val total = uris.size
 
-            uris.forEachIndexed { index, uri ->
-                // 用户点「停止」后立刻退出循环，不再发起下一张的识别请求
-                currentCoroutineContext().ensureActive()
-                onStep(index + 1, uris.size, "读取图片 ${index + 1}/${uris.size}")
-                val img = try {
-                    ingest(uri)
-                } catch (e: Exception) {
-                    errors.add("第 ${index + 1} 张：${e.message ?: "读取失败"}")
-                    null
-                } ?: return@forEachIndexed
-
-                if (img.duplicate) {
-                    duplicates++
-                }
-
-                onStep(index + 1, uris.size, "识别第 ${index + 1}/${uris.size} 张")
-                val cfg = db.provider()
-                if (!cfg.ready()) {
-                    drafts.add(emptyDraft(img))
-                    errors.add("未配置 AI 接口，已保留原图，可稍后手动录入")
-                    return@forEachIndexed
-                }
-                try {
-                    currentCoroutineContext().ensureActive()
-                    val jpeg = downscaleJpeg(File(img.path), 1600)
-                    var parsed = ai.recognize(cfg, jpeg)
-                    // 照片里没印答案/解析时，识别结果会是空字段。这里自动补一次，
-                    // 避免入库后详情页出现「有题目、没解析、没答案」。
-                    if (parsed.any { it.answer.isBlank() || it.analysis.isBlank() }) {
-                        onStep(index + 1, uris.size, "补全解析 ${index + 1}/${uris.size}")
-                        parsed = try {
-                            ai.fillSolutions(cfg, parsed)
-                        } catch (e: Exception) {
-                            // 补全失败不让整张图报废，但要告诉用户这批的解析是缺失的
-                            errors.add("第 ${index + 1} 张：答案/解析补全失败（${e.message ?: "网络错误"}），已保留识别结果")
-                            parsed
+            // 逐张串发太慢：固定 3 路并发识别（含补全解析），单张失败不影响其他。
+            // 用信号量限流，避免触发服务商的并发/限速限制。
+            val perImage = kotlinx.coroutines.coroutineScope {
+                val gate = kotlinx.coroutines.sync.Semaphore(3)
+                uris.mapIndexed { index, uri ->
+                    async {
+                        gate.withPermit {
+                            try {
+                                currentCoroutineContext().ensureActive()
+                                onStep(done.get() + 1, total, "识别第 ${index + 1}/$total 张")
+                                processImage(uri, index, errors)
+                            } finally {
+                                val d = done.incrementAndGet()
+                                onStep(d, total, "已完成 $d/$total 张")
+                            }
                         }
                     }
-                    parsed.forEachIndexed { i, p -> drafts.add(toDraft(img, p, i)) }
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    drafts.add(emptyDraft(img))
-                    errors.add("识别失败：${e.message ?: "未知错误"}")
+                }.awaitAll()
+            }
+
+            // 按原图片顺序聚合，保证草稿顺序与拍照/选择顺序一致
+            val drafts = ArrayList<DraftQuestion>()
+            var duplicates = 0
+            perImage.forEach { r ->
+                if (r != null) {
+                    if (r.second) duplicates++
+                    drafts.addAll(r.first)
                 }
             }
             db.finishBatch(batchId, "review", db.provider().model)
-            ImportOutcome(batchId, drafts, errors, duplicates)
+            ImportOutcome(batchId, drafts, errors.toList(), duplicates)
         }
+
+    /** 处理单张图片：入库 → 识别 → 补全解析。返回 (草稿, 是否重复图)；null 表示图片本身读取失败。 */
+    private suspend fun processImage(uri: Uri, index: Int, errors: MutableList<String>): Pair<List<DraftQuestion>, Boolean>? {
+        val img = try {
+            ingest(uri)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            errors.add("第 ${index + 1} 张：${e.message ?: "读取失败"}")
+            return null
+        }
+        val drafts = ArrayList<DraftQuestion>()
+        val cfg = db.provider()
+        if (!cfg.ready()) {
+            drafts.add(emptyDraft(img))
+            errors.add("第 ${index + 1} 张：未配置 AI 接口，已保留原图，可稍后手动录入")
+            return drafts to img.duplicate
+        }
+        try {
+            currentCoroutineContext().ensureActive()
+            val jpeg = downscaleJpeg(File(img.path), 1600)
+            var parsed = ai.recognize(cfg, jpeg)
+            // 照片里没印答案/解析时，识别结果会是空字段。这里自动补一次，
+            // 避免入库后详情页出现「有题目、没解析、没答案」。
+            if (parsed.any { it.answer.isBlank() || it.analysis.isBlank() }) {
+                parsed = try {
+                    ai.fillSolutions(cfg, parsed)
+                } catch (e: Exception) {
+                    // 补全失败不让整张图报废，但要告诉用户这批的解析是缺失的
+                    errors.add("第 ${index + 1} 张：答案/解析补全失败（${e.message ?: "网络错误"}），已保留识别结果")
+                    parsed
+                }
+            }
+            parsed.forEachIndexed { i, p -> drafts.add(toDraft(img, p, i)) }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            drafts.add(emptyDraft(img))
+            errors.add("第 ${index + 1} 张：识别失败：${e.message ?: "未知错误"}")
+        }
+        return drafts to img.duplicate
+    }
 
     /** 只入库图片，不调用 AI（手动录入用） */
     suspend fun ingestOnly(uri: Uri): ImportedImage = withContext(Dispatchers.IO) { ingest(uri) }

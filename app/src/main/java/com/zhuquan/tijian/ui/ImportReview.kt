@@ -123,6 +123,7 @@ fun ImportScreen(vm: AppVm) {
             items(vm.pending, key = { it.id }) { d ->
                 DraftCard(
                     draft = d,
+                    onTagChange = { tag -> vm.updateDraft(d.copy(customTag = tag)) },
                     onPreview = { previewing = d },
                     onEdit = { editing = d },
                     onPickCategory = { pickerFor = d },
@@ -176,11 +177,14 @@ fun ImportScreen(vm: AppVm) {
 @Composable
 private fun DraftCard(
     draft: DraftQuestion,
+    onTagChange: (String) -> Unit,
     onPreview: () -> Unit,
     onEdit: () -> Unit,
     onPickCategory: () -> Unit,
     onRemove: () -> Unit,
 ) {
+    // 题号本地态：直接在识别校对卡上填，随输入即时回写草稿
+    var tagText by remember(draft.id) { mutableStateOf(draft.customTag) }
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(CardBg)
             .border(1.dp, Line, RoundedCornerShape(13.dp)).padding(11.dp)
@@ -216,6 +220,16 @@ private fun DraftCard(
             }
             IconCircle(Icons.Rounded.Close, "移除这道题", tint = Muted) { onRemove() }
         }
+        Spacer(Modifier.height(8.dp))
+        TjTextField(
+            value = tagText,
+            onValueChange = { tagText = it; onTagChange(it) },
+            placeholder = { Text("题号（选填，如：12 或 三(7)），入库后列表直接显示", fontSize = 11.sp, color = Muted) },
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.5.sp, color = Ink),
+            colors = tjFieldColors(),
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(

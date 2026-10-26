@@ -439,6 +439,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             put("error_reasons", errorReasons); put("source", source)
             put("captured_at", now); put("mastery", 0); put("review_count", 0)
             put("next_review_at", now); put("ai_confidence", draft.confidence)
+            put("custom_tag", draft.customTag.trim())
             put("image_id", draft.imageId); put("content_hash", contentHashValue)
             put("created_at", now); put("updated_at", now)
         })

@@ -107,6 +107,8 @@ data class DraftQuestion(
     val needMethods: String = "[]",
     val difficulty: Int = 3,
     val categoryName: String = "",
+    /** 识别校对阶段手填的题号（如「12」），入库后即列表的题号列。 */
+    val customTag: String = "",
     val confidence: Double = 0.0,
     val bbox: List<Double>? = null,
 )
