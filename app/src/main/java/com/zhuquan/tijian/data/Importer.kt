@@ -35,7 +35,7 @@ class Importer(private val context: Context, private val db: Db, private val ai:
 
     private val dir = File(context.filesDir, "images").apply { mkdirs() }
 
-    suspend fun import(uris: List<Uri>, source: String, onStep: (Int, Int, String) -> Unit): ImportOutcome =
+    suspend fun import(uris: List<Uri>, source: String, onImage: suspend (Uri, List<DraftQuestion>) -> Unit = { _, _ -> }, onStep: (Int, Int, String) -> Unit): ImportOutcome =
         withContext(Dispatchers.IO) {
             val batchId = db.createBatch(source, uris.size)
             val errors = java.util.Collections.synchronizedList(ArrayList<String>())
@@ -52,7 +52,9 @@ class Importer(private val context: Context, private val db: Db, private val ai:
                             try {
                                 currentCoroutineContext().ensureActive()
                                 onStep(done.get() + 1, total, "识别第 ${index + 1}/$total 张")
-                                processImage(uri, index, errors)
+                                processImage(uri, index, errors).also { result ->
+                                    if (result != null) withContext(kotlinx.coroutines.NonCancellable) { onImage(uri, result.first) }
+                                }
                             } finally {
                                 val d = done.incrementAndGet()
                                 onStep(d, total, "已完成 $d/$total 张")
@@ -101,6 +103,7 @@ class Importer(private val context: Context, private val db: Db, private val ai:
             if (parsed.any { it.answer.isBlank() || it.analysis.isBlank() }) {
                 parsed = try {
                     ai.fillSolutions(cfg, parsed)
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e
                 } catch (e: Exception) {
                     // 补全失败不让整张图报废，但要告诉用户这批的解析是缺失的
                     errors.add("第 ${index + 1} 张：答案/解析补全失败（${e.message ?: "网络错误"}），已保留识别结果")
@@ -147,7 +150,7 @@ class Importer(private val context: Context, private val db: Db, private val ai:
     }
 
     private fun ingest(uri: Uri): ImportedImage {
-        val raw = File(context.cacheDir, "import_${System.currentTimeMillis()}.bin")
+        val raw = File.createTempFile("import_", ".bin", context.cacheDir)
         try {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 raw.outputStream().use { output -> input.copyTo(output) }

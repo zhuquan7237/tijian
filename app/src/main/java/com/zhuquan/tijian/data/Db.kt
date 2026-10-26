@@ -306,11 +306,12 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
 
     // ---------- questions ----------
 
-    fun questions(categoryId: String? = null, filter: String = "all", query: String = ""): List<QuestionRow> {
-        val where = StringBuilder("q.deleted_at IS NULL")
+    fun questions(categoryId: String? = null, filter: String = "all", query: String = "", limit: Int? = null): List<QuestionRow> {
+        val where = StringBuilder(if (filter == "trash") "q.deleted_at IS NOT NULL" else "q.deleted_at IS NULL")
         val args = ArrayList<String>()
         if (categoryId != null) { where.append(" AND q.category_id=?"); args.add(categoryId) }
         when (filter) {
+            "due" -> where.append(" AND q.next_review_at<=?").also { args.add(System.currentTimeMillis().toString()) }
             "weak" -> where.append(" AND q.mastery<4")
             "week" -> where.append(" AND q.created_at>=?").also {
                 args.add((System.currentTimeMillis() - 7L * 86400_000).toString())
@@ -320,10 +321,10 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         if (query.isNotBlank()) {
             // 用户输入可能带 % 或 _，不转义会让搜索结果错乱
             val esc = query.trim().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            where.append(" AND (q.stem LIKE ? ESCAPE '\\' OR q.knowledge_tags LIKE ? ESCAPE '\\')")
-            args.add("%$esc%"); args.add("%$esc%")
+            where.append(" AND (q.stem LIKE ? ESCAPE '\\' OR q.custom_tag LIKE ? ESCAPE '\\' OR q.knowledge_tags LIKE ? ESCAPE '\\')")
+            args.add("%$esc%"); args.add("%$esc%"); args.add("%$esc%")
         }
-        return queryQuestions(where.toString(), args.toTypedArray(), "q.created_at DESC")
+        return queryQuestions(where.toString(), args.toTypedArray(), (if(filter == "due") "q.next_review_at ASC" else "q.created_at DESC") + (limit?.let { " LIMIT ${it.coerceAtLeast(1)}" } ?: ""))
     }
 
     /** 追问上下文用：只取知识点标签和掌握度，不拉整题。 */
@@ -353,6 +354,9 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         readableDatabase.rawQuery(sql, if (args.isEmpty()) null else args).use {
             if (it.moveToFirst()) it.getInt(0) else 0
         }
+
+    fun activeQuestion(id: String): QuestionRow? =
+        queryQuestions("q.id=? AND q.deleted_at IS NULL", arrayOf(id), "q.created_at DESC").firstOrNull()
 
     fun question(id: String): QuestionRow? =
         queryQuestions("q.id=?", arrayOf(id), "q.created_at DESC").firstOrNull()
@@ -400,7 +404,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             val catCache = HashMap<String, String>()
             drafts.forEach { draft ->
                 val hash = contentHash(draft.stem, draft.options, draft.answer)
-                if (hash.isNotEmpty() && (!seen.add(hash) || hash in existingHashes)) {
+                if (question(draft.id) != null || (hash.isNotEmpty() && (!seen.add(hash) || hash in existingHashes))) {
                     skipped++
                 } else {
                     val catKey = draft.categoryName.ifBlank { "未分类" }
@@ -409,6 +413,13 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                     if (hash.isNotEmpty()) existingHashes.add(hash)
                     saved++
                 }
+            }
+            // Commit questions and removal from the durable inbox atomically.
+            getSetting("drafts.v1")?.let { raw ->
+                val committed = drafts.map { it.id }.toSet()
+                val remaining = SessionCodec.decodeDrafts(raw).filterNot { it.id in committed }
+                putSetting("drafts.v1", SessionCodec.encodeDrafts(remaining))
+                if (remaining.isEmpty()) putSetting("drafts.batch", "")
             }
             sql.setTransactionSuccessful()
             return saved to skipped
@@ -426,7 +437,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         errorReasons: String = "[]", source: String = "",
         contentHashValue: String = contentHash(draft.stem, draft.options, draft.answer)
     ): String {
-        val id = newId()
+        val id = draft.id
         val now = System.currentTimeMillis()
         writableDatabase.insertOrThrow("question", null, ContentValues().apply {
             put("id", id); put("batch_id", batchId); put("subject", subject)
@@ -440,7 +451,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             put("captured_at", now); put("mastery", 0); put("review_count", 0)
             put("next_review_at", now); put("ai_confidence", draft.confidence)
             put("custom_tag", draft.customTag.trim())
-            put("image_id", draft.imageId); put("content_hash", contentHashValue)
+            if (draft.imageId.isBlank()) putNull("image_id") else put("image_id", draft.imageId); put("content_hash", contentHashValue)
             put("created_at", now); put("updated_at", now)
         })
         return id
@@ -523,7 +534,51 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         arrayOf(System.currentTimeMillis(), System.currentTimeMillis(), id)
     )
 
-    fun review(id: String, rating: Int, mode: String = "card") {
+    fun restoreQuestions(ids: List<String>) {
+        val sql = writableDatabase
+        sql.beginTransaction()
+        try {
+            ids.forEach { sql.execSQL("UPDATE question SET deleted_at=NULL WHERE id=?", arrayOf(it)) }
+            sql.setTransactionSuccessful()
+        } finally { sql.endTransaction() }
+    }
+
+    fun purgeQuestion(id: String) {
+        val sql = writableDatabase
+        sql.beginTransaction()
+        try {
+            if (scalar("SELECT COUNT(*) FROM question WHERE id=? AND deleted_at IS NOT NULL", arrayOf(id)) == 1) {
+                sql.delete("review_log", "question_id=?", arrayOf(id))
+                sql.delete("chat_message", "question_id=?", arrayOf(id))
+                sql.delete("setting", "k=?", arrayOf("edit." + id))
+                sql.delete("question", "id=?", arrayOf(id))
+            }
+            sql.setTransactionSuccessful()
+        } finally { sql.endTransaction() }
+    }
+
+    /** Snapshot includes nullable last_review_at and the exact log identity for safe undo. */
+    fun reviewSnapshot(id: String): String = readableDatabase.rawQuery(
+        "SELECT mastery, review_count, next_review_at, last_review_at FROM question WHERE id=?", arrayOf(id)
+    ).use { c ->
+        check(c.moveToFirst())
+        org.json.JSONObject().apply {
+            put("id", id); put("mastery", c.getInt(0)); put("count", c.getInt(1))
+            put("next", if(c.isNull(2)) org.json.JSONObject.NULL else c.getLong(2))
+            put("last", if(c.isNull(3)) org.json.JSONObject.NULL else c.getLong(3))
+        }.toString()
+    }
+
+    fun undoReview(snapshot: String, logId: String) {
+        val o = org.json.JSONObject(snapshot)
+        writableDatabase.execSQL(
+            "UPDATE question SET mastery=?,review_count=?,next_review_at=?,last_review_at=? WHERE id=?",
+            arrayOf(o.getInt("mastery"), o.getInt("count"), if(o.isNull("next")) null else o.getLong("next"),
+                if(o.isNull("last")) null else o.getLong("last"), o.getString("id")))
+        writableDatabase.delete("review_log", "id=? AND question_id=?", arrayOf(logId, o.getString("id")))
+    }
+
+    fun review(id: String, rating: Int, mode: String = "card", logId: String = newId()) {
         val q = question(id) ?: return
         val now = System.currentTimeMillis()
         var mastery = q.mastery
@@ -542,7 +597,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                 arrayOf(mastery, now, next, now, id)
             )
             db.insert("review_log", null, ContentValues().apply {
-                put("id", newId()); put("question_id", id); put("rating", rating)
+                put("id", logId); put("question_id", id); put("rating", rating)
                 put("mode", mode); put("duration_ms", 0); put("reviewed_at", now)
             })
             db.setTransactionSuccessful()

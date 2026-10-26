@@ -4,6 +4,8 @@ package com.zhuquan.tijian.ui
 
 import com.zhuquan.tijian.data.fullName
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -57,18 +59,22 @@ import java.io.File
 
 @Composable
 fun ImportScreen(vm: AppVm) {
+    var discard by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<DraftQuestion?>(null) }
+    LaunchedEffect(vm.pending.firstOrNull()?.id) {
+        vm.pending.singleOrNull()?.takeIf { it.imagePath.isBlank() && it.stem.isBlank() }?.let { editing = it }
+    }
     var previewing by remember { mutableStateOf<DraftQuestion?>(null) }
     var pickerFor by remember { mutableStateOf<DraftQuestion?>(null) }
 
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             title = if (vm.importing) "识别中" else "识别校对",
-            subtitle = if (vm.importing) vm.importLabel else "${vm.pending.size} 题待确认",
+            subtitle = if (vm.importing) vm.importLabel else "${vm.pending.size} 题待确认 · ${vm.draftStatus}",
             onBack = { vm.home() },
             actions = {
                 if (!vm.importing && vm.pending.isNotEmpty()) {
-                    Text("全部确认", fontSize = 12.5.sp, color = Accent,
+                    Text("全部确认", fontSize = 13.sp, color = Accent,
                         modifier = Modifier.tjClickable(enabled = !vm.busy) { vm.confirmPending() }.padding(8.dp))
                 }
             }
@@ -86,13 +92,17 @@ fun ImportScreen(vm: AppVm) {
                 )
                 Spacer(Modifier.height(18.dp))
                 Text(vm.importLabel, fontSize = 13.sp, color = Ink)
-                Text("图片只在你配置的模型服务里处理", fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 6.dp))
+                Text("图片只在你配置的模型服务里处理", fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 6.dp))
                 Spacer(Modifier.height(22.dp))
                 TjButton("停止导入", style = ActionStyle.Secondary) { vm.cancelImport() }
             }
             return@Column
         }
 
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.page)) {
+            TjButton("稍后继续", style = ActionStyle.Quiet) { vm.home() }
+            TjButton("丢弃本批", style = ActionStyle.Danger, enabled = !vm.busy) { discard = true }
+        }
         if (vm.pending.isEmpty()) {
             EmptyState("没有待确认的题目", if (vm.captureUris.isNotEmpty()) "待导入图片已保留，可返回工作台重试" else "回到错题本重新导入") {
                 TjButton(if (vm.captureUris.isNotEmpty()) "返回工作台" else "返回错题本") {
@@ -102,7 +112,7 @@ fun ImportScreen(vm: AppVm) {
             if (vm.importErrors.isNotEmpty()) {
                 Column(Modifier.padding(horizontal = Space.page)) {
                     vm.importErrors.take(4).forEach {
-                        Text("· $it", fontSize = 11.5.sp, color = Amber, modifier = Modifier.padding(vertical = 2.dp))
+                        Text("· $it", fontSize = 13.sp, color = Amber, modifier = Modifier.padding(vertical = 2.dp))
                     }
                 }
             }
@@ -115,12 +125,13 @@ fun ImportScreen(vm: AppVm) {
                     .clip(RoundedCornerShape(10.dp)).background(AmberSoft)
                     .padding(10.dp)
             ) {
-                Text(vm.importErrors.first(), fontSize = 11.5.sp, color = Amber, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(vm.importErrors.first(), fontSize = 13.sp, color = Amber, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
 
         LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Space.page, vertical = 10.dp)) {
             items(vm.pending, key = { it.id }) { d ->
+                if(d.stem.isBlank() && d.imagePath.isNotBlank()) TjButton("重试这张图片", style = ActionStyle.Secondary, enabled = !vm.busy) { vm.retryDraft(d.id) }
                 DraftCard(
                     draft = d,
                     onTagChange = { tag -> vm.updateDraft(d.copy(customTag = tag)) },
@@ -144,6 +155,10 @@ fun ImportScreen(vm: AppVm) {
         }
     }
 
+    if(discard) AlertDialog(onDismissRequest = { discard = false }, title = { Text("丢弃本批草稿？") },
+        text = { Text("本批校对修改将被清除，已经入库的题目不受影响。") },
+        confirmButton = { TextButton(onClick = { discard = false; vm.discardPending() }) { Text("丢弃", color = Red) } },
+        dismissButton = { TextButton(onClick = { discard = false }) { Text("保留") } })
     previewing?.let { d ->
         DraftPreviewDialog(
             draft = d,
@@ -153,7 +168,7 @@ fun ImportScreen(vm: AppVm) {
     }
 
     editing?.let { d ->
-        EditDraftDialog(d, onDismiss = { editing = null }) { updated ->
+        EditDraftDialog(d, onDismiss = { editing = null }, onChange = { vm.updateDraft(it) }) { updated ->
             vm.updateDraft(updated)
             editing = null
         }
@@ -206,13 +221,13 @@ private fun DraftCard(
                         Box(Modifier.size(6.dp).clip(CircleShape).background(color))
                         Text(
                             "${(draft.confidence * 100).toInt()}%",
-                            fontSize = 11.sp, color = Muted, modifier = Modifier.padding(start = 4.dp)
+                            fontSize = 13.sp, color = Muted, modifier = Modifier.padding(start = 4.dp)
                         )
                     }
                 }
                 Text(
                     cleanMathLite(draft.stem).ifBlank { "（未识别题干，点此补录）" },
-                    fontSize = 12.5.sp, lineHeight = 19.sp,
+                    fontSize = 13.sp, lineHeight = 19.sp,
                     color = if (draft.stem.isBlank()) Muted else Ink,
                     maxLines = 3, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 5.dp).tjClickable { onEdit() }
@@ -224,9 +239,9 @@ private fun DraftCard(
         TjTextField(
             value = tagText,
             onValueChange = { tagText = it; onTagChange(it) },
-            placeholder = { Text("题号（选填，如：12 或 三(7)），入库后列表直接显示", fontSize = 11.sp, color = Muted) },
+            placeholder = { Text("题号（选填，如：12 或 三(7)），入库后列表直接显示", fontSize = 13.sp, color = Muted) },
             singleLine = true,
-            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.5.sp, color = Ink),
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink),
             colors = tjFieldColors(),
             modifier = Modifier.fillMaxWidth()
         )
@@ -241,18 +256,18 @@ private fun DraftCard(
             ) {
                 Text(
                     draft.categoryName.ifBlank { "选择分类" },
-                    fontSize = 11.5.sp,
+                    fontSize = 13.sp,
                     color = if (draft.categoryName.isBlank()) Amber else Ink2
                 )
             }
             Spacer(Modifier.weight(1f))
             Text(
-                "预览", fontSize = 12.5.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                "预览", fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.tjClickable(label = "预览识别结果") { onPreview() }
                     .padding(horizontal = 8.dp, vertical = 6.dp)
             )
             Text(
-                "编辑", fontSize = 12.5.sp, color = Ink2,
+                "编辑", fontSize = 13.sp, color = Ink2,
                 modifier = Modifier.tjClickable(label = "编辑识别结果") { onEdit() }
                     .padding(horizontal = 8.dp, vertical = 6.dp)
             )
@@ -263,7 +278,7 @@ private fun DraftCard(
 @Composable
 fun Tag(text: String) {
     Box(Modifier.clip(RoundedCornerShape(4.dp)).background(SurfaceAlt).padding(horizontal = 6.dp, vertical = 2.dp)) {
-        Text(text, fontSize = 11.sp, color = Ink2)
+        Text(text, fontSize = 13.sp, color = Ink2)
     }
 }
 
@@ -278,7 +293,7 @@ private fun DraftPreviewDialog(draft: DraftQuestion, onDismiss: () -> Unit, onEd
                     Text("识别结果预览", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
                     Text(
                         "公式、表格和 Markdown 都按最终界面渲染",
-                        fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 2.dp)
+                        fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 2.dp)
                     )
                 }
                 Icon(
@@ -294,9 +309,9 @@ private fun DraftPreviewDialog(draft: DraftQuestion, onDismiss: () -> Unit, onEd
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Tag(draft.type.ifBlank { "题目" })
                     Spacer(Modifier.width(8.dp))
-                    Text(draft.categoryName.ifBlank { "未分类" }, fontSize = 12.sp, color = Muted)
+                    Text(draft.categoryName.ifBlank { "未分类" }, fontSize = 13.sp, color = Muted)
                     Spacer(Modifier.weight(1f))
-                    Text("置信 ${"%.0f".format(draft.confidence * 100)}%", fontSize = 11.5.sp, color = Muted)
+                    Text("置信 ${"%.0f".format(draft.confidence * 100)}%", fontSize = 13.sp, color = Muted)
                 }
                 Spacer(Modifier.height(10.dp))
                 if (draft.imagePath.isNotBlank()) {
@@ -354,7 +369,7 @@ private fun NeedGroup(label: String, items: List<String>, color: Color) {
     if (items.isEmpty()) return
     Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.Top) {
         Text(
-            label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = color,
+            label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = color,
             modifier = Modifier.width(34.dp).padding(top = 3.dp)
         )
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -372,7 +387,7 @@ private fun NeedGroup(label: String, items: List<String>, color: Color) {
 }
 
 @Composable
-private fun EditDraftDialog(draft: DraftQuestion, onDismiss: () -> Unit, onSave: (DraftQuestion) -> Unit) {
+private fun EditDraftDialog(draft: DraftQuestion, onDismiss: () -> Unit, onChange: (DraftQuestion) -> Unit, onSave: (DraftQuestion) -> Unit) {
     var stem by remember { mutableStateOf(draft.stem) }
     var answer by remember { mutableStateOf(draft.answer) }
     var analysis by remember { mutableStateOf(draft.analysis) }
@@ -380,26 +395,35 @@ private fun EditDraftDialog(draft: DraftQuestion, onDismiss: () -> Unit, onSave:
     var formulas by remember { mutableStateOf(parseKnowledgeTags(draft.needFormulas).joinToString("，")) }
     var concepts by remember { mutableStateOf(parseKnowledgeTags(draft.needConcepts).joinToString("，")) }
     var methods by remember { mutableStateOf(parseKnowledgeTags(draft.needMethods).joinToString("，")) }
-    AlertDialog(
+    var preview by remember { mutableStateOf(false) }
+    LaunchedEffect(stem, answer, analysis, type, formulas, concepts, methods) {
+        onChange(draft.copy(stem = stem, answer = answer, analysis = analysis, type = type,
+            needFormulas = tagsToJson(formulas), needConcepts = tagsToJson(concepts), needMethods = tagsToJson(methods)))
+    }
+    FullEditor(
         onDismissRequest = onDismiss,
         title = { Text("补录 / 修改", fontSize = 16.sp) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                TjTextField(value = stem, onValueChange = { stem = it }, label = { Text("题干", fontSize = 12.sp) }, minLines = 3, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                Text("修改会自动保存为草稿", color = Muted)
+                TjButton(if(preview) "收起预览" else "预览排版", style = ActionStyle.Secondary) { preview = !preview }
+                if(preview) RichText(stem + "\n\n## 答案\n" + answer + "\n\n## 解析\n" + analysis)
+
+                TjTextField(value = stem, onValueChange = { stem = it }, label = { Text("题干", fontSize = 13.sp) }, minLines = 3, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                TjTextField(value = type, onValueChange = { type = it }, label = { Text("题型", fontSize = 12.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = type, onValueChange = { type = it }, label = { Text("题型", fontSize = 13.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                TjTextField(value = answer, onValueChange = { answer = it }, label = { Text("答案", fontSize = 12.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = answer, onValueChange = { answer = it }, label = { Text("答案", fontSize = 13.sp) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                TjTextField(value = analysis, onValueChange = { analysis = it }, label = { Text("解析", fontSize = 12.sp) }, minLines = 2, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = analysis, onValueChange = { analysis = it }, label = { Text("解析", fontSize = 13.sp) }, minLines = 2, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 22.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                Text("要做出这题，需要掌握（用逗号分隔）", fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
+                Text("要做出这题，需要掌握（用逗号分隔）", fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
                 Spacer(Modifier.height(4.dp))
-                TjTextField(value = formulas, onValueChange = { formulas = it }, label = { Text("公式", fontSize = 12.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = formulas, onValueChange = { formulas = it }, label = { Text("公式", fontSize = 13.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                TjTextField(value = concepts, onValueChange = { concepts = it }, label = { Text("概念", fontSize = 12.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = concepts, onValueChange = { concepts = it }, label = { Text("概念", fontSize = 13.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                TjTextField(value = methods, onValueChange = { methods = it }, label = { Text("方法", fontSize = 12.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+                TjTextField(value = methods, onValueChange = { methods = it }, label = { Text("方法", fontSize = 13.sp) }, minLines = 1, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
@@ -412,7 +436,7 @@ private fun EditDraftDialog(draft: DraftQuestion, onDismiss: () -> Unit, onSave:
                 ))
             }) { Text("完成") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("稍后继续") } }
     )
 }
 
@@ -429,10 +453,10 @@ fun CategoryPicker(
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = CardBg) {
         Column(Modifier.blockSheetDrag().padding(horizontal = Space.page).padding(bottom = 26.dp)) {
             Text("选择分类", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            Text("当前：${current.ifBlank { "未分类" }}", fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
+            Text("当前：${current.ifBlank { "未分类" }}", fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 3.dp, bottom = 10.dp))
             TjTextField(
                 value = query, onValueChange = { query = it },
-                placeholder = { Text("搜索分类", fontSize = 12.sp, color = Muted) },
+                placeholder = { Text("搜索分类", fontSize = 13.sp, color = Muted) },
                 singleLine = true, modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
@@ -443,7 +467,7 @@ fun CategoryPicker(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         RadioDot(current == name)
-                        Text(name, fontSize = 12.5.sp, color = Ink, modifier = Modifier.padding(start = 9.dp))
+                        Text(name, fontSize = 13.sp, color = Ink, modifier = Modifier.padding(start = 9.dp))
                     }
                     HorizontalDivider(color = Line, thickness = 1.dp)
                 }
@@ -452,7 +476,7 @@ fun CategoryPicker(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TjTextField(
                     value = newName, onValueChange = { newName = it },
-                    placeholder = { Text("学科/子分类，如数学/积分", fontSize = 12.sp, color = Muted) },
+                    placeholder = { Text("学科/子分类，如数学/积分", fontSize = 13.sp, color = Muted) },
                     singleLine = true, modifier = Modifier.weight(1f)
                 )
                 Spacer(Modifier.width(8.dp))
@@ -465,6 +489,7 @@ fun CategoryPicker(
 @Composable
 fun ReviewScreen(vm: AppVm) {
     val q = vm.reviewQueue.getOrNull(vm.reviewIndex)
+    var original by remember(vm.reviewIndex) { mutableStateOf(false) }
     // 答完最后一题要给出明确的完成态，不能和「本来就没有到期题」混用同一个空界面
     val finished = vm.reviewQueue.isNotEmpty() && vm.reviewIndex >= vm.reviewQueue.size
 
@@ -474,9 +499,11 @@ fun ReviewScreen(vm: AppVm) {
             subtitle = if (vm.reviewQueue.isEmpty()) "" else "${minOf(vm.reviewIndex + 1, vm.reviewQueue.size)} / ${vm.reviewQueue.size}",
             onBack = { vm.home() }
         )
+        if(vm.canUndoReview) TjButton("撤销上一题评分", Modifier.padding(horizontal = Space.page), enabled = !vm.reviewSaving, style = ActionStyle.Quiet) { vm.undoRating() }
 
         if (finished) {
-            EmptyState("这组复习完成", "已过完 ${vm.reviewQueue.size} 道题，掌握度已更新") {
+            EmptyState("这组复习完成", "已完成 ${vm.reviewQueue.size} 题 · 不会 ${vm.reviewRatings.count { it == 0 }} · 不熟 ${vm.reviewRatings.count { it == 1 }} · 掌握 ${vm.reviewRatings.count { it == 2 }}") {
+                if(vm.reviewRatings.any { it == 0 }) TjButton("再练不会的题", style = ActionStyle.Secondary) { vm.retryWeakReview() }
                 BigButton("返回错题本", Modifier.width(160.dp)) { vm.home() }
             }
             return@Column
@@ -504,15 +531,18 @@ fun ReviewScreen(vm: AppVm) {
                     Box(
                         Modifier.clip(RoundedCornerShape(4.dp)).background(AmberSoft)
                             .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) { Text(q.customTag, fontSize = 11.sp, color = Amber, maxLines = 1, fontWeight = FontWeight.SemiBold) }
+                    ) { Text(q.customTag, fontSize = 13.sp, color = Amber, maxLines = 1, fontWeight = FontWeight.SemiBold) }
                 }
                 Spacer(Modifier.width(6.dp))
-                Text(q.categoryName, fontSize = 11.5.sp, color = Muted)
+                Text(q.categoryName, fontSize = 13.sp, color = Muted)
             }
             Spacer(Modifier.height(12.dp))
 
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                if (q.imagePath != null) {
+            val reviewScroll = rememberScrollState()
+            LaunchedEffect(q.id) { reviewScroll.scrollTo(0) }
+            Column(Modifier.weight(1f).verticalScroll(reviewScroll)) {
+                if(q.imagePath != null) TjButton(if(original) "隐藏原图" else "查看原图（可能含答案）", style = ActionStyle.Quiet) { original = !original }
+                if (q.imagePath != null && original) {
                     AsyncImage(
                         model = File(q.imagePath), contentDescription = null,
                         contentScale = ContentScale.Fit,
@@ -543,7 +573,7 @@ fun ReviewScreen(vm: AppVm) {
                         }
                     }
                     if (q.answer.isBlank() && q.analysis.isBlank()) {
-                        Text("这道题还没有答案与解析。", fontSize = 12.sp, color = Muted)
+                        Text("这道题还没有答案与解析。", fontSize = 13.sp, color = Muted)
                     }
                 }
                 Spacer(Modifier.height(24.dp))
@@ -554,13 +584,13 @@ fun ReviewScreen(vm: AppVm) {
             } else {
                 Text(
                     "这道题记得多牢？选择后按间隔重复安排下次复习",
-                    fontSize = 12.sp, color = Muted,
+                    fontSize = 13.sp, color = Muted,
                     modifier = Modifier.padding(bottom = 10.dp)
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RateButton("忘了", Red, Modifier.weight(1f)) { vm.rate(0) }
-                    RateButton("模糊", Amber, Modifier.weight(1f)) { vm.rate(1) }
-                    RateButton("记得", Green, Modifier.weight(1f)) { vm.rate(2) }
+                    RateButton("不会\n1 天后", Red, Modifier.weight(1f), !vm.reviewSaving) { vm.rate(0) }
+                    RateButton("不熟\n${com.zhuquan.tijian.data.reviewDays(q.mastery, 1)} 天后", Amber, Modifier.weight(1f), !vm.reviewSaving) { vm.rate(1) }
+                    RateButton("掌握\n${com.zhuquan.tijian.data.reviewDays(q.mastery, 2)} 天后", Green, Modifier.weight(1f), !vm.reviewSaving) { vm.rate(2) }
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -569,13 +599,13 @@ fun ReviewScreen(vm: AppVm) {
 }
 
 @Composable
-private fun RateButton(text: String, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun RateButton(text: String, color: Color, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
     Box(
         modifier.heightIn(min = 48.dp).clip(CircleShape).background(CardBg)
             .border(1.dp, color.copy(alpha = 0.45f), CircleShape)
-            .tjClickable { onClick() },
+            .tjClickable(enabled = enabled) { onClick() },
         contentAlignment = Alignment.Center
-    ) { Text(text, fontSize = 14.sp, color = color, fontWeight = FontWeight.SemiBold) }
+    ) { Text(text, modifier = Modifier.padding(8.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontSize = 14.sp, color = color, fontWeight = FontWeight.SemiBold) }
 }
 
 

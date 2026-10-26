@@ -22,6 +22,7 @@ import com.zhuquan.tijian.update.Updater
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import java.io.File
 import java.io.FileOutputStream
@@ -37,6 +38,7 @@ sealed interface Route {
     data object Capture : Route
     data object Review : Route
     data class Doc(val id: String) : Route
+    data object Trash : Route
     data object Provider : Route
 }
 
@@ -87,17 +89,19 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     private val manifestFile get() = File(stagingDir, "pending.json")
 
     private fun saveCaptureManifest() {
-        viewModelScope.launch(Dispatchers.IO) {
-            runCatching {
-                manifestFile.writeText(org.json.JSONArray(captureUris.map { it.toString() }).toString())
-            }
+        val content = JSONArray(captureUris.map { it.toString() }).toString()
+        saves.trySend {
+            val atomic = android.util.AtomicFile(manifestFile)
+            val output = atomic.startWrite()
+            try { output.write(content.toByteArray()); atomic.finishWrite(output) }
+            catch(e: Exception) { atomic.failWrite(output); throw e }
         }
     }
 
-    private fun restoreCaptureManifest() {
-        viewModelScope.launch(Dispatchers.IO) {
+    private suspend fun restoreCaptureManifest() {
+        withContext(Dispatchers.IO) {
             val uris = runCatching {
-                val arr = org.json.JSONArray(manifestFile.readText())
+                val arr = org.json.JSONArray(String(android.util.AtomicFile(manifestFile).readFully()))
                 (0 until arr.length()).mapNotNull { i ->
                     val s = arr.optString(i)
                     val f = File(s.removePrefix("file://"))
@@ -130,9 +134,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     /** 清掉工作台目录里的暂存文件和清单（导入完成或用户清空时）。 */
     private fun wipeStaging() {
-        viewModelScope.launch(Dispatchers.IO) {
-            stagingDir.listFiles()?.forEach { it.delete() }
-        }
+        saves.trySend { stagingDir.listFiles()?.forEach { it.delete() } }
     }
 
     var reviewQueue by androidx.compose.runtime.mutableStateOf<List<QuestionRow>>(emptyList())
@@ -160,9 +162,126 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     var updateReady by androidx.compose.runtime.mutableStateOf<File?>(null)
         private set
 
+    // FIFO writer: edits are persisted in order; confirmation waits for all preceding saves.
+    @Volatile private var saveFailure: Exception? = null
+    private val saves = kotlinx.coroutines.channels.Channel<() -> Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+    var sessionReady by androidx.compose.runtime.mutableStateOf(false)
+        private set
+    var draftStatus by androidx.compose.runtime.mutableStateOf("正在恢复草稿…")
+        private set
+    var reviewSetup by androidx.compose.runtime.mutableStateOf(false)
+    var reviewCategory by androidx.compose.runtime.mutableStateOf<String?>(null)
+    var reviewMode by androidx.compose.runtime.mutableStateOf("due")
+    var reviewLimit by androidx.compose.runtime.mutableIntStateOf(10)
+    var reviewSaving by androidx.compose.runtime.mutableStateOf(false)
+    var reviewRatings by androidx.compose.runtime.mutableStateOf<List<Int>>(emptyList())
+    private var undoSnapshot = ""
+    private var undoLog = ""
+    var canUndoReview by androidx.compose.runtime.mutableStateOf(false)
+    var deletedIds by androidx.compose.runtime.mutableStateOf<List<String>>(emptyList())
+    var backupSummary by androidx.compose.runtime.mutableStateOf("")
+    val hasReview get() = reviewQueue.isNotEmpty() && reviewIndex < reviewQueue.size
+
+    fun saveSetting(key: String, value: String) { saves.trySend { db.putSetting(key, value) } }
+    private var draftRevision = 0
+    private fun persistPending() {
+        val revision = ++draftRevision
+        val snapshot = com.zhuquan.tijian.data.SessionCodec.encodeDrafts(pending)
+        val batch = pendingBatch.orEmpty()
+        draftStatus = "正在保存草稿…"
+        saves.trySend {
+            db.putSetting("drafts.v1", snapshot); db.putSetting("drafts.batch", batch)
+            viewModelScope.launch { if(revision == draftRevision) draftStatus = "已保存草稿" }
+        }
+    }
+    private suspend fun flushSaves() {
+        val done = kotlinx.coroutines.CompletableDeferred<Unit>()
+        saves.send { val failure = saveFailure; if(failure == null) done.complete(Unit) else { saveFailure = null; done.completeExceptionally(failure) } }
+        done.await()
+    }
+    private fun reviewSession(index: Int = reviewIndex, ratings: List<Int> = reviewRatings,
+        snapshot: String = undoSnapshot, log: String = undoLog): String = org.json.JSONObject().apply {
+        put("ids", JSONArray(reviewQueue.map { it.id })); put("index", index)
+        put("ratings", JSONArray(ratings)); put("snapshot", snapshot); put("log", log)
+    }.toString()
+
+    fun addTextDraft(example: Boolean = false) {
+        if (!sessionReady || importing || busy) return
+        pending = pending + if (example) DraftQuestion(imageId = "", imagePath = "", type = "示例题",
+            stem = "计算：2 + 3 = ?", answer = "5", analysis = "把 2 和 3 相加，得到 5。",
+            categoryName = "数学/体验示例", confidence = 1.0)
+        else DraftQuestion(imageId = "", imagePath = "", categoryName = "未分类", confidence = 1.0)
+        persistPending(); go(Route.Import)
+    }
+    fun discardPending() {
+        if (importing || busy) return
+        pending = emptyList(); pendingBatch = null; importErrors = emptyList()
+        persistPending(); home()
+    }
+    fun retryDraft(id: String) {
+        val draft = pending.firstOrNull { it.id == id } ?: return
+        if (!provider.ready()) { go(Route.Provider); return }
+        if (busy || importing || draft.imagePath.isBlank()) return
+        busy = true; busyLabel = "重试这张图片"
+        viewModelScope.launch {
+            try {
+                val out = importer.import(listOf(Uri.fromFile(File(draft.imagePath))), "retry") { _, _, _ -> }
+                pending = pending.flatMap { existing ->
+                    if (existing.id != id) listOf(existing)
+                    else out.drafts.mapIndexed { index, replacement ->
+                        if (index == 0) replacement.copy(customTag = existing.customTag) else replacement
+                    }.ifEmpty { listOf(existing) }
+                }
+                importErrors = out.errors; persistPending()
+            } catch (e: Exception) { toast = "重试失败，原草稿已保留：${e.message}" }
+            finally { busy = false }
+        }
+    }
+    fun undoDelete() {
+        val ids = deletedIds
+        write { it.restoreQuestions(ids) }; deletedIds = emptyList()
+    }
+    fun setReadingSize(size: Int) {
+        readingSize.intValue = size.coerceIn(15, 22)
+        saveSetting("reading.size", readingSize.intValue.toString())
+    }
+
     init {
+        viewModelScope.launch(Dispatchers.IO) {
+            for (save in saves) try { save() } catch (e: Exception) {
+                saveFailure = e
+                withContext(Dispatchers.Main) { draftStatus = "保存失败，请保留页面并重试"; toast = "保存失败：${e.message}" }
+            }
+        }
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val drafts = com.zhuquan.tijian.data.SessionCodec.decodeDrafts(db.getSetting("drafts.v1") ?: "[]")
+                    val batch = db.getSetting("drafts.batch")?.takeIf { it.isNotBlank() }
+                    val raw = db.getSetting("review.session")
+                    val session = raw?.takeIf { it.isNotBlank() }?.let { org.json.JSONObject(it) }
+                    val ids = session?.optJSONArray("ids") ?: JSONArray()
+                    val originalIndex = session?.optInt("index") ?: 0
+                    val remaining = (0 until ids.length()).mapNotNull { i -> db.activeQuestion(ids.getString(i))?.let { i to it } }
+                    val queue = remaining.map { it.second }
+                    val restoredIndex = remaining.count { it.first < originalIndex }
+                    val ratings = session?.optJSONArray("ratings") ?: JSONArray()
+                    withContext(Dispatchers.Main) {
+                        pending = drafts; pendingBatch = batch; draftStatus = "已保存草稿"
+                        reviewQueue = queue; reviewIndex = restoredIndex.coerceIn(0, queue.size)
+                        reviewRatings = remaining.filter { it.first < originalIndex }.map { ratings.optInt(it.first, 1) }
+                        undoSnapshot = session?.optString("snapshot").orEmpty(); undoLog = session?.optString("log").orEmpty()
+                        canUndoReview = undoSnapshot.isNotBlank() && reviewIndex > 0 && queue.size == ids.length()
+                    }
+                }
+                restoreCaptureManifest()
+                sessionReady = true
+            } catch (e: Exception) { toast = "草稿恢复失败，请先备份数据：${e.message}" }
+        }
+        readingSize.intValue = db.getSetting("reading.size")?.toIntOrNull()?.coerceIn(15, 22) ?: 17
+        reviewLimit = db.getSetting("review.limit")?.toIntOrNull() ?: 10
+        backupSummary = db.getSetting("backup.summary").orEmpty()
         refresh()
-        restoreCaptureManifest()
         // 外观偏好：0 跟随系统 / 1 浅色 / 2 深色
         tjAppearance.intValue = db.getSetting("appearance")?.toIntOrNull() ?: 0
         viewModelScope.launch(Dispatchers.IO) { profiles = db.providerProfiles() }
@@ -315,26 +434,35 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         wipeStaging()
     }
 
+    fun receiveImages(uris: List<Uri>) {
+        viewModelScope.launch {
+            androidx.compose.runtime.snapshotFlow { sessionReady }.first { it }
+            if(importing || busy) { toast = "请等待当前任务完成，再分享图片"; return@launch }
+            uris.forEach { addCapture(it) }
+            go(Route.Capture)
+        }
+    }
+
     fun importCapture() {
-        val list = captureUris
-        if (list.isEmpty() || importing || busy) return
-        importUris(list, "camera")
+        if (captureUris.isEmpty() || importing || busy) return
+        viewModelScope.launch {
+            synchronized(stagingJobs) { stagingJobs.values.toList() }.forEach { it.join() }
+            importUris(captureUris, "camera")
+        }
     }
 
     /** 识别中途停止：取消协程与在途 HTTP，已入库的图片保留。 */
     fun cancelImport() {
         if (!importing) return
         importJob?.cancel()
-        importJob = null
         ai.cancelActive()
-        importing = false
-        importLabel = ""
+        importLabel = "正在保存已完成的识别结果…"
         importProgress = 0f
-        toast = "已停止导入，可稍后继续"
+        toast = "正在停止，已完成的题目会保留"
     }
 
     fun importUris(uris: List<Uri>, source: String = "share") {
-        if (uris.isEmpty() || importing || busy) return
+        if (!sessionReady || uris.isEmpty() || importing || busy) return
         if (pending.isNotEmpty()) {
             route = Route.Import
             toast = "请先确认或移除上一批题目，再导入新图片"
@@ -348,7 +476,13 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             pending = emptyList()
             route = Route.Import
             try {
-                val out = importer.import(uris, source) { done, total, label ->
+                val out = importer.import(uris, source, onImage = { uri, drafts ->
+                    withContext(Dispatchers.Main) {
+                        pending = (pending + drafts).distinctBy { it.id }
+                        persistPending(); flushSaves()
+                        if (drafts.isNotEmpty()) { captureUris = captureUris - uri; saveCaptureManifest() }
+                    }
+                }) { done, total, label ->
                     importProgress = done.toFloat() / total.coerceAtLeast(1)
                     importLabel = label
                 }
@@ -357,8 +491,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                     captureUris = emptyList()
                     wipeStaging()
                 }
-                pending = out.drafts
+                pending = (pending + out.drafts).distinctBy { it.id }
                 pendingBatch = out.batchId
+                persistPending()
                 importErrors = out.errors
                 importing = false
                 if (pending.isEmpty()) {
@@ -386,6 +521,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             try {
                 val map = ai.classify(provider, list, categories)
                 pending = pending.map { d -> map[d.id]?.let { d.copy(categoryName = it) } ?: d }
+                persistPending()
             } catch (e: Exception) {
                 toast = "自动分类失败，可手动选择"
             } finally {
@@ -396,10 +532,12 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     fun updateDraft(updated: DraftQuestion) {
         pending = pending.map { if (it.id == updated.id) updated else it }
+        persistPending()
     }
 
     fun removeDraft(id: String) {
         pending = pending.filter { it.id != id }
+        persistPending()
     }
 
     fun confirmPending(only: List<DraftQuestion>? = null) {
@@ -407,13 +545,16 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         val requestedIds = only?.map { it.id }?.toSet()
         val list = pending.filter { requestedIds == null || it.id in requestedIds }
         if (list.isEmpty()) return
+        if (list.any { it.stem.isBlank() && it.imageId.isBlank() }) { toast = "请先填写空白题目的题干"; return }
         busy = true
         busyLabel = "正在入库"
         viewModelScope.launch {
             try {
+                flushSaves()
                 val (saved, skipped) = withContext(Dispatchers.IO) { db.saveDrafts(list, pendingBatch) }
                 val completed = list.map { it.id }.toSet()
                 pending = pending.filterNot { it.id in completed }
+                persistPending()
                 if (pending.isEmpty()) { pendingBatch = null; home() }
                 refresh()
                 toast = if (skipped > 0) "已入库 $saved 题 · 跳过 $skipped 道重复" else "已入库 $saved 题"
@@ -447,6 +588,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                     )
                 )
                 pendingBatch = null
+                persistPending()
                 importing = false
                 route = Route.Import
             } catch (e: Exception) {
@@ -459,40 +601,78 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     // ---------- review ----------
 
     fun startReview(includeAll: Boolean = false) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val list = if (includeAll) db.questions().take(40) else db.dueQuestions(40)
-            withContext(Dispatchers.Main) {
-                reviewQueue = list
-                reviewIndex = 0
-                revealAnswer = false
-                route = Route.Review
-            }
-        }
+        reviewCategory = null; reviewMode = if (includeAll) "free" else "due"; reviewSetup = true
     }
-
     fun startReviewFor(categoryId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val all = db.questions(categoryId)
-            val list = all.filter { it.mastery < 4 }.ifEmpty { all }
-            withContext(Dispatchers.Main) {
-                reviewQueue = list
-                reviewIndex = 0
-                revealAnswer = false
-                route = Route.Review
-            }
+        reviewCategory = categoryId; reviewMode = "weak"; reviewSetup = true
+    }
+    fun beginReview() {
+        if (reviewSaving || !sessionReady) return
+        reviewSetup = false; reviewSaving = true
+        val category = reviewCategory; val mode = reviewMode; val limit = reviewLimit
+        viewModelScope.launch {
+            try {
+                val rows = withContext(Dispatchers.IO) { db.questions(category, if(mode == "free") "all" else mode, limit = limit.takeIf { it > 0 }) }
+                reviewQueue = if (limit == 0) rows else rows.take(limit)
+                reviewIndex = 0; reviewRatings = emptyList(); revealAnswer = false
+                undoSnapshot = ""; undoLog = ""; canUndoReview = false
+                saveSetting("review.limit", limit.toString()); saveSetting("review.session", reviewSession())
+                go(Route.Review)
+            } catch(e: Exception) { toast = "无法开始复习：${e.message}" }
+            finally { reviewSaving = false }
         }
     }
-
+    fun resumeReview() { if (sessionReady) go(Route.Review) }
+    fun retryWeakReview() {
+        reviewQueue = reviewQueue.filterIndexed { i, _ -> reviewRatings.getOrNull(i) == 0 }
+        reviewIndex = 0; reviewRatings = emptyList(); revealAnswer = false
+        undoSnapshot = ""; undoLog = ""; canUndoReview = false
+        saveSetting("review.session", reviewSession())
+    }
     fun reveal() { revealAnswer = true }
-
     fun rate(rating: Int) {
         val q = reviewQueue.getOrNull(reviewIndex) ?: return
-        // 先同步推进队列再落库：评分按钮立刻失效，连点不会对同一题记两次
-        reviewIndex++
-        revealAnswer = false
-        viewModelScope.launch(Dispatchers.IO) {
-            db.review(q.id, rating)
-            if (reviewIndex >= reviewQueue.size) withContext(Dispatchers.Main) { refresh() }
+        if (!revealAnswer || reviewSaving) return
+        reviewSaving = true
+        viewModelScope.launch {
+            try {
+                flushSaves()
+                val log = newId()
+                val ratings = reviewRatings + rating
+                val snapshot = withContext(Dispatchers.IO) {
+                    val sql = db.writableDatabase
+                    sql.beginTransaction()
+                    try {
+                        val before = db.reviewSnapshot(q.id)
+                        db.review(q.id, rating, logId = log)
+                        db.putSetting("review.session", reviewSession(reviewIndex + 1, ratings, before, log))
+                        sql.setTransactionSuccessful(); before
+                    } finally { sql.endTransaction() }
+                }
+                undoSnapshot = snapshot; undoLog = log; canUndoReview = true
+                reviewRatings = ratings; reviewIndex++; revealAnswer = false; refresh()
+            } catch(e: Exception) { toast = "评分保存失败，请重试：${e.message}" }
+            finally { reviewSaving = false }
+        }
+    }
+    fun undoRating() {
+        if (!canUndoReview || reviewSaving || reviewIndex == 0) return
+        reviewSaving = true
+        viewModelScope.launch {
+            try {
+                flushSaves()
+                withContext(Dispatchers.IO) {
+                    val sql = db.writableDatabase; sql.beginTransaction()
+                    try {
+                        db.undoReview(undoSnapshot, undoLog)
+                        db.putSetting("review.session", reviewSession(reviewIndex - 1, reviewRatings.dropLast(1), "", ""))
+                        sql.setTransactionSuccessful()
+                    } finally { sql.endTransaction() }
+                }
+                reviewIndex--; reviewRatings = reviewRatings.dropLast(1); revealAnswer = true
+                undoSnapshot = ""; undoLog = ""; canUndoReview = false; refresh()
+            } catch(e: Exception) { toast = "撤销失败：${e.message}" }
+            finally { reviewSaving = false }
         }
     }
 
@@ -670,6 +850,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         if (ids.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
             ids.forEach { db.deleteQuestion(it) }
+            withContext(Dispatchers.Main) { deletedIds = ids }
             withContext(Dispatchers.Main) { refresh() }
         }
     }
@@ -714,7 +895,10 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     fun cachedQuestion(id: String): QuestionRow? = synchronized(questionCache) { questionCache[id] }
     fun cacheQuestion(q: QuestionRow) { synchronized(questionCache) { questionCache[q.id] = q } }
 
-    fun rememberQuestion(id: String) { lastQuestionId = id }
+    fun rememberQuestion(id: String) {
+        lastQuestionId = id
+        if (db.getSetting("reading.last") != id) saveSetting("reading.last", id)
+    }
 
     fun openChat(quote: String = "") {
         val id = when (val r = route) {
@@ -936,17 +1120,53 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    suspend fun testProvider(cfg: ProviderConfig): String = ai.test(cfg)
+    suspend fun testProvider(cfg: ProviderConfig): String = withContext(Dispatchers.IO) {
+        val code = (1000..9999).random().toString()
+        val bitmap = android.graphics.Bitmap.createBitmap(480, 160, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap); canvas.drawColor(android.graphics.Color.WHITE)
+        val paint = android.graphics.Paint().apply { color = android.graphics.Color.BLACK; textSize = 76f; isAntiAlias = true }
+        canvas.drawText(code, 50f, 110f, paint)
+        val bytes = java.io.ByteArrayOutputStream().also { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }.toByteArray()
+        bitmap.recycle()
+        ai.testVision(cfg, bytes, code)
+    }
 
     // ---------- backup ----------
+
+    suspend fun saveEditedQuestion(q: QuestionRow): Boolean {
+        return try {
+            flushSaves()
+            withContext(Dispatchers.IO) {
+                val sql = db.writableDatabase; sql.beginTransaction()
+                try {
+                    db.updateQuestion(q.id, q.stem, q.answer, q.analysis, q.type, q.tags, q.note, q.errorReasons,
+                        q.categoryId ?: "uncat", q.customTag)
+                    db.putSetting("edit." + q.id, "{}")
+                    sql.setTransactionSuccessful()
+                } finally { sql.endTransaction() }
+            }
+            refresh(); true
+        } catch(e: Exception) { toast = "保存失败，编辑草稿仍保留：${e.message}"; false }
+    }
+
+    fun shareRecoveryBackup() {
+        val file = File(getApplication<Application>().filesDir, "recovery-before-restore.zip")
+        if(file.exists()) {
+            val share = File(getApplication<Application>().filesDir, "share/recovery-before-restore.zip")
+            share.parentFile?.mkdirs(); file.copyTo(share, overwrite = true); shareFile(getApplication(), share)
+        } else toast = "尚无恢复前快照"
+    }
 
     fun exportBackup(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val ctx = getApplication<Application>()
                 (ctx.contentResolver.openOutputStream(uri) ?: error("无法写入所选文件")).use { out ->
+                    flushSaves()
                     val n = com.zhuquan.tijian.data.Backup.export(ctx, db, out)
-                    withContext(Dispatchers.Main) { toast = "备份完成（$n 个文件）" }
+                    val summary = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.CHINA).format(java.util.Date()) + " · ${db.stats().total} 道题"
+                    db.putSetting("backup.summary", summary)
+                    withContext(Dispatchers.Main) { backupSummary = summary; toast = "备份完成（$n 个文件）" }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { toast = "备份失败：${e.message}" }
@@ -956,16 +1176,18 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     fun importBackup(uri: Uri) {
         viewModelScope.launch {
-            toast = "恢复完成，应用即将重启"
+            if (importing || busy || reviewSaving) { toast = "请等待当前任务完成后恢复"; return@launch }
+            busy = true; busyLabel = "验证备份并保存恢复前快照"
+            flushSaves()
             withContext(Dispatchers.IO) {
                 try {
                     val ctx = getApplication<Application>()
-                    ctx.contentResolver.openInputStream(uri)?.use { input ->
+                    (ctx.contentResolver.openInputStream(uri) ?: error("无法读取备份")).use { input ->
                         com.zhuquan.tijian.data.Backup.import(ctx, db, input)
                     }
                 } catch (e: Exception) {
                     // Backup.import 成功路径会直接重启进程；走到这里说明恢复失败
-                    withContext(Dispatchers.Main) { toast = "恢复失败：${e.message}" }
+                    withContext(Dispatchers.Main) { busy = false; toast = "恢复失败：${e.message}" }
                 }
             }
         }
