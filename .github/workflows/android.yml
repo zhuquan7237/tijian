@@ -32,12 +32,17 @@ jobs:
           path: |
             app/build/outputs/apk/debug/*.apk
             app/build/reports/lint-results-debug.*
+      - name: Enable emulator hardware acceleration
+        run: |
+          sudo chmod a+rw /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
       - name: Run Android regressions
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           arch: x86_64
           profile: pixel_2
+          disable-linux-hw-accel: false
           script: bash scripts/android-regressions.sh
       - uses: actions/upload-artifact@v4
         if: always()
@@ -48,6 +53,8 @@ jobs:
             app/build/reports/tests/
             app/build/reports/androidTests/
             app/build/usability-screenshots/
+            app/build/outputs/connected_android_test_additional_output/
+            app/build/android-diagnostics/
   release:
     if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/master'
     needs: validate

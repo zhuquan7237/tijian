@@ -46,7 +46,8 @@ class UsabilityUiTest {
             assertTrue(bounds.width() > 0 && bounds.height() > 0)
             val screen = instrumentation.uiAutomation.takeScreenshot()
             assertTrue("Save action must be above screen bottom", bounds.bottom <= screen.height)
-            val dir = context.getExternalFilesDir("usability")!!.apply { mkdirs() }
+            val dir = (InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")?.let { File(it) }
+                ?: context.getExternalFilesDir("usability")!!).apply { mkdirs() }
             File(dir, "editor-large-text.png").outputStream().use { screen.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
             screen.recycle()
         } finally { instrumentation.runOnMainSync { host.finish() } }
@@ -67,7 +68,8 @@ class UsabilityUiTest {
             instrumentation.waitForIdleSync()
             Thread.sleep(600)
             val bitmap = instrumentation.uiAutomation.takeScreenshot()
-            val dir = context.getExternalFilesDir("usability")!!.apply { mkdirs() }
+            val dir = (InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")?.let { File(it) }
+                ?: context.getExternalFilesDir("usability")!!).apply { mkdirs() }
             File(dir, name + ".png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
             bitmap.recycle()
         }
