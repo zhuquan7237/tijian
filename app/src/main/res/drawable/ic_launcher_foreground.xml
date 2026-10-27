@@ -1,26 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 新图标前景：白色对勾 + 右上浅蓝页角折角，斜边留白缝。
-     画布 108x108，图形收在中心安全区内，圆角由启动器遮罩决定。 -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- 对勾：短臂、底部顶点、指向折角的长臂（尖端停在白缝下方，留蓝底间隙） -->
-    <path
-        android:pathData="M29,59 L47.5,77.5 L68,48.5"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="7"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <!-- 折角（浅蓝），贴右上角 -->
-    <path
-        android:fillColor="#75AEFD"
-        android:pathData="M57,24 L85,24 L85,52 Z" />
-    <!-- 折角斜边的白缝：两端内缩，圆头不露出斜边 -->
-    <path
-        android:pathData="M59.5,26.5 L81.5,48.5"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="6.5"
-        android:strokeLineCap="round" />
-</vector>
+<!-- 前景 = 从原图抠出的对勾 + 折角（透明底，图形居中占 72%，安全区内）；
+     背景层为图标主蓝，遮罩形状交给启动器。 -->
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@drawable/ic_launcher_fg"
+    android:gravity="fill" />
