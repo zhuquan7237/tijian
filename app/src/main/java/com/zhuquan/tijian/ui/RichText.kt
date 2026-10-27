@@ -42,7 +42,7 @@ data class RichSectionSpec(
     val title: String,
     val markdown: String,
     val subtitle: String = "",
-    val color: String = "#2DD4BF",
+    val color: String = "#006EFD",
     val fontSize: Int = 15,
     /** 渲染变体：analysis 走「思路 / 分步 / 易错 / 结论」结构化排版；answer / needs 只改样式。 */
     val kind: String = "",

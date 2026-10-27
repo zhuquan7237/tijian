@@ -142,18 +142,18 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
             val line = RectF(c); val inset = 1.5f * resources.displayMetrics.density; line.inset(inset, inset)
             // 三分线让白纸上的选区也有可读的裁剪参考。
             paint.style = Paint.Style.STROKE; paint.strokeWidth = resources.displayMetrics.density
-            paint.color = 0x662DD4BF
+            paint.color = 0x66006EFD
             for (i in 1..2) {
                 val x = line.left + line.width() * i / 3f
                 val y = line.top + line.height() * i / 3f
                 canvas.drawLine(x, line.top, x, line.bottom, paint)
                 canvas.drawLine(line.left, y, line.right, y, paint)
             }
-            // 白底 + 青绿双层描边，浅色试卷和深色桌面上都看得见。
+            // 白底 + 品牌蓝双层描边，浅色试卷和深色桌面上都看得见。
             paint.color = android.graphics.Color.WHITE
             paint.strokeWidth = 4 * resources.displayMetrics.density
             canvas.drawRect(line, paint)
-            paint.color = android.graphics.Color.rgb(45, 212, 191)
+            paint.color = android.graphics.Color.rgb(0, 110, 253)
             paint.strokeWidth = 2 * resources.displayMetrics.density
             canvas.drawRect(line, paint)
             paint.style = Paint.Style.FILL
@@ -162,7 +162,7 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
             for (x in listOf(line.left, line.right)) for (y in listOf(line.top, line.bottom)) {
                 paint.color = android.graphics.Color.WHITE
                 canvas.drawCircle(x, y, whiteRing, paint)
-                paint.color = android.graphics.Color.rgb(45, 212, 191)
+                paint.color = android.graphics.Color.rgb(0, 110, 253)
                 canvas.drawCircle(x, y, accentDot, paint)
             }
         }

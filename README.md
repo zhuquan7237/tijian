@@ -55,7 +55,7 @@ Release 使用 debug 签名，方便个人设备直接覆盖安装与自动更�
 
 ## 设计
 
-8.9.0 起采用「夜读台」：深石墨底 + 青绿单一强调 + 大数字主卡；解析按「思路 / 分步 / 易错 / 结论」
+8.9.0 起采用「夜读台」：深石墨底 + 品牌蓝单一强调 + 大数字主卡；解析按「思路 / 分步 / 易错 / 结论」
 固定版式渲染（`assets/richtext/structure.js`）。配色 token 见 `docs/ui/DESIGN-SYSTEM.md`，
 WebView 端用同名 CSS 变量镜像，PDF 导出单独走浅色 `rt-print`。
 

@@ -55,7 +55,7 @@ import androidx.compose.ui.unit.sp
 /* ------------------------------------------------------------------
  * 题笺 · 夜读台（8.9.0）/ 日间墨白（8.11.0）
  *
- * 深浅两套 token：夜读台（深石墨 + 青绿）与日间墨白（暖纸白 + 深青）。
+ * 深浅两套 token：夜读台（深石墨 + 亮蓝）与日间墨白（暖纸白 + 品牌蓝 #006EFD）。
  * 层级靠明度（Bg < CardBg < SurfaceAlt < Fill），不靠阴影。
  * WebView 端在 assets/richtext 目录的 html 里用同名 CSS 变量镜像（rt-day / 默认夜色），
  * 改色时两边一起改。
@@ -86,12 +86,12 @@ private val DarkInk2 = Color(0xFFC3C8D0)
 private val DarkMuted = Color(0xFF9CA3AF)
 private val DarkLine = Color(0xFF3F4451)
 private val DarkFieldBorder = Color(0xFF6B7280)
-private val DarkAccent = Color(0xFF2DD4BF)
-private val DarkAccentSoft = Color(0xFF163B38)
-private val DarkAccentPressed = Color(0xFF0FB89E)
-private val DarkOnAccent = Color(0xFF04201C)
-private val DarkHeroBrush = Brush.linearGradient(listOf(Color(0xFF123B37), Color(0xFF1E2A2E), Color(0xFF26282C)))
-private val DarkHeroLine = Color(0x332DD4BF)
+private val DarkAccent = Color(0xFF3D8BFF)
+private val DarkAccentSoft = Color(0xFF14294D)
+private val DarkAccentPressed = Color(0xFF2E74E8)
+private val DarkOnAccent = Color(0xFF06152B)
+private val DarkHeroBrush = Brush.linearGradient(listOf(Color(0xFF12305B), Color(0xFF1A2531), Color(0xFF26282C)))
+private val DarkHeroLine = Color(0x333D8BFF)
 private val DarkGreen = Color(0xFF34D399)
 private val DarkGreenSoft = Color(0xFF1F4D3D)
 private val DarkAmber = Color(0xFFFBBF24)
@@ -112,12 +112,12 @@ private val LightInk2 = Color(0xFF464B54)
 private val LightMuted = Color(0xFF7C828C)
 private val LightLine = Color(0xFFE0DED4)
 private val LightFieldBorder = Color(0xFFA9ADB6)
-private val LightAccent = Color(0xFF0B8A7F)
-private val LightAccentSoft = Color(0xFFDCF0ED)
-private val LightAccentPressed = Color(0xFF096F66)
+private val LightAccent = Color(0xFF006EFD)
+private val LightAccentSoft = Color(0xFFE6F0FF)
+private val LightAccentPressed = Color(0xFF0058D2)
 private val LightOnAccent = Color(0xFFFFFFFF)
-private val LightHeroBrush = Brush.linearGradient(listOf(Color(0xFFD8EEEA), Color(0xFFEFEDE4), Color(0xFFFFFFFF)))
-private val LightHeroLine = Color(0x330B8A7F)
+private val LightHeroBrush = Brush.linearGradient(listOf(Color(0xFFDCE9FF), Color(0xFFEFEFF2), Color(0xFFFFFFFF)))
+private val LightHeroLine = Color(0x33006EFD)
 private val LightGreen = Color(0xFF15803D)
 private val LightGreenSoft = Color(0xFFDCEFDD)
 private val LightAmber = Color(0xFF9A6B1F)

@@ -12,8 +12,8 @@ android {
         applicationId = "com.zhuquan.tijian"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8130400
-        versionName = "8.13.4"
+        versionCode = 8130500
+        versionName = "8.13.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resourceConfigurations += listOf("zh", "en")
     }
