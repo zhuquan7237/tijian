@@ -39,6 +39,7 @@ sealed interface Route {
     data class Doc(val id: String) : Route
     data object Provider : Route
     data object Trash : Route
+    data object Tidy : Route
 }
 
 class AppVm(app: Application) : AndroidViewModel(app) {
@@ -84,7 +85,38 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         private set
 
     /** 待确认草稿自动落盘：进程被系统回收后，校对进度照常恢复。 */
-    private val draftsFile get() = File(getApplication<Application>().filesDir, "import_drafts.json")
+    private val draftsFile get() = com.zhuquan.tijian.App.draftsFile(getApplication<Application>().filesDir)
+
+    /** 上次崩溃的日志；非空说明上一进程异常退出，设置页可查看。 */
+    var lastCrashReport by androidx.compose.runtime.mutableStateOf<String?>(null)
+        private set
+
+    /**
+     * 崩溃后隔离出的待确认草稿：如果上一进程是在识别/校对页闪退的，
+     * 原样恢复很可能在同一个页面再崩一次（「一点导入就闪退」的根源）。
+     * 启动时把草稿移出恢复路径，由用户在首页明确选择恢复或丢弃。
+     */
+    var quarantinedDrafts by androidx.compose.runtime.mutableStateOf<List<DraftQuestion>>(emptyList())
+        private set
+    private val quarantineFile get() = File(getApplication<Application>().filesDir, "import_drafts.quarantine.json")
+
+    fun restoreQuarantinedDrafts() {
+        val list = quarantinedDrafts
+        quarantinedDrafts = emptyList()
+        quarantineFile.delete()
+        if (list.isNotEmpty() && pending.isEmpty()) {
+            pending = list
+            pendingBatch = null
+            saveDraftState()
+            toast = "已恢复 ${list.size} 道待确认题目，请检查后入库"
+        }
+    }
+
+    fun discardQuarantinedDrafts() {
+        quarantinedDrafts = emptyList()
+        quarantineFile.delete()
+        toast = "已丢弃隔离的待确认题目（原图仍保留）"
+    }
 
     private fun saveDraftState() {
         val snapshot = pending
@@ -104,13 +136,31 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     }
 
     private fun restoreDrafts() {
+        // 上个进程崩过：把草稿隔离，不再自动回到校对页，避免「一点导入就闪退」的循环
+        val crashed = com.zhuquan.tijian.App.lastCrashReport(getApplication<Application>().filesDir)
         viewModelScope.launch(Dispatchers.IO) {
+            var quarantined: List<DraftQuestion>? = null
+            if (crashed != null && draftsFile.exists()) {
+                runCatching {
+                    val text = draftsFile.readText()
+                    quarantineFile.writeText(text)
+                    draftsFile.delete()
+                    val root = org.json.JSONObject(text)
+                    val arr = root.optJSONArray("drafts")
+                    if (arr != null && arr.length() > 0) {
+                        quarantined = (0 until arr.length()).mapNotNull { i ->
+                            arr.optJSONObject(i)?.let { runCatching { DraftQuestion.fromJson(it) }.getOrNull() }
+                        }
+                    }
+                }
+            }
             val restored = runCatching {
                 val root = org.json.JSONObject(draftsFile.readText())
                 val arr = root.optJSONArray("drafts") ?: return@runCatching null
                 val list = ArrayList<DraftQuestion>()
                 for (i in 0 until arr.length()) {
-                    arr.optJSONObject(i)?.let { list.add(DraftQuestion.fromJson(it)) }
+                    runCatching { arr.optJSONObject(i)?.let { DraftQuestion.fromJson(it) } }
+                        .getOrNull()?.let { list.add(it) }
                 }
                 // 图片文件可能已被系统清理；丢了图的草稿仍保留文字部分
                 val cleaned = list.map { d ->
@@ -119,11 +169,15 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 cleaned to root.optString("batch").takeIf { it.isNotBlank() }
             }.getOrNull()
             withContext(Dispatchers.Main) {
+                lastCrashReport = crashed
+                if (quarantined != null) quarantinedDrafts = quarantined!!
                 if (pending.isEmpty() && restored != null && restored.first.isNotEmpty()) {
                     pending = restored.first
                     pendingBatch = restored.second
                 }
             }
+            // 崩溃报告只提示一次：读完即清，避免之后每次启动都当成新崩溃
+            if (crashed != null) com.zhuquan.tijian.App.clearCrashReport(getApplication<Application>().filesDir)
         }
     }
 
@@ -1115,6 +1169,10 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         private set
     var chatBusy by androidx.compose.runtime.mutableStateOf(false)
         private set
+    /** 本轮消息附带的图片或文本文件；发送后清空。 */
+    var chatAttachment by androidx.compose.runtime.mutableStateOf<Uri?>(null)
+    var chatAttachmentName by androidx.compose.runtime.mutableStateOf("")
+        private set
     /** 上一次回答是否被模型长度限制截断；截断后界面给「继续」。 */
     var chatTruncated by androidx.compose.runtime.mutableStateOf(false)
         private set
@@ -1163,6 +1221,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         chatMessages = emptyList()
         chatError = null
         chatQuote = quote
+        chatAttachment = null
+        chatAttachmentName = ""
+        pendingChatFile = null
         viewModelScope.launch {
             // 没有打开题目时，用最近导入的一道题作为上下文，保证悬浮球随时可用
             val resolved = id ?: withContext(Dispatchers.IO) { db.recentQuestions(1).firstOrNull()?.id }
@@ -1178,9 +1239,93 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun closeChat() { chatOpen = false }
+    fun closeChat() { chatOpen = false; chatAttachment = null; chatAttachmentName = "" }
 
     fun updateChatQuote(text: String) { chatQuote = text }
+
+    /** 附带一张图片（相册/拍照），发送时压缩成 base64 走多模态消息。 */
+    fun attachChatImage(uri: Uri) {
+        chatAttachment = uri
+        chatAttachmentName = "图片"
+    }
+
+    /** 附带一个文件：文本类（txt/md/csv/代码等）按内容拼接，其他类型提示不支持。 */
+    fun attachChatFile(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val cr = getApplication<Application>().contentResolver
+            val name = queryDisplayName(cr, uri) ?: "附件"
+            val mime = cr.getType(uri).orEmpty()
+            val textual = mime.startsWith("text/") || mime.contains("json") || mime.contains("xml") ||
+                mime.contains("csv") || name.endsWith(".md") || name.endsWith(".txt") || name.endsWith(".csv")
+            if (!textual) {
+                withContext(Dispatchers.Main) { toast = "暂时只支持文本类文件（txt / md / csv / 代码）" }
+                return@launch
+            }
+            val content = runCatching {
+                cr.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }.orEmpty()
+            }.getOrDefault("")
+            if (content.isBlank()) {
+                withContext(Dispatchers.Main) { toast = "这个文件读不出文本内容" }
+                return@launch
+            }
+            withContext(Dispatchers.Main) {
+                pendingChatFile = com.zhuquan.tijian.ai.ChatAttachment.TextFile(name, content.take(12000))
+                chatAttachment = uri
+                chatAttachmentName = name
+            }
+        }
+    }
+
+    /** 文本附件的现成内容：图片附件为 null，发送时才从 uri 现场压缩。 */
+    private var pendingChatFile: com.zhuquan.tijian.ai.ChatAttachment.TextFile? = null
+
+    fun clearChatAttachment() {
+        chatAttachment = null
+        chatAttachmentName = ""
+        pendingChatFile = null
+    }
+
+    private fun queryDisplayName(cr: android.content.ContentResolver, uri: Uri): String? = runCatching {
+        cr.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }.getOrNull()
+
+    /** 图片 uri → 下采样 JPEG base64（1280px 足够模型看题，控制 token 与内存）。 */
+    private suspend fun imageAttachment(uri: Uri): com.zhuquan.tijian.ai.ChatAttachment.Image? = withContext(Dispatchers.IO) {
+        runCatching {
+            val app = getApplication<Application>()
+            val tmp = File.createTempFile("chat_", ".img", app.cacheDir)
+            app.contentResolver.openInputStream(uri)?.use { input -> tmp.outputStream().use { input.copyTo(it) } }
+                ?: return@runCatching null
+            val bitmap = com.zhuquan.tijian.data.Importer.decodeSampled(tmp, 1280)
+                ?: return@runCatching null
+            // 相册 JPEG 可能带 EXIF 旋转，解码不自动应用，按方向摆正
+            val oriented = runCatching {
+                val exif = android.media.ExifInterface(tmp.absolutePath)
+                val orientation = exif.getAttributeInt(
+                    android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL
+                )
+                val m = android.graphics.Matrix()
+                when (orientation) {
+                    android.media.ExifInterface.ORIENTATION_ROTATE_90 -> m.postRotate(90f)
+                    android.media.ExifInterface.ORIENTATION_ROTATE_180 -> m.postRotate(180f)
+                    android.media.ExifInterface.ORIENTATION_ROTATE_270 -> m.postRotate(270f)
+                    android.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> m.preScale(-1f, 1f)
+                    android.media.ExifInterface.ORIENTATION_FLIP_VERTICAL -> m.preScale(1f, -1f)
+                }
+                if (m.isIdentity) bitmap else android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, m, true)
+            }.getOrDefault(bitmap)
+            val out = java.io.ByteArrayOutputStream()
+            oriented.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+            if (oriented !== bitmap) oriented.recycle()
+            bitmap.recycle()
+            tmp.delete()
+            com.zhuquan.tijian.ai.ChatAttachment.Image(
+                android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+            )
+        }.getOrNull()
+    }
 
     fun sendChat(text: String) {
         val q = chatQuestion ?: return
@@ -1188,17 +1333,29 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         if (prompt.isBlank() || chatBusy) return
         val quote = chatQuote
         val history = chatMessages
+        val attachmentUri = chatAttachment
+        val textFile = pendingChatFile
         chatMessages = chatMessages + ("user" to prompt)
         chatQuote = ""
+        chatAttachment = null
+        chatAttachmentName = ""
+        pendingChatFile = null
         chatBusy = true
         chatTruncated = false
         chatError = null
         chatJob = viewModelScope.launch {
             try {
+                val attachment = textFile ?: attachmentUri?.let { imageAttachment(it) }
+                if (attachmentUri != null && attachment == null) toast = "附件读取失败，已只发送文字"
                 val contextText = withContext(Dispatchers.IO) { buildQuestionContext(q) }
-                val (answer, truncated) = ai.ask(provider, contextText, history, prompt, quote)
+                val (answer, truncated) = ai.ask(provider, contextText, history, prompt, quote, attachment)
+                val marker = when (attachment) {
+                    is com.zhuquan.tijian.ai.ChatAttachment.Image -> "［图片］"
+                    is com.zhuquan.tijian.ai.ChatAttachment.TextFile -> "［附件 ${attachment.name}］"
+                    null -> ""
+                }
                 withContext(Dispatchers.IO) {
-                    db.addChatMessage(q.id, "user", prompt, quote)
+                    db.addChatMessage(q.id, "user", prompt + marker, quote)
                     db.addChatMessage(q.id, "assistant", answer)
                 }
                 chatMessages = chatMessages + ("assistant" to answer)
@@ -1279,6 +1436,111 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             if (weak.isNotBlank()) appendLine("学生目前偏弱的知识点：$weak")
             if (q.note.isNotBlank()) appendLine("学生自己的笔记：${q.note}")
         }
+    }
+
+    // ---------- 一键大整理 ----------
+
+    /** 大整理预检结果：本地统计各维度待整理数量。 */
+    data class TidyProbe(
+        val total: Int,
+        val noTags: Int,
+        val noSolution: Int,
+        val noNeeds: Int,
+        val uncat: Int,
+        val pendingCats: Int,
+    )
+
+    /** 本地预检：不调 AI，扫一遍全部题目统计问题。 */
+    suspend fun probeTidy(): TidyProbe = withContext(Dispatchers.IO) {
+        val qs = db.allQuestions()
+        TidyProbe(
+            total = qs.size,
+            noTags = qs.count { parseKnowledgeTags(it.tags).isEmpty() },
+            noSolution = qs.count { it.answer.isBlank() || it.analysis.isBlank() },
+            noNeeds = qs.count {
+                parseKnowledgeTags(it.needFormulas).isEmpty() &&
+                    parseKnowledgeTags(it.needConcepts).isEmpty() &&
+                    parseKnowledgeTags(it.needMethods).isEmpty()
+            },
+            uncat = qs.count { it.categoryId == com.zhuquan.tijian.data.Db.UNCAT || it.categoryName == "未分类" },
+            pendingCats = db.categories().count { it.status == "pending" },
+        )
+    }
+
+    var tidyRunning by androidx.compose.runtime.mutableStateOf(false)
+        private set
+    var tidyProgress by androidx.compose.runtime.mutableStateOf(0f)
+        private set
+    var tidyLabel by androidx.compose.runtime.mutableStateOf("")
+        private set
+    var tidyReport by androidx.compose.runtime.mutableStateOf<String?>(null)
+    private var tidyJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * 一键大整理：把全部旧题分批交给 AI 复核，统一到当前版本的分类体系，
+     * 顺带补齐缺失的知识点标签、修正错别题型。只动分类/标签/题型，不改答案解析。
+     */
+    fun startTidy() {
+        if (tidyRunning || busy || importing) return
+        if (!provider.ready()) { toast = "先在「AI 接入」配置模型，再运行大整理"; return }
+        tidyJob = viewModelScope.launch {
+            tidyRunning = true
+            tidyProgress = 0f
+            tidyReport = null
+            var catFixed = 0
+            var tagFixed = 0
+            var typeFixed = 0
+            try {
+                val all = withContext(Dispatchers.IO) { db.allQuestions() }
+                val cats = withContext(Dispatchers.IO) { db.categories() }
+                if (all.isEmpty()) { tidyReport = "错题本还是空的，没有需要整理的内容"; return@launch }
+                val batches = all.chunked(12)
+                batches.forEachIndexed { bi, batch ->
+                    tidyLabel = "AI 复核第 ${bi + 1}/${batches.size} 批（共 ${all.size} 题）"
+                    tidyProgress = bi.toFloat() / batches.size
+                    val suggestions = ai.tidyBatch(provider, batch, cats)
+                    withContext(Dispatchers.IO) {
+                        suggestions.forEach { (id, s) ->
+                            val q = batch.firstOrNull { it.id == id } ?: return@forEach
+                            val catId = if (s.category.isNotBlank() && s.category != q.categoryName) {
+                                catFixed++
+                                runCatching { db.ensureCategory(s.category) }.getOrNull()
+                            } else null
+                            val curTags = parseKnowledgeTags(q.tags)
+                            val newTags = when {
+                                s.tags.isEmpty() -> q.tags
+                                s.tags == curTags -> q.tags
+                                else -> { tagFixed++; org.json.JSONArray(s.tags).toString() }
+                            }
+                            val newType = if (s.type.isNotBlank() && s.type != q.type) { typeFixed++; s.type } else q.type
+                            if (catId != null || newTags != q.tags || newType != q.type) {
+                                db.applyTidyResult(id, catId, newTags, newType)
+                            }
+                        }
+                    }
+                }
+                tidyProgress = 1f
+                refresh()
+                tidyReport = "整理完成：复核 ${all.size} 道题 · 分类调整 $catFixed · 知识点更新 $tagFixed · 题型修正 $typeFixed"
+                toast = tidyReport ?: "整理完成"
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                tidyReport = "已停止整理，完成的部分保留"
+            } catch (e: Exception) {
+                tidyReport = "整理中断：${e.message ?: "未知错误"}（已完成部分保留）"
+            } finally {
+                tidyRunning = false
+                tidyLabel = ""
+            }
+        }
+    }
+
+    /** 停止大整理：在途请求取消，已写回的保留。 */
+    fun stopTidy() {
+        ai.cancelActive()
+        tidyJob?.cancel()
+        tidyJob = null
+        tidyRunning = false
+        tidyLabel = ""
     }
 
     // ---------- pdf ----------
@@ -1374,9 +1636,6 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     }
 
     suspend fun testProvider(cfg: ProviderConfig): String = ai.test(cfg)
-
-    /** 验证「能否识别图片」：导入链路真正的硬门槛，失败信息带下一步指引。 */
-    suspend fun testVisionProvider(cfg: ProviderConfig): String = ai.testVision(cfg)
 
     // ---------- backup ----------
 

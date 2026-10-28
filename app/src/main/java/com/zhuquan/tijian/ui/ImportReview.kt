@@ -279,12 +279,14 @@ private fun DraftCard(
                         Text("文字录入", fontSize = 11.sp, color = Accent, modifier = Modifier.padding(start = 4.dp))
                     }
                 }
-                Text(
-                    cleanMathLite(draft.stem).ifBlank { "（未识别题干，点此补录）" },
-                    fontSize = 12.5.sp, lineHeight = 19.sp,
+                StemText(
+                    draft.stem,
                     color = if (draft.stem.isBlank()) Muted else Ink,
-                    maxLines = 3, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 5.dp).tjClickable { onEdit() }
+                    fontSizeSp = 12.5f,
+                    lineHeightSp = 19f,
+                    maxLines = 3,
+                    blankHint = "（未识别题干，点此补录）",
+                    modifier = Modifier.padding(top = 5.dp).tjClickable { onEdit() },
                 )
             }
             IconCircle(Icons.Rounded.Close, "移除这道题", tint = Muted) { onRemove() }
@@ -646,11 +648,14 @@ fun ReviewScreen(vm: AppVm) {
                         )
                         Spacer(Modifier.height(8.dp))
                         wrong.take(5).forEach { w ->
-                            Text(
-                                "· " + cleanMathLite(w.stem).ifBlank { "（无题干，见原图）" },
-                                fontSize = 12.5.sp, lineHeight = 18.sp, color = Ink2,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(vertical = 3.dp)
+                            StemText(
+                                w.stem,
+                                color = Ink2,
+                                fontSizeSp = 12.5f,
+                                lineHeightSp = 18f,
+                                maxLines = 1,
+                                blankHint = "（无题干，见原图）",
+                                modifier = Modifier.padding(vertical = 3.dp),
                             )
                         }
                         if (wrong.size > 5) Text("…等 ${wrong.size} 道", fontSize = 12.sp, color = Muted)

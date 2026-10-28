@@ -31,6 +31,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AddPhotoAlternate
+import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
@@ -144,6 +146,12 @@ private fun ChatPanel(vm: AppVm) {
     val q = vm.chatQuestion
     var input by androidx.compose.runtime.saveable.rememberSaveable(q?.id) { mutableStateOf("") }
     val hasThread = vm.chatMessages.isNotEmpty()
+    val pickChatImage = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
+    ) { uri -> if (uri != null) vm.attachChatImage(uri) }
+    val pickChatFile = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri -> if (uri != null) vm.attachChatFile(uri) }
 
     // 面板从底部轻轻抬起并淡入（180ms），不用 scale(0) 那种“凭空出现”。
     val appear = remember { androidx.compose.animation.core.Animatable(0f) }
@@ -221,6 +229,42 @@ private fun ChatPanel(vm: AppVm) {
             }
             if (!compact) QuickChips(enabled = !vm.chatBusy) { vm.sendChat(it) }
 
+            // 附件预览：一张图或一个文本文件，发送后自动清空
+            vm.chatAttachment?.let {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)
+                        .clip(RoundedCornerShape(10.dp)).background(SurfaceAlt)
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (vm.chatAttachmentName == "图片") {
+                        coil.compose.AsyncImage(
+                            model = it, contentDescription = "待发送图片",
+                            modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        Box(
+                            Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
+                                .background(AccentSoft),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Rounded.AttachFile, null, tint = Accent, modifier = Modifier.size(17.dp)) }
+                    }
+                    Column(Modifier.weight(1f).padding(start = 9.dp)) {
+                        Text(
+                            if (vm.chatAttachmentName == "图片") "图片" else vm.chatAttachmentName,
+                            fontSize = 12.sp, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                        Text("随下一条消息一起发送", fontSize = 10.5.sp, color = Muted)
+                    }
+                    Box(
+                        Modifier.size(40.dp).clip(CircleShape)
+                            .tjClickable(label = "移除附件") { vm.clearChatAttachment() },
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Rounded.Close, "移除附件", tint = Muted, modifier = Modifier.size(16.dp)) }
+                }
+            }
+
             ChatInput(
                 input = input,
                 busy = vm.chatBusy,
@@ -233,7 +277,9 @@ private fun ChatPanel(vm: AppVm) {
                         vm.sendChat(text)
                     }
                 },
-                onStop = { vm.stopChat() }
+                onStop = { vm.stopChat() },
+                onPickImage = { pickChatImage.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                onPickFile = { pickChatFile.launch("*/*") },
             )
         }
     }
@@ -376,11 +422,24 @@ private fun ChatInput(
     onInput: (String) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
+    onPickImage: () -> Unit = {},
+    onPickFile: () -> Unit = {},
 ) {
     Row(
         Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 10.dp),
         verticalAlignment = Alignment.Bottom
     ) {
+        // 附件入口：发图走多模态，发文本类文件直接拼进问题
+        Box(
+            Modifier.size(42.dp).clip(CircleShape)
+                .tjClickable(label = "发送文本文件") { onPickFile() },
+            contentAlignment = Alignment.Center
+        ) { Icon(Icons.Rounded.AttachFile, "发送文本文件", tint = Ink2, modifier = Modifier.size(19.dp)) }
+        Box(
+            Modifier.size(42.dp).clip(CircleShape)
+                .tjClickable(label = "发送图片") { onPickImage() },
+            contentAlignment = Alignment.Center
+        ) { Icon(Icons.Rounded.AddPhotoAlternate, "发送图片", tint = Ink2, modifier = Modifier.size(20.dp)) }
         TjTextField(
             value = input,
             onValueChange = onInput,
@@ -390,7 +449,7 @@ private fun ChatInput(
             shape = CardShape,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = { onSend() }),
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f).padding(start = 2.dp)
         )
         Spacer(Modifier.width(8.dp))
         Box(

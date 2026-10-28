@@ -170,6 +170,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
                             is Route.Settings -> SettingsScreen(vm)
                             is Route.Provider -> ProviderScreen(vm)
                             is Route.Trash -> TrashScreen(vm)
+                            is Route.Tidy -> TidyScreen(vm)
                         }
                     }
                     if (isPeerRoute(route)) BottomBar(route,
@@ -289,7 +290,7 @@ private fun OnboardingSheet(
             )
             ImportOption(Icons.Rounded.AutoAwesome, "体验示例题", "不用配置 AI，先看看复习怎么用") { onTry() }
             ImportOption(Icons.Rounded.PhotoLibrary, "直接收录错题", "拍照或选图导入，稍后再配 AI") { onImport() }
-            ImportOption(Icons.Rounded.Key, "配置 AI", "填一个 OpenAI 兼容接口，当场验证能否识别图片") { onConfigure() }
+            ImportOption(Icons.Rounded.Key, "配置 AI", "填一个 OpenAI 兼容接口，当场测试连接") { onConfigure() }
             Text(
                 "跳过，自己逛逛",
                 fontSize = 12.5.sp, color = Muted,

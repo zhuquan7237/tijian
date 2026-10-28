@@ -7,7 +7,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.io.File
 
-class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelper(context, databaseName, null, 6) {
+class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelper(context, databaseName, null, 7) {
 
     companion object {
         const val UNCAT = "uncat"
@@ -138,6 +138,12 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                 addColumnIfMissing(db, "question", "note_images", "TEXT DEFAULT '[]'")
             }
         }
+        if (oldVersion < 7) {
+            // 题目自由排序：0 表示从未手动排过，按时间倒序排在手动排过的题后面
+            if (hasTable(db, "question")) {
+                addColumnIfMissing(db, "question", "sort", "INTEGER NOT NULL DEFAULT 0")
+            }
+        }
     }
 
     private fun hasTable(db: SQLiteDatabase, name: String): Boolean = db.rawQuery(
@@ -258,6 +264,19 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         arrayOf(name.trim(), System.currentTimeMillis(), id)
     )
 
+    /** 拖动排序落库：按界面上的新顺序给每个分类写 sort（10 起步，留缝隙好插队）。 */
+    fun reorderCategories(orderedIds: List<String>) {
+        val db = writableDatabase
+        val now = System.currentTimeMillis()
+        db.beginTransaction()
+        try {
+            orderedIds.forEachIndexed { i, id ->
+                db.execSQL("UPDATE category SET sort=?, updated_at=? WHERE id=?", arrayOf((i + 1) * 10, now, id))
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
     fun deleteCategory(id: String) {
         if (id == UNCAT) return
         val db = writableDatabase
@@ -324,7 +343,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             where.append(" AND (q.stem LIKE ? ESCAPE '\\' OR q.knowledge_tags LIKE ? ESCAPE '\\')")
             args.add("%$esc%"); args.add("%$esc%")
         }
-        return queryQuestions(where.toString(), args.toTypedArray(), "q.created_at DESC")
+        return queryQuestions(where.toString(), args.toTypedArray(), "q.sort>0 DESC, q.sort ASC, q.created_at DESC")
     }
 
     /** 追问上下文用：只取知识点标签和掌握度，不拉整题。 */
@@ -468,6 +487,34 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         "UPDATE question SET error_reasons=?, updated_at=? WHERE id=?",
         arrayOf(reasons, System.currentTimeMillis(), id)
     )
+
+    /** 长按拖动排序落库：整个当前列表按新顺序写 sort，保证后续查询顺序稳定。 */
+    fun reorderQuestions(orderedIds: List<String>) {
+        val db = writableDatabase
+        val now = System.currentTimeMillis()
+        db.beginTransaction()
+        try {
+            orderedIds.forEachIndexed { i, id ->
+                db.execSQL("UPDATE question SET sort=?, updated_at=? WHERE id=?", arrayOf(i + 1, now, id))
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
+    /** 一键大整理：AI 复核后的分类 / 知识点标签 / 题型一次性写回。 */
+    fun applyTidyResult(id: String, categoryId: String?, tags: String, type: String) {
+        if (categoryId == null) {
+            writableDatabase.execSQL(
+                "UPDATE question SET knowledge_tags=?, type=?, updated_at=? WHERE id=?",
+                arrayOf(tags, type, System.currentTimeMillis(), id)
+            )
+        } else {
+            writableDatabase.execSQL(
+                "UPDATE question SET category_id=?, knowledge_tags=?, type=?, updated_at=? WHERE id=?",
+                arrayOf(categoryId, tags, type, System.currentTimeMillis(), id)
+            )
+        }
+    }
 
     // ---------- note images ----------
 

@@ -8,10 +8,13 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,17 +35,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.RestoreFromTrash
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -62,7 +69,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -79,6 +88,7 @@ fun SettingsScreen(vm: AppVm) {
     var showAbout by remember { mutableStateOf(false) }
     var showBackup by remember { mutableStateOf(false) }
     var showAppearance by remember { mutableStateOf(false) }
+    var showCrash by remember { mutableStateOf(false) }
     var restoreUri by remember { mutableStateOf<Uri?>(null) }
     val ctx = LocalContext.current
     LaunchedEffect(Unit) { vm.loadBackupInfo() }
@@ -96,6 +106,32 @@ fun SettingsScreen(vm: AppVm) {
             subtitle = "本地优先 · 数据只在本机与你配置的模型之间流转"
         )
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.page)) {
+            if (vm.lastCrashReport != null) {
+                CardBox(Modifier.fillMaxWidth().padding(bottom = 8.dp).border(1.dp, Amber.copy(alpha = 0.5f), CardShape)) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("上次异常退出", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = Amber)
+                        Text(
+                            "检测到应用上次崩溃退出。如果当时有未确认的导入题目，已自动隔离，可到错题本页恢复。",
+                            fontSize = 12.sp, lineHeight = 18.sp, color = Ink2, modifier = Modifier.padding(top = 4.dp)
+                        )
+                        Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "查看崩溃日志", fontSize = 12.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.tjClickable { showCrash = true }.padding(vertical = 6.dp)
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            Text(
+                                "复制日志", fontSize = 12.sp, color = Ink2,
+                                modifier = Modifier.tjClickable {
+                                    val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    cm.setPrimaryClip(android.content.ClipData.newPlainText("题笺崩溃日志", vm.lastCrashReport ?: ""))
+                                    android.widget.Toast.makeText(ctx, "已复制崩溃日志", android.widget.Toast.LENGTH_SHORT).show()
+                                }.padding(vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+            }
             CardBox(Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(vertical = 16.dp)) {
                     StatCell("${vm.stats.total}", "错题", Modifier.weight(1f)) { vm.home() }
@@ -125,6 +161,10 @@ fun SettingsScreen(vm: AppVm) {
                     "已就绪 · ${vm.provider.model}"
                 } else "未配置，点此接入") {
                     vm.go(Route.Provider)
+                }
+                DividerSoft()
+                SettingRow(Icons.Rounded.AutoFixHigh, "一键大整理", "旧题统一归到最新分类体系") {
+                    vm.go(Route.Tidy)
                 }
                 DividerSoft()
                 SettingRow(Icons.Rounded.RestoreFromTrash, "回收站", if (vm.trashCount > 0) "${vm.trashCount} 道已删除的题可恢复" else "删除的题目会先到这里") {
@@ -254,6 +294,31 @@ fun SettingsScreen(vm: AppVm) {
                 }
             },
             confirmButton = { TextButton(onClick = { showAbout = false }) { Text("好") } }
+        )
+    }
+
+    if (showCrash) {
+        AlertDialog(
+            onDismissRequest = { showCrash = false },
+            title = { Text("上次崩溃日志", fontSize = 16.sp) },
+            text = {
+                Column {
+                    Text(
+                        vm.lastCrashReport ?: "",
+                        fontSize = 10.5.sp, lineHeight = 15.sp, color = Ink2,
+                        modifier = Modifier
+                            .heightIn(max = 320.dp)
+                            .verticalScroll(rememberScrollState())
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    com.zhuquan.tijian.App.clearCrashReport(ctx.filesDir)
+                    showCrash = false
+                }) { Text("清除", color = Red) }
+            },
+            dismissButton = { TextButton(onClick = { showCrash = false }) { Text("关闭", color = Ink2) } }
         )
     }
 
@@ -414,35 +479,24 @@ fun ProviderScreen(vm: AppVm) {
                     )
                     Spacer(Modifier.height(12.dp))
                     FieldLabel("模型")
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TjTextField(
-                            value = model, onValueChange = { model = it },
-                            placeholder = { Text("点右侧拉取，或手动输入", fontSize = 12.sp, color = Muted) },
-                            singleLine = true, modifier = Modifier.weight(1f),
-                            shape = SmallShape
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        TjButton("拉取", loading = loading, style = ActionStyle.Secondary) {
-                            showPicker = true
-                            if (models.isEmpty()) pull()
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth().padding(top = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            when {
-                                loading -> "正在请求 /models…"
-                                models.isEmpty() -> "还没有拉取过模型"
-                                else -> "已拉取 ${models.size} 个模型"
-                            },
-                            fontSize = 11.5.sp, color = Muted
-                        )
-                        Spacer(Modifier.weight(1f))
-                        if (models.isNotEmpty()) {
-                            Text(
-                                "浏览", fontSize = 11.5.sp, color = Accent,
-                                modifier = Modifier.tjClickable { showPicker = true }.padding(4.dp)
-                            )
-                        }
+                    TjTextField(
+                        value = model, onValueChange = { model = it },
+                        placeholder = { Text("点下方拉取，或手动输入", fontSize = 12.sp, color = Muted) },
+                        singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        shape = SmallShape
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    // 一眼能找到的大按钮：拉取后直接弹出模型选择
+                    TjButton(
+                        when {
+                            loading -> "正在拉取模型…"
+                            models.isEmpty() -> "拉取模型列表"
+                            else -> "浏览模型 · ${models.size} 个"
+                        },
+                        Modifier.fillMaxWidth(), loading = loading, style = ActionStyle.Secondary,
+                    ) {
+                        showPicker = true
+                        if (models.isEmpty()) pull()
                     }
 
                     Spacer(Modifier.height(12.dp))
@@ -502,21 +556,6 @@ fun ProviderScreen(vm: AppVm) {
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
-            TjButton("验证能否识别图片", Modifier.fillMaxWidth(), enabled = cfg().ready(),
-                loading = testing, style = ActionStyle.Secondary) {
-                testing = true; testError = null; testResult = null
-                scope.launch {
-                    try { testResult = vm.testVisionProvider(cfg()) }
-                    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                    catch (e: Exception) { testError = e.message ?: "验证失败" }
-                    finally { testing = false }
-                }
-            }
-            Text(
-                "发一张 1px 测试图给模型——导入识别靠的是看图，只测聊天会漏掉「模型不支持视觉」这个坑",
-                fontSize = 11.sp, lineHeight = 17.sp, color = Muted, modifier = Modifier.padding(top = 6.dp)
-            )
             testResult?.let {
                 Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.CheckCircle, null, tint = Green, modifier = Modifier.size(14.dp))
@@ -540,7 +579,36 @@ fun ProviderScreen(vm: AppVm) {
                     "· http:// 开头的地址是明文传输，公网服务请尽量用 https://。",
                 fontSize = 11.sp, lineHeight = 18.sp, color = Muted
             )
-            Spacer(Modifier.height(50.dp))
+            Spacer(Modifier.height(16.dp))
+        }
+
+        // 常驻底部操作条：测试与保存永远在同一位置，不用满页找按钮
+        Row(
+            Modifier.fillMaxWidth().background(CardBg).padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            TjButton(
+                if (testing) "测试中…" else "测试连接",
+                Modifier.weight(1f), enabled = cfg().ready() && !testing,
+                loading = testing, style = ActionStyle.Secondary,
+            ) {
+                testing = true; testError = null; testResult = null
+                scope.launch {
+                    try { testResult = vm.testProvider(cfg()) }
+                    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (e: Exception) { testError = e.message ?: "连接失败" }
+                    finally { testing = false }
+                }
+            }
+            TjButton(
+                "保存配置", Modifier.weight(1f), enabled = cfg().ready(),
+            ) {
+                vm.saveProvider(cfg().copy(baseUrl = baseUrl.trim(), apiKey = apiKey.trim(), model = model.trim()))
+                // 从导入任务跳过来配置的：配好直接回去接着导入
+                val back = vm.returnAfterProvider
+                vm.returnAfterProvider = null
+                if (back != null) vm.replace(back) else vm.back()
+            }
         }
     }
 
@@ -614,61 +682,158 @@ private fun ModelPickerSheet(
 ) {
     var query by remember { mutableStateOf("") }
     val filtered = models.filter { it.contains(query.trim(), ignoreCase = true) }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = CardBg) {
-        Column(Modifier.blockSheetDrag().padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+    // 自绘底部面板 + LazyColumn 自滚动：不再用 ModalBottomSheet 套列表，
+    // 「拉到一半拖不动」的手势冲突从根上消除。面板带淡入与上抬过渡。
+    val appear = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) {
+        appear.animateTo(1f, androidx.compose.animation.core.tween(Motion.Base, easing = Motion.Enter))
+    }
+    androidx.activity.compose.BackHandler { onDismiss() }
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        Modifier.fillMaxSize()
+            .graphicsLayer { alpha = appear.value }
+            .background(Scrim)
+            .pointerInput(Unit) { detectTapGestures { onDismiss() } }
+    ) {
+        val panelMaxHeight = maxHeight * 0.84f
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(panelMaxHeight)
+                .graphicsLayer { translationY = (1f - appear.value) * 40f }
+                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(CardBg)
+                .pointerInput(Unit) { detectTapGestures { } }
+                .imePadding()
+        ) {
+            val spin = androidx.compose.animation.core.rememberInfiniteTransition(label = "pull-spin")
+            val angle by spin.animateFloat(
+                0f, 360f,
+                androidx.compose.animation.core.infiniteRepeatable(
+                    androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.LinearEasing)
+                ),
+                label = "pull-angle",
+            )
+            Row(
+                Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Column(Modifier.weight(1f)) {
-                    Text("选择模型", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                    Text("选择模型", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink, letterSpacing = (-0.2).sp)
                     Text(
-                        if (models.isEmpty()) "从 /models 拉取" else "共 ${models.size} 个 · 点击选用",
-                        fontSize = 11.sp, color = Muted, modifier = Modifier.padding(top = 3.dp)
+                        when {
+                            loading -> "正在从 /models 拉取…"
+                            models.isEmpty() -> "还没有拉取到模型"
+                            else -> "共 ${models.size} 个 · 点一下即选用"
+                        },
+                        fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp)
                     )
                 }
-                Text(
-                    if (loading) "拉取中…" else "刷新", fontSize = 12.sp, color = Accent,
-                    modifier = Modifier.tjClickable { if (!loading) onRefresh() }.padding(8.dp)
-                )
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape).background(SurfaceAlt)
+                        .tjClickable(enabled = !loading, label = "重新拉取模型") { onRefresh() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Rounded.Refresh, "重新拉取模型", tint = Ink2,
+                        modifier = Modifier.size(19.dp).graphicsLayer { if (loading) rotationZ = angle },
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape)
+                        .tjClickable(label = "关闭") { onDismiss() },
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Rounded.Close, "关闭", tint = Ink2, modifier = Modifier.size(20.dp)) }
             }
-            Spacer(Modifier.height(10.dp))
-            TjTextField(
-                value = query, onValueChange = { query = it },
-                placeholder = { Text("搜索模型", fontSize = 12.sp, color = Muted) },
-                singleLine = true, modifier = Modifier.fillMaxWidth(),
-                shape = SmallShape
-            )
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                TjTextField(
+                    value = query, onValueChange = { query = it },
+                    placeholder = { Text("搜索模型，如 deepseek / vl / 4o", fontSize = 12.sp, color = Muted) },
+                    singleLine = true, modifier = Modifier.weight(1f),
+                    shape = SmallShape,
+                    leadingIcon = { Icon(Icons.Rounded.Search, null, tint = Muted, modifier = Modifier.size(17.dp)) },
+                )
+                if (query.isNotEmpty()) {
+                    Text(
+                        "清空", fontSize = 12.sp, color = Accent,
+                        modifier = Modifier.tjClickable { query = "" }.padding(start = 10.dp)
+                    )
+                }
+            }
             Spacer(Modifier.height(8.dp))
             when {
-                loading && models.isEmpty() -> Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(26.dp), color = Accent, strokeWidth = 2.dp)
+                loading && models.isEmpty() -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(Modifier.size(28.dp), color = Accent, strokeWidth = 2.5.dp)
+                        Text("正在拉取模型列表…", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 12.dp))
+                    }
                 }
-                error != null && models.isEmpty() -> Column(Modifier.fillMaxWidth().padding(vertical = 28.dp)) {
-                    Text(error, fontSize = 11.5.sp, lineHeight = 18.sp, color = Red)
+                error != null && models.isEmpty() -> Column(
+                    Modifier.fillMaxWidth().weight(1f).padding(horizontal = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text("拉取失败", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Red)
+                    Text(error, fontSize = 11.5.sp, lineHeight = 18.sp, color = Muted,
+                        modifier = Modifier.padding(top = 6.dp, bottom = 14.dp))
+                    TjButton("重试拉取", style = ActionStyle.Secondary) { onRefresh() }
+                }
+                filtered.isEmpty() -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     Text(
-                        "重试", fontSize = 12.sp, color = Accent, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.tjClickable { onRefresh() }.padding(top = 10.dp)
+                        if (models.isEmpty()) "点右上角 ↻ 拉取模型列表" else "没有匹配「$query」的模型",
+                        fontSize = 12.5.sp, color = Muted
                     )
                 }
-                filtered.isEmpty() -> Text(
-                    if (models.isEmpty()) "还没有拉取到模型" else "没有匹配的模型",
-                    fontSize = 12.sp, color = Muted, modifier = Modifier.padding(vertical = 28.dp)
-                )
-                else -> LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                else -> LazyColumn(
+                    Modifier.fillMaxSize().weight(1f),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
                     items(filtered, key = { it }) { m ->
+                        val selected = m == current
+                        val family = m.substringBefore('/').takeIf { it != m && it.isNotBlank() }
                         Row(
-                            Modifier.fillMaxWidth().tjClickable { onPick(m) }
-                                .padding(vertical = 12.dp),
+                            Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (selected) AccentSoft else SurfaceAlt)
+                                .border(
+                                    1.dp,
+                                    if (selected) Accent.copy(alpha = 0.55f) else Line,
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .tjClickable { onPick(m) }
+                                .padding(horizontal = 13.dp, vertical = 11.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(m, fontSize = 12.5.sp, color = Ink, maxLines = 1)
-                                if (m == current) Text("当前使用", fontSize = 11.sp, color = Accent, modifier = Modifier.padding(top = 2.dp))
+                                Text(
+                                    m, fontSize = 12.5.sp, color = Ink,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                                if (family != null) {
+                                    Text(family, fontSize = 10.5.sp, color = Muted, modifier = Modifier.padding(top = 2.dp))
+                                }
                             }
-                            if (m == current) Icon(Icons.Rounded.CheckCircle, null, tint = Accent, modifier = Modifier.size(17.dp))
+                            if (selected) {
+                                Box(
+                                    Modifier.clip(RoundedCornerShape(999.dp)).background(Accent)
+                                        .padding(horizontal = 9.dp, vertical = 3.dp)
+                                ) {
+                                    Text("当前", fontSize = 10.5.sp, color = OnAccent, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
                         }
-                        HorizontalDivider(color = Line, thickness = 1.dp)
                     }
                 }
             }
+            Text(
+                "选不到就回上层手动填模型名 · 拉取走 GET {地址}/models",
+                fontSize = 10.5.sp, color = Muted,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+            )
         }
     }
 }

@@ -125,12 +125,21 @@ class Importer(private val context: Context, private val db: Db, private val ai:
         try {
             currentCoroutineContext().ensureActive()
             val jpeg = downscaleJpeg(File(img.path), 1600)
-            var parsed = ai.recognize(cfg, jpeg)
+            var parsed = try {
+                // 整体兜底超时：服务商长时间不响应时按单图失败处理，不无限等待
+                kotlinx.coroutines.withTimeout(RECOGNIZE_TIMEOUT_MS) { ai.recognize(cfg, jpeg) }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                throw com.zhuquan.tijian.ai.AiException("识别超时：服务商 ${RECOGNIZE_TIMEOUT_MS / 1000} 秒内没有响应，请检查网络或换用更快的模型")
+            }
             // 照片里没印答案/解析时，识别结果会是空字段。这里自动补一次，
             // 避免入库后详情页出现「有题目、没解析、没答案」。
             if (parsed.any { it.answer.isBlank() || it.analysis.isBlank() }) {
                 parsed = try {
-                    ai.fillSolutions(cfg, parsed)
+                    try {
+                        kotlinx.coroutines.withTimeout(FILL_TIMEOUT_MS) { ai.fillSolutions(cfg, parsed) }
+                    } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                        throw com.zhuquan.tijian.ai.AiException("答案/解析补全超时（${FILL_TIMEOUT_MS / 1000} 秒无响应）")
+                    }
                 } catch (e: Exception) {
                     // 补全失败不让整张图报废，但要告诉用户这批的解析是缺失的
                     errors.add("第 ${index + 1} 张：答案/解析补全失败（${e.message ?: "网络错误"}），已保留识别结果")
@@ -245,6 +254,10 @@ class Importer(private val context: Context, private val db: Db, private val ai:
     }
 
     companion object {
+        /** 单张图识别/补全的整体超时：慢服务商挂起时按失败处理，不再无限等。 */
+        const val RECOGNIZE_TIMEOUT_MS = 300_000L
+        const val FILL_TIMEOUT_MS = 240_000L
+
         fun decodeSampled(file: File, maxDim: Int): Bitmap? {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(file.path, bounds)

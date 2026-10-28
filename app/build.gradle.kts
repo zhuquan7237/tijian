@@ -12,8 +12,8 @@ android {
         applicationId = "com.zhuquan.tijian"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8130500
-        versionName = "8.13.5"
+        versionCode = 8140000
+        versionName = "8.14.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resourceConfigurations += listOf("zh", "en")
     }
@@ -75,4 +75,7 @@ dependencies {
 
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // 列表行内的轻量公式渲染：JLatexMath 直接出图，比每行挂 WebView 轻得多
+    implementation("io.noties.markwon:core:4.6.2")
+    implementation("io.noties.markwon:ext-latex:4.6.2")
 }

@@ -171,6 +171,36 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 88.dp)
         ) {
+            // 上次异常退出时被隔离的待确认题目：由用户决定恢复还是丢弃
+            if (vm.quarantinedDrafts.isNotEmpty()) {
+                Row(
+                    Modifier.padding(horizontal = Space.page, vertical = 4.dp).fillMaxWidth()
+                        .clip(CardShape).background(AmberSoft)
+                        .border(1.dp, Amber.copy(alpha = 0.4f), CardShape)
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("上次异常退出", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Amber)
+                        Text(
+                            "有 ${vm.quarantinedDrafts.size} 道未确认题目已隔离，恢复后可继续校对",
+                            fontSize = 12.sp, color = Ink2, modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                    Text(
+                        "丢弃", fontSize = 12.5.sp, color = Ink2,
+                        modifier = Modifier
+                            .tjClickable(label = "丢弃隔离题目") { vm.discardQuarantinedDrafts() }
+                            .padding(horizontal = 8.dp, vertical = 8.dp)
+                    )
+                    Box(
+                        Modifier.clip(CircleShape).background(Amber)
+                            .tjClickable(label = "恢复隔离题目") { vm.restoreQuarantinedDrafts() }
+                            .padding(horizontal = 12.dp, vertical = 7.dp)
+                    ) { Text("恢复", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold) }
+                }
+                Spacer(Modifier.height(6.dp))
+            }
             if (vm.importing || vm.pending.isNotEmpty() || vm.captureUris.isNotEmpty()) {
                 TjButton(
                     when {
@@ -517,6 +547,16 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
         val next = withContext(Dispatchers.IO) { vm.db.questions(id, filter) }
         rows = next
     }
+    // 长按拖动排序：拖动过程中本地交换，松手一次性落库
+    val dragState = rememberDragDropState(listState) { from, to ->
+        if (from in rows.indices && to in rows.indices) {
+            rows = rows.toMutableList().apply { add(to, removeAt(from)) }
+        }
+    }
+    fun persistOrder() {
+        val ordered = rows.map { it.id }
+        vm.write { it.reorderQuestions(ordered) }
+    }
 
     LaunchedEffect(filter) {
         selected.value = emptySet()
@@ -584,7 +624,7 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                if (vm.categoryView == 0) "按题目浏览" else "按列整理",
+                if (vm.categoryView == 0) "长按题目行可拖动排序" else "按列整理",
                 fontSize = 12.sp, color = Muted
             )
             Spacer(Modifier.weight(1f))
@@ -596,14 +636,18 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
         CardBox(Modifier.padding(horizontal = Space.page).fillMaxWidth().weight(1f)) {
             if (vm.categoryView == 0) {
                 // 学习列表：题干两行 + 缩略图 + 关键知识点 + 掌握状态，竖向信息一屏可比
-                LazyColumn(Modifier.weight(1f), state = listState) {
-                    itemsIndexed(rows, key = { _, q -> q.id }) { _, q ->
-                        StudyListRow(q, selecting = selecting, isSel = selected.value.contains(q.id)) {
-                            if (selecting) {
-                                selected.value = if (selected.value.contains(q.id)) selected.value - q.id else selected.value + q.id
-                            } else vm.go(Route.Detail(q.id))
+                LazyColumn(Modifier.weight(1f).dragContainer(dragState) { persistOrder() }, state = listState) {
+                    itemsIndexed(rows, key = { _, q -> q.id }) { idx, q ->
+                        DraggableItem(dragState, idx) { isDragging ->
+                            Column {
+                                StudyListRow(q, selecting = selecting || isDragging, isSel = selected.value.contains(q.id)) {
+                                    if (selecting) {
+                                        selected.value = if (selected.value.contains(q.id)) selected.value - q.id else selected.value + q.id
+                                    } else vm.go(Route.Detail(q.id))
+                                }
+                                HorizontalDivider(color = Line, thickness = 1.dp)
+                            }
                         }
-                        HorizontalDivider(color = Line, thickness = 1.dp)
                     }
                     if (rows.isEmpty()) {
                         item { EmptyState("这里是空的", "从下方导入错题") }
@@ -863,6 +907,32 @@ private fun ViewToggle(current: Int, onPick: (Int) -> Unit) {
     }
 }
 
+/** 列表行题干：带公式的走 JLatexMath 真渲染，普通文本走 Compose Text。 */
+@Composable
+fun StemText(
+    stem: String,
+    color: Color,
+    fontSizeSp: Float,
+    modifier: Modifier = Modifier,
+    lineHeightSp: Float = fontSizeSp * 1.45f,
+    maxLines: Int = 2,
+    blankHint: String = "（无题干，点开补录）",
+) {
+    if (stem.isBlank()) {
+        Text(
+            blankHint, fontSize = fontSizeSp.sp, lineHeight = lineHeightSp.sp,
+            color = Muted, maxLines = maxLines, overflow = TextOverflow.Ellipsis, modifier = modifier,
+        )
+    } else if (looksLikeMath(stem)) {
+        MathText(stem, color = color, fontSizeSp = fontSizeSp, maxLines = maxLines, modifier = modifier)
+    } else {
+        Text(
+            cleanMathLite(stem).ifBlank { blankHint }, fontSize = fontSizeSp.sp, lineHeight = lineHeightSp.sp,
+            color = color, maxLines = maxLines, overflow = TextOverflow.Ellipsis, modifier = modifier,
+        )
+    }
+}
+
 /** 学习列表行：两行题干、可辨认的缩略图、关键知识点、掌握状态。 */
 @Composable
 private fun StudyListRow(q: QuestionRow, selecting: Boolean, isSel: Boolean, onClick: () -> Unit) {
@@ -881,10 +951,11 @@ private fun StudyListRow(q: QuestionRow, selecting: Boolean, isSel: Boolean, onC
             }
         }
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
-            Text(
-                cleanMathLite(q.stem).ifBlank { "（无题干，点开补录）" },
-                fontSize = 13.5.sp, lineHeight = 20.sp, color = if (q.stem.isBlank()) Muted else Ink,
-                maxLines = 2, overflow = TextOverflow.Ellipsis
+            StemText(
+                q.stem,
+                color = if (q.stem.isBlank()) Muted else Ink,
+                fontSizeSp = 13.5f,
+                lineHeightSp = 20f,
             )
             Row(
                 Modifier.padding(top = 7.dp),
@@ -1402,11 +1473,15 @@ fun EditQuestionScreen(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
     var note by remember { mutableStateOf(q.note) }
     var type by remember { mutableStateOf(q.type) }
     var catId by remember { mutableStateOf(q.categoryId ?: "uncat") }
+    // 知识点标签：AI 给的可以删，也可以自己补
+    var tags by remember { mutableStateOf(parseKnowledgeTags(q.tags)) }
+    var newTag by remember { mutableStateOf("") }
     var showPreview by remember { mutableStateOf(false) }
     var pickingCategory by remember { mutableStateOf(false) }
     var restoredDraft by remember { mutableStateOf(false) }
     val pristine = stem == q.stem && answer == q.answer && analysis == q.analysis &&
-        note == q.note && type == q.type && tag == q.customTag && catId == (q.categoryId ?: "uncat")
+        note == q.note && type == q.type && tag == q.customTag && catId == (q.categoryId ?: "uncat") &&
+        tags == parseKnowledgeTags(q.tags)
 
     // 上次没保存的编辑：打开即恢复
     LaunchedEffect(q.id) {
@@ -1422,12 +1497,13 @@ fun EditQuestionScreen(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
                 note = o.optString("note", q.note)
                 type = o.optString("type", q.type)
                 catId = o.optString("categoryId", q.categoryId ?: "uncat")
+                tags = parseKnowledgeTags(o.optString("tags", q.tags))
                 restoredDraft = true
             }
         }
     }
     // 自动草稿：停手 900ms 落一次盘；保存成功后由 onDone 侧清除
-    LaunchedEffect(tag, stem, answer, analysis, note, type, catId) {
+    LaunchedEffect(tag, stem, answer, analysis, note, type, catId, tags) {
         if (pristine) return@LaunchedEffect
         kotlinx.coroutines.delay(900)
         vm.saveEditDraft(
@@ -1436,6 +1512,7 @@ fun EditQuestionScreen(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
                 put("v", 1)
                 put("customTag", tag); put("stem", stem); put("answer", answer)
                 put("analysis", analysis); put("note", note); put("type", type); put("categoryId", catId)
+                put("tags", org.json.JSONArray(tags).toString())
             }.toString()
         )
     }
@@ -1473,6 +1550,7 @@ fun EditQuestionScreen(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
                             tag = q.customTag; stem = q.stem; answer = q.answer
                             analysis = q.analysis; note = q.note; type = q.type
                             catId = q.categoryId ?: "uncat"
+                            tags = parseKnowledgeTags(q.tags)
                             vm.clearEditDraft(q.id)
                         }.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
@@ -1490,6 +1568,59 @@ fun EditQuestionScreen(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
             TjTextField(value = analysis, onValueChange = { analysis = it }, label = { Text("解析", fontSize = 12.sp) }, minLines = 4, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 23.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
             TjTextField(value = note, onValueChange = { note = it }, label = { Text("笔记（错因、思路、老师讲的话都可以记）", fontSize = 12.sp) }, minLines = 2, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 23.sp, color = Ink), colors = tjFieldColors(), modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(12.dp))
+            // —— 知识点标签：点 × 删除，输入后「添加」补新标签 ——
+            Text("知识点标签", fontSize = 12.sp, color = Ink2, fontWeight = FontWeight.SemiBold)
+            if (tags.isNotEmpty()) {
+                androidx.compose.foundation.layout.FlowRow(
+                    Modifier.padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    tags.forEach { t ->
+                        Row(
+                            Modifier.clip(RoundedCornerShape(8.dp)).background(AccentSoft)
+                                .padding(start = 10.dp, end = 4.dp, top = 5.dp, bottom = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(t, fontSize = 12.sp, color = Ink2)
+                            Box(
+                                Modifier.size(26.dp).clip(CircleShape)
+                                    .tjClickable(label = "删除标签 $t") { tags = tags - t },
+                                contentAlignment = Alignment.Center
+                            ) { Icon(Icons.Rounded.Close, "删除标签 $t", tint = Muted, modifier = Modifier.size(13.dp)) }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TjTextField(
+                    value = newTag, onValueChange = { newTag = it },
+                    placeholder = { Text("补充知识点，如：导数的几何意义", fontSize = 12.5.sp, color = Muted) },
+                    singleLine = true, colors = tjFieldColors(),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onSend = { if (newTag.isNotBlank()) { tags = tags + newTag.trim(); newTag = "" } }
+                    ),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier.heightIn(min = 48.dp).clip(SmallShape)
+                        .background(if (newTag.isBlank()) SurfaceAlt else Accent)
+                        .tjClickable(enabled = newTag.isNotBlank(), label = "添加标签") {
+                            tags = tags + newTag.trim(); newTag = ""
+                        }
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "添加", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                        color = if (newTag.isBlank()) Muted else OnAccent
+                    )
+                }
+            }
             Spacer(Modifier.height(12.dp))
             Text("分类", fontSize = 12.sp, color = Ink2, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(6.dp))
@@ -1515,10 +1646,11 @@ fun EditQuestionScreen(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
                 showPreview = !showPreview
             }
             TjButton("保存", Modifier.weight(1f), enabled = !pristine) {
+                val tagsJson = org.json.JSONArray(tags).toString()
                 vm.write {
                     it.updateQuestion(
                         id = q.id, stem = stem, answer = answer, analysis = analysis,
-                        type = type, tags = q.tags, note = note,
+                        type = type, tags = tagsJson, note = note,
                         errorReasons = q.errorReasons, categoryId = catId, customTag = tag
                     )
                 }
@@ -1526,7 +1658,7 @@ fun EditQuestionScreen(vm: AppVm, q: QuestionRow, cats: List<CategoryRow>, onDon
                 onDone(
                     q.copy(
                         stem = stem, answer = answer, analysis = analysis, note = note,
-                        type = type, customTag = tag.trim(), categoryId = catId,
+                        type = type, customTag = tag.trim(), categoryId = catId, tags = tagsJson,
                         categoryName = cats.firstOrNull { it.id == catId }?.name ?: q.categoryName
                     )
                 )
@@ -1629,7 +1761,7 @@ fun SearchRow(q: QuestionRow, onClick: () -> Unit) {
     ) {
         Thumb(q.imagePath, Modifier.width(38.dp).height(46.dp))
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
-            Text(cleanMathLite(q.stem).ifBlank { "（无题干）" }, fontSize = 13.sp, lineHeight = 19.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, color = Ink)
+            StemText(q.stem, color = Ink, fontSizeSp = 13f, lineHeightSp = 19f, blankHint = "（无题干）")
             Text(
                 listOf(q.customTag, q.categoryName, q.type).filter { it.isNotBlank() }.joinToString(" · "),
                 fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 3.dp)
@@ -1681,7 +1813,7 @@ private data class NoteEdit(val source: Uri, val oldImageId: String?, val tempFi
 
 /**
  * 笔记卡：文字 + 手写拍照图片。图片走拍照/相册导入，统一先进原图编辑器
- * （裁剪/标注）再入库；点缩略图可再次编辑，右上角 X 移除。
+ * （裁剪/标注）再入库；点缩略图是全屏预览（可缩放），要改再点预览右上角的编辑。
  */
 @Composable
 private fun NoteCardContent(vm: AppVm, question: QuestionRow) {
@@ -1693,6 +1825,7 @@ private fun NoteCardContent(vm: AppVm, question: QuestionRow) {
         refs = withContext(Dispatchers.IO) { vm.db.noteImageRefs(question.noteImages) }
     }
     var editing by remember { mutableStateOf<NoteEdit?>(null) }
+    var viewing by remember { mutableStateOf<Pair<String, String>?>(null) } // imageId to path
     var cameraFile by remember { mutableStateOf<File?>(null) }
 
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
@@ -1719,8 +1852,8 @@ private fun NoteCardContent(vm: AppVm, question: QuestionRow) {
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize().clip(SmallShape)
                             .border(1.dp, Line, SmallShape)
-                            .tjClickable(label = "编辑这张笔记图片") {
-                                editing = NoteEdit(Uri.fromFile(File(path)), id, null)
+                            .tjClickable(label = "预览这张笔记图片") {
+                                viewing = id to path
                             }
                     )
                     Box(
@@ -1755,6 +1888,17 @@ private fun NoteCardContent(vm: AppVm, question: QuestionRow) {
         }
     }
 
+    viewing?.let { (imageId, path) ->
+        NoteImageViewerDialog(
+            path = path,
+            onDismiss = { viewing = null },
+            onEdit = {
+                viewing = null
+                editing = NoteEdit(Uri.fromFile(File(path)), imageId, null)
+            },
+        )
+    }
+
     editing?.let { e ->
         ImageEditorDialog(
             uri = e.source,
@@ -1769,6 +1913,51 @@ private fun NoteCardContent(vm: AppVm, question: QuestionRow) {
                 editing = null
             }
         )
+    }
+}
+
+/** 笔记图片全屏预览：双指缩放、拖动平移；右上角进编辑，平时点开只读不打误触。 */
+@Composable
+private fun NoteImageViewerDialog(path: String, onDismiss: () -> Unit, onEdit: () -> Unit) {
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    FullScreenDialog(onDismissRequest = onDismiss) {
+        androidx.compose.foundation.layout.Box(
+            Modifier.fillMaxSize().background(Color(0xFF101113))
+        ) {
+            AsyncImage(
+                model = File(path), contentDescription = "笔记图片预览",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            scale = (scale * zoom).coerceIn(1f, 6f)
+                            offset = if (scale > 1f) offset + pan else androidx.compose.ui.geometry.Offset.Zero
+                        }
+                    }
+                    .graphicsLayer {
+                        scaleX = scale; scaleY = scale
+                        translationX = offset.x; translationY = offset.y
+                    }
+            )
+            Row(
+                Modifier.fillMaxWidth()
+                    .background(Color(0x99000000))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape)
+                        .tjClickable(label = "关闭预览") { onDismiss() },
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Rounded.Close, "关闭", tint = Color.White, modifier = Modifier.size(21.dp)) }
+                Column(Modifier.weight(1f).padding(start = 4.dp)) {
+                    Text("笔记图片", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                    Text("双指缩放 · 拖动查看", fontSize = 11.sp, color = Color(0xCCFFFFFF))
+                }
+                IconCircle(Icons.Rounded.Edit, "编辑这张图片", tint = Color.White, filled = true) { onEdit() }
+            }
+        }
     }
 }
 
@@ -1863,11 +2052,7 @@ private fun RecentCard(q: QuestionRow, onClick: () -> Unit) {
             }
         }
         Column(Modifier.padding(horizontal = 12.dp, vertical = 14.dp)) {
-            Text(
-                cleanMathLite(q.stem).ifBlank { "（无题干）" },
-                fontSize = 13.sp, lineHeight = 19.sp, color = Ink,
-                maxLines = 2, overflow = TextOverflow.Ellipsis
-            )
+            StemText(q.stem, color = Ink, fontSizeSp = 13f, lineHeightSp = 19f, maxLines = 2, blankHint = "（无题干）")
             Text(
                 listOf(q.customTag, q.categoryName).filter { it.isNotBlank() }.joinToString(" · "),
                 fontSize = 11.sp, color = Muted, modifier = Modifier.padding(top = 5.dp), maxLines = 1

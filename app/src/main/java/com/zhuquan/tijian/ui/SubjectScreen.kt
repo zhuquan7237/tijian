@@ -5,6 +5,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -29,20 +32,30 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
     var creating by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var deleting by remember { mutableStateOf<CategoryRow?>(null) }
+    // 本地顺序：拖动过程中即时交换，松手落库；数据刷新后按新 sort 重读
+    var children by remember(route.name) { mutableStateOf(vm.categories.filter { it.subjectGroup() == route.name }) }
+    LaunchedEffect(vm.categories, route.name) {
+        children = vm.categories.filter { it.subjectGroup() == route.name }
+    }
+    val listState = rememberLazyListState()
+    val dragState = rememberDragDropState(listState) { from, to ->
+        if (from in children.indices && to in children.indices) {
+            children = children.toMutableList().apply { add(to, removeAt(from)) }
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             route.name,
-            if (route.name == "专业课") "材料类 · 材料科学基础（上交第三版）" else "按知识点管理子分类",
+            if (route.name == "专业课") "材料类 · 材料科学基础（上交第三版）" else "按知识点管理子分类 · 长按可拖动排序",
             onBack = { vm.back() },
             actions = { IconCircle(Icons.Rounded.Add, "新增子分类") { name = ""; creating = true } }
         )
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.page, vertical = 4.dp)
-                .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            val children = vm.categories.filter { it.subjectGroup() == route.name }
-            if (children.isEmpty()) {
+        if (children.isEmpty()) {
+            Column(
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.page, vertical = 4.dp)
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 CardBox(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(20.dp)) {
                         Text("还没有子分类", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink)
@@ -53,8 +66,26 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
                     }
                 }
             }
-            children.forEach { cat ->
-                SubjectChildCard(cat, onOpen = { vm.go(Route.Category(cat.id)) }, onDelete = { deleting = cat })
+        } else {
+            LazyColumn(
+                Modifier.fillMaxSize().dragContainer(dragState) {
+                    vm.write { it.reorderCategories(children.map { c -> c.id }) }
+                }
+                    .padding(horizontal = Space.page, vertical = 4.dp)
+                    .padding(bottom = 24.dp),
+                state = listState,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                itemsIndexed(children, key = { _, c -> c.id }) { idx, cat ->
+                    DraggableItem(dragState, idx) { _ ->
+                        SubjectChildCard(
+                            cat,
+                            onOpen = { vm.go(Route.Category(cat.id)) },
+                            onDelete = { deleting = cat },
+                        )
+                    }
+                }
+                item { Spacer(Modifier.height(8.dp)) }
             }
         }
     }

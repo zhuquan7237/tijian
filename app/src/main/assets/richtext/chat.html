@@ -78,6 +78,27 @@
   .rt-error { color: var(--red); background: var(--red-soft); border-radius: 6px; padding: 1px 5px; font-size: .9em; }
   .rt-hl { background: rgba(var(--accent-rgb),.18); border-radius: 3px; }
   .empty { color: var(--muted); font-size: 13px; padding: 4px 0 8px; }
+  /* 消息底部的复制按钮：小而不抢戏，一眼能找到 */
+  .copy-row { display: flex; justify-content: flex-start; margin-top: 6px; }
+  .copy-btn {
+    font-size: 11px; color: var(--muted); background: var(--surface-alt);
+    border: none; border-radius: 999px; padding: 3px 10px;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .copy-btn:active { color: var(--accent); }
+  /* 长按选中后浮出的复制条 */
+  #selbar {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: 14px; display: none; z-index: 20;
+    background: var(--menu-bg); border: 1px solid var(--line);
+    border-radius: 999px; padding: 4px; box-shadow: 0 6px 24px rgba(0,0,0,.28);
+  }
+  #selbar.show { display: block; }
+  #selbar button {
+    font-size: 13px; color: var(--accent); background: transparent; border: none;
+    padding: 7px 16px; border-radius: 999px; font-weight: 600;
+  }
+  #selbar button:active { background: var(--surface-alt); }
   /* ---------- 结构化解析（structure.js） ---------- */
   .an-prose { margin: 0 0 12px; }
   .an-box { border-radius: 12px; padding: 10px 12px 11px; margin: 0 0 12px; }
@@ -108,6 +129,7 @@
 </head>
 <body>
 <div id="out"></div>
+<div id="selbar"><button id="selbar-copy">复制</button></div>
 <script src="katex.min.js"></script>
 <script src="mhchem.min.js"></script>
 <script src="markdown-it.min.js"></script>
@@ -172,7 +194,8 @@
         return '<div class="row user"><div class="bubble">' + renderMd(m.text || '') + '</div></div>';
       }
       var body = (window.tjStructure && window.tjStructure(m.text || '', renderMd)) || renderMd(m.text || '');
-      return '<div class="row ai"><div class="card"><div class="who">题笺 AI</div>' + body + '</div></div>';
+      var copyBtn = '<div class="copy-row"><button class="copy-btn" data-copy="' + i + '">复制全文</button></div>';
+      return '<div class="row ai"><div class="card"><div class="who">题笺 AI</div>' + body + copyBtn + '</div></div>';
     }).join('');
     if (scrollBottom) {
       requestAnimationFrame(function () { window.scrollTo(0, document.body.scrollHeight); });
@@ -192,6 +215,23 @@
   window.__scrollBottom = function () {
     window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
   };
+
+  /* 点「复制全文」/ 选中条「复制」：走原生剪贴板（带 toast） */
+  var lastSelText = '';
+  function hideSelbar() {
+    document.getElementById('selbar').classList.remove('show');
+    lastSelText = '';
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target && e.target.closest ? e.target.closest('.copy-btn') : null;
+    if (!t) return;
+    var idx = t.getAttribute('data-copy');
+    var text = idx !== null && MSGS[+idx] ? (MSGS[+idx].text || '') : lastSelText;
+    if (text && window.AndroidChat && window.AndroidChat.copy) {
+      window.AndroidChat.copy(text);
+      hideSelbar();
+    }
+  });
 
   /* ---------- 长按选词 / 拖动扩选，不弹系统菜单 ---------- */
   var pressTimer = null, startX = 0, startY = 0;
@@ -250,6 +290,10 @@
     text = (text || '').replace(/\s+/g, ' ').trim();
     if (text === lastText) return;
     lastText = text;
+    // 选区同时服务两个动作：浮出的「复制」条 + 实时设为追问引用
+    lastSelText = text;
+    if (text) { document.getElementById('selbar').classList.add('show'); }
+    else { document.getElementById('selbar').classList.remove('show'); }
     if (window.AndroidChat) {
       if (text && window.AndroidChat.select) window.AndroidChat.select(text);
       else if (!text && window.AndroidChat.clearSelection) window.AndroidChat.clearSelection();
@@ -308,6 +352,13 @@
   document.addEventListener('touchend', function () {
     clearTimeout(pressTimer);
     selecting = false;
+    // 轻点空白让选区收起时，复制条跟着收起
+    setTimeout(function () {
+      var sel = window.getSelection();
+      if (!sel || sel.isCollapsed) {
+        document.getElementById('selbar').classList.remove('show');
+      }
+    }, 60);
   }, { passive: true });
 
   document.addEventListener('contextmenu', function (e) { e.preventDefault(); return false; });

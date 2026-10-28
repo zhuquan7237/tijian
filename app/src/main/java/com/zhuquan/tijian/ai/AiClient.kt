@@ -41,6 +41,19 @@ data class ParsedQuestion(
     val bbox: List<Double>? = null,
 )
 
+/** 追问时可附带的内容：图片走多模态消息，文本文件直接拼进提问。 */
+sealed class ChatAttachment {
+    data class Image(val base64Jpeg: String) : ChatAttachment()
+    data class TextFile(val name: String, val content: String) : ChatAttachment()
+}
+
+/** 一键大整理里单题的复核建议。 */
+data class TidySuggestion(
+    val category: String,
+    val tags: List<String>,
+    val type: String,
+)
+
 private val client = OkHttpClient.Builder()
     .connectTimeout(20, TimeUnit.SECONDS)
     .readTimeout(240, TimeUnit.SECONDS)
@@ -125,80 +138,6 @@ class AiClient {
         val text = call(cfg, body)
         val ms = System.currentTimeMillis() - started
         "${if (text.isBlank()) "连接成功" else text.take(40)} · ${ms}ms"
-    }
-
-    /**
-     * 验证「能否识别图片」——导入识别是本应用的核心链路，只测文本聊天会漏掉
-     * 「模型不支持视觉输入」这一最常见的坑。成功返回耗时；失败抛出带下一步指引的 AiException。
-     */
-    suspend fun testVision(cfg: ProviderConfig): String = withContext(Dispatchers.IO) {
-        // 1x1 红色像素的 JPEG，足够让视觉模型回答，又几乎不耗 token
-        val jpeg = android.util.Base64.decode(
-            "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD3+iiigD//2Q==",
-            android.util.Base64.DEFAULT
-        )
-        val b64 = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP)
-        val prompt = "这张图片是什么颜色？只回答颜色名称。"
-        val body = if (cfg.protocol == "responses") {
-            JSONObject().apply {
-                put("model", cfg.model)
-                put("input", JSONArray().put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", JSONArray()
-                        .put(JSONObject().apply { put("type", "input_text"); put("text", prompt) })
-                        .put(JSONObject().apply {
-                            put("type", "input_image")
-                            put("image_url", "data:image/jpeg;base64,$b64")
-                        }))
-                }))
-                put("max_output_tokens", 30)
-            }
-        } else {
-            JSONObject().apply {
-                put("model", cfg.model)
-                put("messages", JSONArray().put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", JSONArray()
-                        .put(JSONObject().apply { put("type", "text"); put("text", prompt) })
-                        .put(JSONObject().apply {
-                            put("type", "image_url")
-                            put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$b64"))
-                        }))
-                }))
-                put("max_tokens", 30)
-            }
-        }
-        val started = System.currentTimeMillis()
-        try {
-            val text = call(cfg, body)
-            val ms = System.currentTimeMillis() - started
-            if (text.isBlank()) throw AiException("模型返回了空内容")
-            "能识别图片 · ${ms}ms"
-        } catch (e: AiException) {
-            throw AiException(classifyFailure(e.message ?: ""))
-        } catch (e: Exception) {
-            throw AiException(classifyFailure(e.message ?: e.javaClass.simpleName))
-        }
-    }
-
-    /** 把底层报错翻译成「下一步该做什么」。 */
-    private fun classifyFailure(raw: String): String {
-        val msg = raw.lowercase()
-        return when {
-            "401" in msg || "403" in msg || "invalid api key" in msg || "unauthorized" in msg || "密钥" in raw ->
-                "密钥无效或已过期。回到上方检查 API Key 是否复制完整，改好后重新验证。"
-            "404" in msg && ("model" in msg || "not found" in msg || "不存在" in raw) ->
-                "服务商没有这个模型。点「拉取」查看可用列表，换一个模型名。"
-            "404" in msg ->
-                "接口地址不存在。检查是否漏了结尾的 /v1，或中转站路径不对。"
-            "429" in msg || "rate" in msg ->
-                "请求太频繁或额度不足。稍等片刻再验证，或去服务商控制台确认余额。"
-            "image" in msg && ("not support" in msg || "unsupported" in msg || "does not support" in msg || "multimodal" in msg || "vision" in msg) ->
-                "这个模型不支持图片输入。换一个支持视觉的模型（名字常带 vl / vision / 4o / gemini 等字样）。"
-            "timeout" in msg || "timed out" in msg || "unable to resolve" in msg || "network" in msg || "econn" in msg || "网络" in raw ->
-                "连不上服务商。检查网络后重试；地址必须是 https:// 开头的完整接口地址。"
-            else -> raw.take(200)
-        }
     }
 
     suspend fun recognize(cfg: ProviderConfig, jpeg: ByteArray): List<ParsedQuestion> =
@@ -413,6 +352,7 @@ ${material.take(9000)}
     /**
      * 题目追问：把题目、解析、需要掌握的知识点和用户当前掌握度一起交给模型，
      * 再附上最近几轮对话。回答使用 Markdown + LaTeX，由应用里的富文本管线渲染。
+     * 本轮可以带附件：图片走多模态消息，文本文件直接拼进提问。
      */
     suspend fun ask(
         cfg: ProviderConfig,
@@ -420,14 +360,23 @@ ${material.take(9000)}
         history: List<Pair<String, String>>,
         question: String,
         quote: String = "",
+        attachment: ChatAttachment? = null,
     ): Pair<String, Boolean> = withContext(Dispatchers.IO) {
-        val askText = buildString {
+        var askText = buildString {
             if (quote.isNotBlank()) {
                 append("我在解析里选中的这段内容：\n> ")
                 append(quote.replace("\n", "\n> "))
                 append("\n\n")
             }
             append(question)
+            when (attachment) {
+                is ChatAttachment.Image -> append("\n\n（本轮消息附带一张图片，请结合图片内容回答。）")
+                is ChatAttachment.TextFile -> {
+                    append("\n\n【附件 · ").append(attachment.name).append("】\n")
+                    append(attachment.content)
+                }
+                null -> Unit
+            }
         }
         val body = if (cfg.protocol == "responses") {
             val transcript = buildString {
@@ -443,7 +392,20 @@ ${material.take(9000)}
             }
             JSONObject().apply {
                 put("model", cfg.model)
-                put("input", transcript)
+                val image = attachment as? ChatAttachment.Image
+                if (image != null) {
+                    put("input", JSONArray().put(JSONObject().apply {
+                        put("role", "user")
+                        put("content", JSONArray()
+                            .put(JSONObject().apply { put("type", "input_text"); put("text", transcript) })
+                            .put(JSONObject().apply {
+                                put("type", "input_image")
+                                put("image_url", "data:image/jpeg;base64,${image.base64Jpeg}")
+                            }))
+                    }))
+                } else {
+                    put("input", transcript)
+                }
                 put("instructions", TUTOR_SYSTEM)
                 put("temperature", 0.4)
                 put("max_output_tokens", 8000)
@@ -462,7 +424,20 @@ ${material.take(9000)}
             history.takeLast(16).forEach { (role, text) ->
                 messages.put(JSONObject().apply { put("role", role); put("content", text) })
             }
-            messages.put(JSONObject().apply { put("role", "user"); put("content", askText) })
+            messages.put(JSONObject().apply {
+                put("role", "user")
+                val image = attachment as? ChatAttachment.Image
+                if (image != null) {
+                    put("content", JSONArray()
+                        .put(JSONObject().apply { put("type", "text"); put("text", askText) })
+                        .put(JSONObject().apply {
+                            put("type", "image_url")
+                            put("image_url", JSONObject().put("url", "data:image/jpeg;base64,${image.base64Jpeg}"))
+                        }))
+                } else {
+                    put("content", askText)
+                }
+            })
             JSONObject().apply {
                 put("model", cfg.model)
                 put("messages", messages)
@@ -473,6 +448,83 @@ ${material.take(9000)}
         val (text, truncated) = callWithMeta(cfg, body)
         text.trim() to truncated
     }
+
+    /**
+     * 一键大整理的 AI 复核：一批旧题 + 现有分类树一起给模型，
+     * 逐题返回修正后的分类、知识点标签与题型。只动这三样，不改答案解析。
+     */
+    suspend fun tidyBatch(
+        cfg: ProviderConfig,
+        items: List<QuestionRow>,
+        categories: List<CategoryRow>,
+    ): Map<String, TidySuggestion> = withContext(Dispatchers.IO) {
+        if (items.isEmpty()) return@withContext emptyMap()
+        val list = StringBuilder()
+        items.forEach { q ->
+            list.append("- id:").append(q.id).append('\n')
+            list.append("  当前分类：").append(q.categoryName).append('\n')
+            list.append("  题型：").append(q.type.ifBlank { "（空）" }).append('\n')
+            list.append("  题干：").append(q.stem.take(400)).append('\n')
+            val opts = com.zhuquan.tijian.ui.parseOptions(q.options)
+            if (opts.isNotEmpty()) list.append("  选项：").append(opts.joinToString(" / ").take(240)).append('\n')
+            if (q.answer.isNotBlank()) list.append("  答案：").append(q.answer.take(120)).append('\n')
+            val tags = parseTags(q.tags)
+            list.append("  现有知识点标签：").append(if (tags.isEmpty()) "（空）" else tags.joinToString("、")).append('\n')
+        }
+        val catNames = categories.filter { it.id != com.zhuquan.tijian.data.Db.UNCAT }.joinToString("；") { it.fullName() }
+        val prompt = """你是错题本整理助手。用户的错题本早期版本分类混乱，下面是一批旧题和现在完整的分类列表。请逐题复核并输出规范化的分类、知识点标签与题型。
+
+现有分类（category 必须从这里选，带学科前缀）：$catNames
+
+题目：
+$list
+
+规则：
+1. category 从现有分类里选最合适的一个；现有分类实在都不合适才提议新分类（格式「学科/小类」，学科仅数学、专业课、英语、政治、其他；专业课指材料类专业课，参考《材料科学基础》上交第三版）。
+2. 知识点标签给 2~6 个具体主题（如「导数的几何意义」），纠正原标签里过宽、重复或错别字的地方。
+3. type 只使用：选择题、判断题、填空题、计算题、证明题、解答题、实验题、材料题。
+4. 不要改题干、答案与解析；不确定的维度保持原值（category 填当前分类，tags 照抄现有标签，type 填当前题型）。
+5. 只输出 JSON：{"items":[{"id":"原id","category":"数学/函数与导数","tags":["标签"],"type":"选择题"}]}"""
+        val body = if (cfg.protocol == "responses") {
+            JSONObject().apply {
+                put("model", cfg.model); put("input", prompt)
+                put("temperature", 0.1); put("max_output_tokens", 8000)
+            }
+        } else {
+            JSONObject().apply {
+                put("model", cfg.model)
+                put("messages", JSONArray()
+                    .put(JSONObject().apply { put("role", "system"); put("content", SYSTEM) })
+                    .put(JSONObject().apply { put("role", "user"); put("content", prompt) }))
+                put("temperature", 0.1); put("max_tokens", 8000)
+            }
+        }
+        val raw = call(cfg, body)
+        val jsonText = extractJson(raw) ?: throw AiException("整理结果不是 JSON")
+        val json = runCatching { JSONObject(jsonText) }.getOrElse { throw AiException("整理结果解析失败：${it.message}") }
+        val arr = json.optJSONArray("items") ?: JSONArray()
+        val out = HashMap<String, TidySuggestion>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val id = o.optString("id")
+            if (id.isBlank()) continue
+            val tags = ArrayList<String>()
+            o.optJSONArray("tags")?.let { a ->
+                for (k in 0 until a.length()) a.optString(k).trim().takeIf { it.isNotBlank() }?.let(tags::add)
+            }
+            out[id] = TidySuggestion(
+                category = o.optString("category").trim(),
+                tags = tags,
+                type = o.optString("type").trim(),
+            )
+        }
+        out
+    }
+
+    private fun parseTags(raw: String): List<String> = try {
+        val arr = JSONArray(raw)
+        (0 until arr.length()).mapNotNull { arr.optString(it).trim().takeIf { s -> s.isNotBlank() } }
+    } catch (_: Exception) { emptyList() }
 
     /**
      * 只补「这道题需要掌握什么」：公式 / 概念 / 方法。

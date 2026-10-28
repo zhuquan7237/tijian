@@ -86,6 +86,16 @@ fun ChatTranscript(
                     fun clearSelection() {
                         post { selectCallback.value("") }
                     }
+
+                    /** 聊天内容复制：长按选中后的「复制」条与每条回答下的「复制全文」。 */
+                    @JavascriptInterface
+                    fun copy(text: String) {
+                        post {
+                            val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            cm.setPrimaryClip(android.content.ClipData.newPlainText("题笺", text))
+                            android.widget.Toast.makeText(ctx, "已复制", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 }, "AndroidChat")
                 loadUrl("file:///android_asset/richtext/chat.html")
             }
