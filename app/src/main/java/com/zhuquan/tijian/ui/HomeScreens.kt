@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -618,13 +620,13 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
         }
 
         Spacer(Modifier.height(10.dp))
-        // 视图切换：平时看题（学习列表），批量整理时切表格
+        // 视图切换：平时看题（学习列表），总览时切网格
         Row(
             Modifier.fillMaxWidth().padding(horizontal = Space.page),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                if (vm.categoryView == 0) "长按题目行可拖动排序" else "按列整理",
+                if (vm.categoryView == 0) "长按题目行可拖动排序" else "网格视图 · 缩略图一眼认题",
                 fontSize = 12.sp, color = Muted
             )
             Spacer(Modifier.weight(1f))
@@ -641,6 +643,7 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                         DraggableItem(dragState, idx) { isDragging ->
                             Column {
                                 StudyListRow(q, selecting = selecting || isDragging, isSel = selected.value.contains(q.id)) {
+                                    if (dragState.clickConsumed) return@StudyListRow
                                     if (selecting) {
                                         selected.value = if (selected.value.contains(q.id)) selected.value - q.id else selected.value + q.id
                                     } else vm.go(Route.Detail(q.id))
@@ -654,84 +657,34 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
                     }
                 }
             } else {
-            Column {
-                Row(Modifier.fillMaxWidth().background(SurfaceAlt).padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    Text(if (selecting) "" else "题目", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(56.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Text("题号", fontSize = 11.sp, color = Amber, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(76.dp))
-                    Text("知识点", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    Text("掌握", fontSize = 11.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(56.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
-                }
-                LazyColumn(Modifier.weight(1f), state = listState) {
-                    itemsIndexed(rows, key = { _, q -> q.id }) { idx, q ->
-                        val isSel = selected.value.contains(q.id)
-                        val rowSrc = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                        Row(
-                            Modifier.pressScale(rowSrc)
-                                .fillMaxWidth().heightIn(min = 88.dp)
-                                .tjClickable(interactionSource = rowSrc) {
-                                    if (selecting) {
-                                        selected.value = if (isSel) selected.value - q.id else selected.value + q.id
-                                    } else vm.go(Route.Detail(q.id))
-                                }.padding(horizontal = 14.dp, vertical = 9.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(Modifier.width(56.dp)) {
+                // 网格视图：缩略图为主、题型徽标醒目，一眼认出是哪道题
+                androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                    columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxSize(),
+                    state = androidx.compose.foundation.lazy.grid.rememberLazyGridState(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(9.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp),
+                ) {
+                    items(rows.size) { idx ->
+                        val q = rows[idx]
+                        GridCell(
+                            q = q,
+                            selecting = selecting,
+                            isSel = selected.value.contains(q.id),
+                            onClick = {
                                 if (selecting) {
-                                    Checkbox(checked = isSel, onCheckedChange = null, modifier = Modifier.size(22.dp))
-                                } else {
-                                    Thumb(q.imagePath, Modifier.width(56.dp).height(70.dp))
-                                }
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            // 题号专列：点击直接行内编辑，不用打开题目再点编辑
-                            Column(
-                                Modifier.width(76.dp)
-                                    .tjClickable(label = "填写题号") { tagEditIndex = idx }
-                            ) {
-                                if (q.customTag.isNotBlank()) {
-                                    Text(
-                                        q.customTag, fontSize = 12.sp, lineHeight = 16.sp,
-                                        color = Amber, fontWeight = FontWeight.SemiBold, maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                } else {
-                                    Text(
-                                        "＋题号", fontSize = 11.5.sp, color = Muted,
-                                        maxLines = 1, overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Text(
-                                    q.type.ifBlank { "—" }, fontSize = 11.sp, color = Muted,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(top = if (q.customTag.isNotBlank()) 3.dp else 2.dp)
-                                )
-                            }
-                            val tags = parseKnowledgeTags(q.tags)
-                            if (tags.isEmpty()) {
-                                Text("—", fontSize = 12.sp, color = Muted, modifier = Modifier.weight(1f))
-                            } else {
-                                Row(
-                                    Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    tags.forEach { tag ->
-                                        Box(
-                                            Modifier.clip(RoundedCornerShape(6.dp)).background(AccentSoft)
-                                                .padding(horizontal = 7.dp, vertical = 4.dp)
-                                        ) { Text(tag, fontSize = 11.5.sp, color = Ink2, maxLines = 1) }
-                                    }
-                                }
-                            }
-                            Box(Modifier.width(56.dp), contentAlignment = Alignment.CenterEnd) { MasteryDots(q.mastery) }
-                        }
-                        HorizontalDivider(color = Line, thickness = 1.dp)
+                                    selected.value = if (selected.value.contains(q.id)) selected.value - q.id else selected.value + q.id
+                                } else vm.go(Route.Detail(q.id))
+                            },
+                        )
                     }
                     if (rows.isEmpty()) {
-                        item { EmptyState("这里是空的", "从下方导入错题") }
+                        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
+                            EmptyState("这里是空的", "从下方导入错题")
+                        }
                     }
                 }
-            }
             }
         }
 
@@ -890,12 +843,12 @@ private fun ViewToggle(current: Int, onPick: (Int) -> Unit) {
         Modifier.clip(CircleShape).background(SurfaceAlt).border(1.dp, Line, CircleShape).padding(2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        listOf(0 to "列表", 1 to "表格").forEach { (v, label) ->
+        listOf(0 to "列表", 1 to "网格").forEach { (v, label) ->
             val on = current == v
             Box(
                 Modifier.clip(CircleShape)
                     .background(if (on) Accent else Color.Transparent)
-                    .tjClickable(label = if (v == 0) "切换到学习列表" else "切换到整理表格") { onPick(v) }
+                    .tjClickable(label = if (v == 0) "切换到学习列表" else "切换到网格视图") { onPick(v) }
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 Text(
@@ -930,6 +883,85 @@ fun StemText(
             cleanMathLite(stem).ifBlank { blankHint }, fontSize = fontSizeSp.sp, lineHeight = lineHeightSp.sp,
             color = color, maxLines = maxLines, overflow = TextOverflow.Ellipsis, modifier = modifier,
         )
+    }
+}
+
+/** 网格视图单元：原图缩略 + 题型徽标 + 题号，一眼认题。 */
+@Composable
+private fun GridCell(q: QuestionRow, selecting: Boolean, isSel: Boolean, onClick: () -> Unit) {
+    val cellSrc = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Column(
+        Modifier.pressScale(cellSrc)
+            .clip(RoundedCornerShape(14.dp)).background(CardBg)
+            .border(
+                1.dp,
+                if (isSel) Accent else Line,
+                RoundedCornerShape(14.dp)
+            )
+            .tjClickable(interactionSource = cellSrc) { onClick() }
+    ) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(0.92f).background(SurfaceAlt)
+        ) {
+            if (q.imagePath != null) {
+                AsyncImage(
+                    model = File(q.imagePath), contentDescription = "题目缩略图",
+                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text(
+                    cleanMathLite(q.stem).ifBlank { "（无题干）" },
+                    fontSize = 11.sp, lineHeight = 16.sp, color = Ink2,
+                    maxLines = 5, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxSize().padding(start = 9.dp, end = 9.dp, top = 30.dp, bottom = 9.dp)
+                )
+            }
+            // 题型徽标：左上，最醒目的类型信号
+            Box(
+                Modifier.align(Alignment.TopStart).padding(6.dp)
+                    .clip(RoundedCornerShape(7.dp)).background(Color(0xCC1C1E22))
+                    .padding(horizontal = 7.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    q.type.ifBlank { "题目" }, fontSize = 10.5.sp, lineHeight = 14.sp,
+                    color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1
+                )
+            }
+            if (selecting) {
+                Checkbox(
+                    checked = isSel, onCheckedChange = null,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp)
+                )
+            }
+            if (q.customTag.isNotBlank()) {
+                Box(
+                    Modifier.align(Alignment.BottomStart).padding(6.dp)
+                        .clip(RoundedCornerShape(6.dp)).background(Color(0xCCFFFFFF))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        "№ ${q.customTag}", fontSize = 10.sp, lineHeight = 13.sp,
+                        color = Color(0xFF23262B), maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 9.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val tags = parseKnowledgeTags(q.tags)
+            if (tags.isNotEmpty()) {
+                Text(
+                    tags.first(), fontSize = 10.5.sp, color = Ink2, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(6.dp))
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+            MasteryDots(q.mastery, 5)
+        }
     }
 }
 
@@ -1351,17 +1383,16 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                     }
                 }
             }
-            if (question.note.isNotBlank() || question.noteImages != "[]") {
-                Spacer(Modifier.height(12.dp))
-                CollapsibleCard(
-                    title = "笔记",
-                    subtitle = "文字 · 手写拍照 · 可裁剪标注",
-                    color = Amber,
-                    expanded = vm.noteExpanded,
-                    onToggle = { vm.chooseNoteExpanded(!vm.noteExpanded) },
-                ) {
-                    NoteCardContent(vm, question)
-                }
+            // 笔记栏常驻：随时输入文字或导入图片，不依赖编辑页
+            Spacer(Modifier.height(12.dp))
+            CollapsibleCard(
+                title = "笔记",
+                subtitle = "文字 · 手写拍照 · 可裁剪标注 · 自动保存",
+                color = Amber,
+                expanded = vm.noteExpanded,
+                onToggle = { vm.chooseNoteExpanded(!vm.noteExpanded) },
+            ) {
+                NoteCardContent(vm, question)
             }
             // 底部留出悬浮追问球的高度，最后一张卡（掌握度）能滚到球上方，不被压住。
             Spacer(Modifier.height(96.dp))
@@ -1812,8 +1843,9 @@ fun LabelValue(label: String, value: String) {
 private data class NoteEdit(val source: Uri, val oldImageId: String?, val tempFile: File?)
 
 /**
- * 笔记卡：文字 + 手写拍照图片。图片走拍照/相册导入，统一先进原图编辑器
- * （裁剪/标注）再入库；点缩略图是全屏预览（可缩放），要改再点预览右上角的编辑。
+ * 笔记卡：文字 + 手写拍照图片。文字就地输入（停手即存），图片走拍照/相册导入，
+ * 统一先进原图编辑器（裁剪/标注）再入库；点缩略图是全屏预览（可缩放），
+ * 删除与编辑都在预览页里。
  */
 @Composable
 private fun NoteCardContent(vm: AppVm, question: QuestionRow) {
@@ -1827,6 +1859,15 @@ private fun NoteCardContent(vm: AppVm, question: QuestionRow) {
     var editing by remember { mutableStateOf<NoteEdit?>(null) }
     var viewing by remember { mutableStateOf<Pair<String, String>?>(null) } // imageId to path
     var cameraFile by remember { mutableStateOf<File?>(null) }
+    var confirmRemove by remember { mutableStateOf<String?>(null) }
+    // 就地输入：与编辑页写同一个字段，停手 700ms 落库
+    var noteText by remember(question.id) { mutableStateOf(question.note) }
+    LaunchedEffect(noteText) {
+        if (noteText == question.note) return@LaunchedEffect
+        kotlinx.coroutines.delay(700)
+        if (noteText == question.note) return@LaunchedEffect
+        vm.write { it.updateQuestionNote(question.id, noteText) }
+    }
 
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val f = cameraFile; cameraFile = null
@@ -1836,41 +1877,35 @@ private fun NoteCardContent(vm: AppVm, question: QuestionRow) {
     val pickNote = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) editing = NoteEdit(uri, null, null)
     }
-    if (question.note.isNotBlank()) {
-        Text(question.note, fontSize = 13.sp, lineHeight = 20.sp, color = Ink2)
-        Spacer(Modifier.height(10.dp))
-    }
+
+    TjTextField(
+        value = noteText, onValueChange = { noteText = it },
+        placeholder = { Text("记点思路、错因、老师讲的话…（自动保存）", fontSize = 12.5.sp, color = Muted) },
+        minLines = if (question.note.isNotBlank()) 2 else 1,
+        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, lineHeight = 20.sp, color = Ink2),
+        colors = tjFieldColors(),
+        modifier = Modifier.fillMaxWidth(),
+    )
     if (refs.isNotEmpty()) {
+        Spacer(Modifier.height(10.dp))
         androidx.compose.foundation.layout.FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             refs.forEach { (id, path) ->
-                Box(Modifier.size(84.dp)) {
-                    AsyncImage(
-                        model = File(path), contentDescription = "笔记图片",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().clip(SmallShape)
-                            .border(1.dp, Line, SmallShape)
-                            .tjClickable(label = "预览这张笔记图片") {
-                                viewing = id to path
-                            }
-                    )
-                    Box(
-                        Modifier.align(Alignment.TopEnd).padding(4.dp).size(24.dp)
-                            .clip(CircleShape).background(Color(0xCC000000))
-                            .tjClickable(label = "移除这张笔记图片") {
-                                vm.removeNoteImage(question.id, id)
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Rounded.Close, "移除", tint = Color.White, modifier = Modifier.size(14.dp))
-                    }
-                }
+                AsyncImage(
+                    model = File(path), contentDescription = "笔记图片",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(84.dp).clip(SmallShape)
+                        .border(1.dp, Line, SmallShape)
+                        .tjClickable(label = "预览这张笔记图片") {
+                            viewing = id to path
+                        }
+                )
             }
         }
-        Spacer(Modifier.height(10.dp))
     }
+    Spacer(Modifier.height(10.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         TjButton("拍照导入", Modifier.weight(1f), style = ActionStyle.Secondary) {
             val dir = File(ctx.cacheDir, "note_camera").apply { mkdirs() }
@@ -1896,6 +1931,23 @@ private fun NoteCardContent(vm: AppVm, question: QuestionRow) {
                 viewing = null
                 editing = NoteEdit(Uri.fromFile(File(path)), imageId, null)
             },
+            onDelete = { confirmRemove = imageId },
+        )
+    }
+
+    confirmRemove?.let { imageId ->
+        AlertDialog(
+            onDismissRequest = { confirmRemove = null },
+            title = { Text("移除这张笔记图片？", fontSize = 16.sp) },
+            text = { Text("图片从这道题的笔记里移除，原图文件仍保留在本机。", fontSize = 12.5.sp, lineHeight = 19.sp, color = Ink2) },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.removeNoteImage(question.id, imageId)
+                    viewing = null
+                    confirmRemove = null
+                }) { Text("移除", color = Red, fontWeight = FontWeight.SemiBold) }
+            },
+            dismissButton = { TextButton(onClick = { confirmRemove = null }) { Text("取消", color = Ink2) } }
         )
     }
 
@@ -1916,9 +1968,9 @@ private fun NoteCardContent(vm: AppVm, question: QuestionRow) {
     }
 }
 
-/** 笔记图片全屏预览：双指缩放、拖动平移；右上角进编辑，平时点开只读不打误触。 */
+/** 笔记图片全屏预览：双指缩放、拖动平移；右上角「删除 + 编辑」，平时点开只读不打误触。 */
 @Composable
-private fun NoteImageViewerDialog(path: String, onDismiss: () -> Unit, onEdit: () -> Unit) {
+private fun NoteImageViewerDialog(path: String, onDismiss: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     FullScreenDialog(onDismissRequest = onDismiss) {
@@ -1955,6 +2007,8 @@ private fun NoteImageViewerDialog(path: String, onDismiss: () -> Unit, onEdit: (
                     Text("笔记图片", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                     Text("双指缩放 · 拖动查看", fontSize = 11.sp, color = Color(0xCCFFFFFF))
                 }
+                IconCircle(Icons.Rounded.DeleteOutline, "删除这张图片", tint = Color.White) { onDelete() }
+                Spacer(Modifier.width(4.dp))
                 IconCircle(Icons.Rounded.Edit, "编辑这张图片", tint = Color.White, filled = true) { onEdit() }
             }
         }

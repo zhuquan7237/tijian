@@ -83,8 +83,13 @@ fun TidyScreen(vm: AppVm) {
                 Spacer(Modifier.height(14.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     TidyIssueRow(p.total - p.noTags, "知识点标签规范", "其余题目缺标签，会由 AI 补全")
-                    TidyIssueRow(p.total - p.noSolution, "答案与解析完整", "缺失的仍可逐题「让 AI 补全」，大整理不改动它们")
+                    TidyIssueRow(p.total - p.noSolution, "答案与解析齐全", "缺失或可疑的会由 AI 重写（先推理后结论）")
                     TidyIssueRow(p.total - p.uncat, "已归入有效分类", "未分类的题会由 AI 重新归档")
+                    if (p.duplicates > 0) {
+                        TidyIssueRow(0, "发现 ${p.duplicates} 道重复题", "内容相同的重复题会移入回收站（保留最早一道）")
+                    } else {
+                        TidyIssueRow(1, "没有重复题", "本地按内容指纹查重")
+                    }
                     TidyIssueRow(
                         if (p.pendingCats == 0) 1 else 0,
                         if (p.pendingCats == 0) "分类树已确认" else "有 ${p.pendingCats} 个 AI 待确认分类",
@@ -99,10 +104,18 @@ fun TidyScreen(vm: AppVm) {
                             "· 分类：纠错归位，统一到「学科/小类」两级结构\n" +
                                 "· 知识点标签：补全缺失、纠正过宽或重复\n" +
                                 "· 题型：统一为选择 / 填空 / 解答等标准命名\n" +
-                                "· 答案与解析保持原样，不会被改动",
+                                "· 查重：内容相同的重复题移入回收站（保留最早一道）\n" +
+                                "· 答案与解析：算错、缺漏、或「先给答案再补过程」的由 AI 重写（先推理后结论）",
                             fontSize = 12.sp, lineHeight = 20.sp, color = Ink2,
                             modifier = Modifier.padding(top = 6.dp)
                         )
+                        if (vm.provider.webSearch) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "已开启联网搜索：AI 复核时遇到不确定的知识点会先查证再下结论。",
+                                fontSize = 11.5.sp, lineHeight = 17.sp, color = Green
+                            )
+                        }
                     }
                 }
                 if (p.total > 0) {

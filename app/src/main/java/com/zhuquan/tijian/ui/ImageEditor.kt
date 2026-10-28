@@ -17,9 +17,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.RotateRight
 import androidx.compose.material.icons.rounded.Brush
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Transform
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -77,7 +80,7 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
     data class Stroke(val points: MutableList<Offset>, val color: Int, val width: Float)
     private val scale = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
-            if (cropMode) return false
+            if (cropMode || warpMode) return false
             val old = zoom
             zoom = (zoom * detector.scaleFactor).coerceIn(1f, 16f)
             val factor = zoom / old
@@ -86,6 +89,28 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
             invalidate(); return true
         }
     })
+
+    /** 透视校正模式：显示四个可拖角点，拖到纸面四角后由外层应用变换。 */
+    var warpMode = false
+        set(value) { field = value; if (!value) dragCorner = -1; invalidate() }
+
+    /** 归一化四角 [x,y]×4，顺序 左上、右上、右下、左下（相对当前显示图）。 */
+    var warpCorners = floatArrayOf(0f, 0f, 1f, 0f, 1f, 1f, 0f, 1f)
+        private set
+
+    fun resetWarpCorners() {
+        warpCorners = floatArrayOf(0f, 0f, 1f, 0f, 1f, 1f, 0f, 1f)
+        invalidate()
+    }
+
+    fun warpIsDefault(): Boolean = warpCorners.contentEquals(floatArrayOf(0f, 0f, 1f, 0f, 1f, 1f, 0f, 1f))
+
+    private var dragCorner = -1
+
+    private fun cornerScreenPos(r: RectF, k: Int): Pair<Float, Float> {
+        val nx = warpCorners[k * 2]; val ny = warpCorners[k * 2 + 1]
+        return (r.left + nx * r.width()) to (r.top + ny * r.height())
+    }
     private fun imageRect(): RectF {
         val fit = min(width / imageWidth, height / imageHeight) * zoom
         return RectF((width - imageWidth * fit) / 2f + dx, (height - imageHeight * fit) / 2f + dy,
@@ -133,6 +158,30 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
             canvas.drawPath(path, paint)
         }
         paint.style = Paint.Style.FILL
+        if (warpMode) {
+            // 校正模式：四角手柄 + 连线，拖到纸面四角
+            val r = imageRect()
+            paint.color = 0x66006EFD
+            paint.strokeWidth = resources.displayMetrics.density
+            val pts = FloatArray(16)
+            for (k in 0 until 4) {
+                val (x, y) = cornerScreenPos(r, k)
+                pts[k * 4] = x; pts[k * 4 + 1] = y
+                val nk = (k + 1) % 4
+                val (x2, y2) = cornerScreenPos(r, nk)
+                pts[k * 4 + 2] = x2; pts[k * 4 + 3] = y2
+            }
+            paint.style = Paint.Style.STROKE
+            canvas.drawLines(pts, paint)
+            paint.style = Paint.Style.FILL
+            for (k in 0 until 4) {
+                val (x, y) = cornerScreenPos(r, k)
+                paint.color = android.graphics.Color.WHITE
+                canvas.drawCircle(x, y, 13 * resources.displayMetrics.density, paint)
+                paint.color = android.graphics.Color.rgb(0, 110, 253)
+                canvas.drawCircle(x, y, 7 * resources.displayMetrics.density, paint)
+            }
+        }
         if (cropMode) {
             val c = RectF(r.left + crop.left * r.width(), r.top + crop.top * r.height(), r.left + crop.right * r.width(), r.top + crop.bottom * r.height())
             // 选区外压暗；整图选区时外框仍在，靠内缩的描边保证四边可见。
@@ -189,6 +238,35 @@ internal class OriginalImageView(context: Context, val file: File) : View(contex
     }
     override fun onTouchEvent(event: MotionEvent): Boolean {
         scale.onTouchEvent(event)
+        if (warpMode && event.pointerCount == 1) {
+            val r = imageRect()
+            val touch = 30 * resources.displayMetrics.density
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    dragCorner = -1
+                    for (k in 0 until 4) {
+                        val (x, y) = cornerScreenPos(r, k)
+                        if (abs(event.x - x) < touch && abs(event.y - y) < touch) { dragCorner = k; break }
+                    }
+                    if (dragCorner >= 0) invalidate()
+                    return true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (dragCorner >= 0) {
+                        val nx = ((event.x - r.left) / r.width()).coerceIn(0f, 1f)
+                        val ny = ((event.y - r.top) / r.height()).coerceIn(0f, 1f)
+                        warpCorners[dragCorner * 2] = nx
+                        warpCorners[dragCorner * 2 + 1] = ny
+                        invalidate()
+                    }
+                    return true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    dragCorner = -1; invalidate(); return true
+                }
+            }
+            return true
+        }
         if (brushMode && event.pointerCount == 1) {
             val p = imageRect()
             val nx = ((event.x - p.left) / p.width()).coerceIn(0f, 1f)
@@ -315,9 +393,12 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var file by remember(uri) { mutableStateOf<File?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var cropping by remember { mutableStateOf(true) }
-    var brushing by remember { mutableStateOf(false) }
+    var error by remember(uri) { mutableStateOf<String?>(null) }
+    // 模式：裁剪 / 旋转（90°+小角度）/ 校正（透视四角）/ 画笔
+    var mode by remember { mutableStateOf("crop") }
+    var fineAngle by remember { mutableStateOf(0f) }
+    var quarter by remember { mutableStateOf(0) }
+    var applying by remember { mutableStateOf(false) }
     var brushColor by remember { mutableStateOf<Int>(0xFFE74C3C.toInt()) }
     var brushWidth by remember { mutableStateOf(0.006f) }
     var saving by remember { mutableStateOf(false) }
@@ -331,7 +412,7 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
     }
     DisposableEffect(uri) { onDispose { if (uri.scheme != "file") file?.delete() } }
     FullScreenDialog(onDismissRequest = onDismiss, dismissEnabled = !saving) {
-            TjTopBar("原图查看与编辑", "双指缩放 · 拖动查看 · 裁剪或标注后另存副本", onBack = { if (!saving) onDismiss() })
+            TjTopBar("原图查看与编辑", "裁剪 · 旋转 · 透视校正 · 标注，另存副本", onBack = { if (!saving) onDismiss() })
             // 图片占据剩余空间，工具栏固定在底部；这样短屏也不会把保存按钮挤出屏幕。
             Box(
                 Modifier.fillMaxWidth().weight(1f)
@@ -339,82 +420,174 @@ fun ImageEditorDialog(uri: Uri, onDismiss: () -> Unit, onSaved: suspend (Uri) ->
                     .clip(RoundedCornerShape(18.dp)).background(SurfaceAlt)
             ) {
                 file?.let { imageFile ->
-                    AndroidView(factory = { ctx ->
-                        runCatching { OriginalImageView(ctx, imageFile) }.getOrElse { failure ->
-                            // 文件被系统清理或从旧备份恢复时，原图可能已经不存在；
-                            // 不能因为这个让整个详情页崩溃。
-                            error = failure.message ?: "原图文件已丢失，无法编辑"
-                            android.widget.FrameLayout(ctx)
-                        }.also { v -> if (v is OriginalImageView) { view = v; v.resetCrop() } }
-                    }, modifier = Modifier.fillMaxSize(), update = { v ->
-                        if (v is OriginalImageView) {
-                            if (v.cropMode != cropping) v.cropMode = cropping
-                            if (v.brushMode != brushing) v.brushMode = brushing
-                            v.brushColor = brushColor; v.brushWidth = brushWidth
+                    // 变换后 file 会换成新文件：key 住让它重建视图，裁剪/标注状态随之复位
+                    androidx.compose.runtime.key(imageFile.absolutePath) {
+                        androidx.compose.foundation.layout.Box(
+                            Modifier.fillMaxSize()
+                                .then(
+                                    if (mode == "rotate" && abs(fineAngle) > 0.05f)
+                                        Modifier.graphicsLayer { rotationZ = fineAngle }
+                                    else Modifier
+                                )
+                        ) {
+                            AndroidView(factory = { ctx ->
+                                runCatching { OriginalImageView(ctx, imageFile) }.getOrElse { failure ->
+                                    // 文件被系统清理或从旧备份恢复时，原图可能已经不存在；
+                                    // 不能因为这个让整个详情页崩溃。
+                                    error = failure.message ?: "原图文件已丢失，无法编辑"
+                                    android.widget.FrameLayout(ctx)
+                                }.also { v -> if (v is OriginalImageView) { view = v; v.resetCrop() } }
+                            }, modifier = Modifier.fillMaxSize(), update = { v ->
+                                if (v is OriginalImageView) {
+                                    val crop = mode == "crop"
+                                    val brush = mode == "brush"
+                                    val warp = mode == "warp"
+                                    if (v.cropMode != crop) v.cropMode = crop
+                                    if (v.brushMode != brush) v.brushMode = brush
+                                    if (v.warpMode != warp) v.warpMode = warp
+                                    v.brushColor = brushColor; v.brushWidth = brushWidth
+                                }
+                            }, onRelease = { (it as? OriginalImageView)?.close() })
                         }
-                    }, onRelease = { (it as? OriginalImageView)?.close() })
+                    }
                 }
                 if (file == null && error == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
             }
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // 模式切换与历史操作分成两组，组间留出呼吸感；组内用细分隔线，
-                // 比四个各自带边框的小方块干净得多。
+                // 四个模式一行排开；右侧保留画笔的历史操作
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     EditorToolGroup {
-                        EditorTool("裁剪", Icons.Rounded.Crop, cropping, !saving && !brushing, Modifier.width(88.dp)) { cropping = !cropping }
+                        EditorTool("裁剪", Icons.Rounded.Crop, mode == "crop", !saving && !applying, Modifier.width(64.dp)) { mode = "crop" }
                         EditorToolDivider()
-                        EditorTool("画笔", Icons.Rounded.Brush, brushing, !saving && !cropping, Modifier.width(88.dp)) { brushing = !brushing }
+                        EditorTool("旋转", Icons.AutoMirrored.Rounded.RotateRight, mode == "rotate", !saving && !applying, Modifier.width(64.dp)) { mode = "rotate" }
+                        EditorToolDivider()
+                        EditorTool("校正", Icons.Rounded.Transform, mode == "warp", !saving && !applying, Modifier.width(64.dp)) { mode = "warp" }
+                        EditorToolDivider()
+                        EditorTool("画笔", Icons.Rounded.Brush, mode == "brush", !saving && !applying, Modifier.width(64.dp)) { mode = "brush" }
                     }
-                    EditorToolGroup {
-                        EditorTool("撤销", Icons.AutoMirrored.Rounded.Undo, false, !saving && brushing, Modifier.width(70.dp)) { view?.undoStroke() }
-                        EditorToolDivider()
-                        EditorTool("清空", Icons.Rounded.DeleteOutline, false, !saving && brushing, Modifier.width(70.dp)) { view?.clearStrokes() }
+                    if (mode == "brush") {
+                        EditorToolGroup {
+                            EditorTool("撤销", Icons.AutoMirrored.Rounded.Undo, false, !saving && !applying, Modifier.width(56.dp)) { view?.undoStroke() }
+                            EditorToolDivider()
+                            EditorTool("清空", Icons.Rounded.DeleteOutline, false, !saving && !applying, Modifier.width(56.dp)) { view?.clearStrokes() }
+                        }
                     }
                 }
-                if (brushing) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("颜色", fontSize = 11.sp, color = Muted, modifier = Modifier.width(30.dp))
-                            listOf(0xFFE74C3C, 0xFF2D7FF9, 0xFF16A34A, 0xFF111827).map { it.toInt() }.forEach { c ->
-                                Box(
-                                    Modifier.size(32.dp).clip(CircleShape).background(ComposeColor(c))
-                                        .border(if (brushColor == c) 2.5.dp else 1.dp, if (brushColor == c) Accent else Line, CircleShape)
-                                        .tjClickable { brushColor = c; view?.brushColor = c }
+                when (mode) {
+                    "rotate" -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("微调", fontSize = 11.sp, color = Muted)
+                                androidx.compose.material3.Slider(
+                                    value = fineAngle,
+                                    onValueChange = { fineAngle = (it * 2).roundToInt() / 2f },
+                                    valueRange = -15f..15f,
+                                    enabled = !applying && !saving,
+                                    modifier = Modifier.weight(1f).height(30.dp),
                                 )
+                                Text("${"%.1f".format(fineAngle)}°", fontSize = 11.sp, color = Ink2, modifier = Modifier.width(38.dp))
                             }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                TjButton("⟲ 90°", Modifier.weight(1f), style = ActionStyle.Secondary, enabled = !applying && !saving) { quarter = (quarter + 3) % 4 }
+                                TjButton("⟳ 90°", Modifier.weight(1f), style = ActionStyle.Secondary, enabled = !applying && !saving) { quarter = (quarter + 1) % 4 }
+                                TjButton(
+                                    if (applying) "应用中…" else "应用旋转",
+                                    Modifier.weight(1.4f),
+                                    enabled = !applying && !saving && (quarter != 0 || abs(fineAngle) > 0.05f),
+                                    loading = applying,
+                                ) {
+                                    val src = file ?: return@TjButton
+                                    applying = true; error = null
+                                    scope.launch {
+                                        try {
+                                            val nf = withContext(Dispatchers.IO) {
+                                                transformImage(src, File.createTempFile("rot_", ".png", context.cacheDir), quarter, fineAngle, null)
+                                            }
+                                            quarter = 0; fineAngle = 0f
+                                            file = nf
+                                        } catch (cancelled: CancellationException) { throw cancelled }
+                                        catch (failure: Exception) { error = failure.message ?: "旋转失败" }
+                                        finally { applying = false }
+                                    }
+                                }
+                            }
+                            Text("小角度旋转把拍歪的纸面调平，再切回「裁剪」就不会裁到邻题；90° 整数旋转立即换向。", fontSize = 11.sp, lineHeight = 16.sp, color = Muted)
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("粗细", fontSize = 11.sp, color = Muted, modifier = Modifier.width(30.dp))
-                            listOf(0.003f, 0.006f, 0.011f).zip(listOf("细", "中", "粗")).forEach { (w, label) ->
-                                Box(
-                                    Modifier.size(36.dp).clip(CircleShape)
-                                        .background(if (brushWidth == w) AccentSoft else CardBg)
-                                        .border(1.dp, if (brushWidth == w) Accent else Line, CircleShape)
-                                        .tjClickable { brushWidth = w; view?.brushWidth = w },
-                                    contentAlignment = Alignment.Center
-                                ) { Text(label, fontSize = 11.sp, color = if (brushWidth == w) Accent else Ink2) }
+                    }
+                    "warp" -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TjButton("重置四角", Modifier.weight(1f), style = ActionStyle.Secondary, enabled = !applying && !saving) {
+                                    view?.resetWarpCorners()
+                                }
+                                TjButton(
+                                    if (applying) "应用中…" else "应用透视校正",
+                                    Modifier.weight(1.4f),
+                                    enabled = !applying && !saving && view?.warpIsDefault() == false,
+                                    loading = applying,
+                                ) {
+                                    val src = file ?: return@TjButton
+                                    val target = view ?: return@TjButton
+                                    applying = true; error = null
+                                    scope.launch {
+                                        try {
+                                            val nf = withContext(Dispatchers.IO) {
+                                                transformImage(src, File.createTempFile("warp_", ".png", context.cacheDir), 0, 0f, target.warpCorners.copyOf())
+                                            }
+                                            file = nf
+                                            mode = "crop"
+                                        } catch (cancelled: CancellationException) { throw cancelled }
+                                        catch (failure: Exception) { error = failure.message ?: "校正失败" }
+                                        finally { applying = false }
+                                    }
+                                }
+                            }
+                            Text("把四个蓝点拖到纸面的四个角，应用后视角拉正、纸面填满画布；之后可再裁剪或标注。", fontSize = 11.sp, lineHeight = 16.sp, color = Muted)
+                        }
+                    }
+                    "brush" -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("颜色", fontSize = 11.sp, color = Muted, modifier = Modifier.width(30.dp))
+                                listOf(0xFFE74C3C, 0xFF2D7FF9, 0xFF16A34A, 0xFF111827).map { it.toInt() }.forEach { c ->
+                                    Box(
+                                        Modifier.size(32.dp).clip(CircleShape).background(ComposeColor(c))
+                                            .border(if (brushColor == c) 2.5.dp else 1.dp, if (brushColor == c) Accent else Line, CircleShape)
+                                            .tjClickable { brushColor = c; view?.brushColor = c }
+                                    )
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("粗细", fontSize = 11.sp, color = Muted, modifier = Modifier.width(30.dp))
+                                listOf(0.003f, 0.006f, 0.011f).zip(listOf("细", "中", "粗")).forEach { (w, label) ->
+                                    Box(
+                                        Modifier.size(36.dp).clip(CircleShape)
+                                            .background(if (brushWidth == w) AccentSoft else CardBg)
+                                            .border(1.dp, if (brushWidth == w) Accent else Line, CircleShape)
+                                            .tjClickable { brushWidth = w; view?.brushWidth = w },
+                                        contentAlignment = Alignment.Center
+                                    ) { Text(label, fontSize = 11.sp, color = if (brushWidth == w) Accent else Ink2) }
+                                }
                             }
                         }
                     }
+                    else -> {
+                        Text(
+                            "拖动四角或边框裁剪；保存时只裁选中的区域。拍歪了先去「旋转/校正」调平。",
+                            fontSize = 11.sp, lineHeight = 16.sp, color = Muted
+                        )
+                    }
                 }
-                Text(
-                    when {
-                        cropping -> "拖动四角或边框裁剪；保存时只裁选中的区域"
-                        brushing -> "在图上书写标注；可撤销或清空"
-                        else -> "原图完整显示，放大时按可见区域读取原始像素；已拖出的裁剪选区保存时仍生效"
-                    },
-                    fontSize = 11.sp, lineHeight = 17.sp, color = Muted
-                )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     TjButton("重置", Modifier.weight(1f), style = ActionStyle.Secondary, enabled = !saving) {
                         view?.resetCrop()
                     }
                     TjButton(
                         if (saving) "保存中" else "保存副本", Modifier.weight(1.35f),
-                        enabled = !saving && file != null, loading = saving
+                        enabled = !saving && file != null && !applying, loading = saving
                     ) {
                         val source = file ?: return@TjButton
                         val target = view
@@ -498,3 +671,137 @@ private fun EditorTool(
         )
     }
 }
+
+/**
+ * 单应变换（4 点对应 → 3×3 投影矩阵）。用于透视校正：
+ * 用户在图上选的四个角（源坐标）映射到输出矩形的四个角。
+ * 解 8 元线性方程组（高斯消元）。
+ */
+internal class PerspectiveTransform(src: FloatArray, dst: FloatArray) {
+    private val h = FloatArray(9)
+
+    init {
+        val a = FloatArray(8 * 9)
+        for (i in 0 until 4) {
+            val x = src[i * 2]; val y = src[i * 2 + 1]
+            val u = dst[i * 2]; val v = dst[i * 2 + 1]
+            val r = i * 2
+            a[r * 9] = x; a[r * 9 + 1] = y; a[r * 9 + 2] = 1f
+            a[r * 9 + 6] = -x * u; a[r * 9 + 7] = -y * u; a[r * 9 + 8] = u
+            val r2 = (i * 2 + 1)
+            a[r2 * 9 + 3] = x; a[r2 * 9 + 4] = y; a[r2 * 9 + 5] = 1f
+            a[r2 * 9 + 6] = -x * v; a[r2 * 9 + 7] = -y * v; a[r2 * 9 + 8] = v
+        }
+        // 高斯消元（部分主元）
+        for (col in 0 until 8) {
+            var pivot = col
+            for (row in col + 1 until 8) if (abs(a[row * 9 + col]) > abs(a[pivot * 9 + col])) pivot = row
+            if (abs(a[pivot * 9 + col]) < 1e-6f) throw IllegalArgumentException("degenerate quad")
+            if (pivot != col) for (k in col..8) { val t = a[col * 9 + k]; a[col * 9 + k] = a[pivot * 9 + k]; a[pivot * 9 + k] = t }
+            val d = a[col * 9 + col]
+            for (k in col..8) a[col * 9 + k] /= d
+            for (row in 0 until 8) {
+                if (row == col) continue
+                val f = a[row * 9 + col]
+                if (f != 0f) for (k in col..8) a[row * 9 + k] -= f * a[col * 9 + k]
+            }
+        }
+        for (i in 0 until 8) h[i] = a[i * 9 + 8]
+        h[8] = 1f
+    }
+
+    fun map(x: Float, y: Float, out: FloatArray) {
+        val w = h[6] * x + h[7] * y + h[8]
+        out[0] = (h[0] * x + h[1] * y + h[2]) / w
+        out[1] = (h[3] * x + h[4] * y + h[5]) / w
+    }
+}
+
+/** 把位图按四角网格 warp 到输出矩形（drawBitmapMesh，projective 的分片线性逼近）。 */
+private fun warpBitmap(src: Bitmap, transform: PerspectiveTransform, outW: Int, outH: Int, mesh: Int): Bitmap {
+    val verts = FloatArray((mesh + 1) * (mesh + 1) * 2)
+    val pt = FloatArray(2)
+    var idx = 0
+    for (j in 0..mesh) {
+        for (i in 0..mesh) {
+            transform.map(i.toFloat() / mesh * src.width, j.toFloat() / mesh * src.height, pt)
+            verts[idx++] = pt[0]
+            verts[idx++] = pt[1]
+        }
+    }
+    val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(out)
+    canvas.drawColor(android.graphics.Color.WHITE)
+    val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+    canvas.drawBitmapMesh(src, mesh, mesh, verts, 0, null, 0, paint)
+    return out
+}
+
+/**
+ * 旋转 + 透视校正一步到位（全分辨率）：
+ * 1. EXIF 摆正 → 90° quarterTurns → fineAngle 小角度（画布外扩，不裁内容）；
+ * 2. 透视四角（归一化，相对旋转后图）映射到输出矩形（drawBitmapMesh）。
+ */
+internal fun transformImage(
+    src: File,
+    out: File,
+    quarterTurns: Int,
+    fineAngle: Float,
+    warpCorners: FloatArray?,
+): File {
+    val base = Importer.decodeSampled(src, 2200) ?: throw IllegalStateException("图片解码失败")
+    val m = Matrix(orientationMatrix(src.path))
+    // 90° 整数旋转
+    if (quarterTurns.mod(4) != 0) m.postRotate((quarterTurns % 4) * 90f)
+    // 归一化到正坐标
+    val bounds1 = RectF(0f, 0f, base.width.toFloat(), base.height.toFloat())
+    m.mapRect(bounds1)
+    m.postTranslate(-bounds1.left, -bounds1.top)
+    // 小角度旋转（绕当前画布中心，画布外扩不裁边）
+    var bw = bounds1.width(); var bh = bounds1.height()
+    if (abs(fineAngle) > 0.05f) {
+        m.postRotate(fineAngle, bw / 2f, bh / 2f)
+        val bounds2 = RectF(0f, 0f, bw, bh)
+        m.mapRect(bounds2)
+        m.postTranslate(-bounds2.left, -bounds2.top)
+        bw = bounds2.width(); bh = bounds2.height()
+    }
+    var rotated = Bitmap.createBitmap(bw.toInt().coerceAtLeast(1), bh.toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(rotated)
+    canvas.drawColor(android.graphics.Color.WHITE)
+    val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+    canvas.drawBitmap(base, m, paint)
+    if (base !== rotated) base.recycle()
+
+    if (warpCorners != null && warpCorners.size == 8) {
+        val rw = rotated.width.toFloat(); val rh = rotated.height.toFloat()
+        val srcPts = FloatArray(8)
+        for (k in 0 until 4) {
+            srcPts[k * 2] = warpCorners[k * 2] * rw
+            srcPts[k * 2 + 1] = warpCorners[k * 2 + 1] * rh
+        }
+        // 输出尺寸：对边平均长度，封顶 2200
+        val top = dist(srcPts[0], srcPts[1], srcPts[2], srcPts[3])
+        val bottom = dist(srcPts[6], srcPts[7], srcPts[4], srcPts[5])
+        val left = dist(srcPts[0], srcPts[1], srcPts[6], srcPts[7])
+        val right = dist(srcPts[2], srcPts[3], srcPts[4], srcPts[5])
+        var outW = ((top + bottom) / 2f).toInt().coerceAtLeast(32)
+        var outH = ((left + right) / 2f).toInt().coerceAtLeast(32)
+        val scale = min(1f, 2200f / max(outW, outH))
+        outW = (outW * scale).toInt().coerceAtLeast(32)
+        outH = (outH * scale).toInt().coerceAtLeast(32)
+        val dst = floatArrayOf(0f, 0f, outW.toFloat(), 0f, outW.toFloat(), outH.toFloat(), 0f, outH.toFloat())
+        val warped = warpBitmap(rotated, PerspectiveTransform(srcPts, dst), outW, outH, 80)
+        rotated.recycle()
+        rotated = warped
+    }
+    try {
+        out.outputStream().use { check(rotated.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+    } finally {
+        rotated.recycle()
+    }
+    return out
+}
+
+private fun dist(x1: Float, y1: Float, x2: Float, y2: Float): Float =
+    sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1))

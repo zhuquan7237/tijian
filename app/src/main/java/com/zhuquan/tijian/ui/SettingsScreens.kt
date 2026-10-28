@@ -368,6 +368,7 @@ fun ProviderScreen(vm: AppVm) {
     var protocol by remember(vm.provider) { mutableStateOf(vm.provider.protocol) }
     var reasoning by remember(vm.provider) { mutableStateOf(vm.provider.reasoning) }
     var models by remember(vm.provider) { mutableStateOf(vm.provider.models) }
+    var webSearch by remember(vm.provider) { mutableStateOf(vm.provider.webSearch) }
     var showPicker by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var fetchError by remember { mutableStateOf<String?>(null) }
@@ -380,7 +381,7 @@ fun ProviderScreen(vm: AppVm) {
     var showAdvanced by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    fun cfg() = ProviderConfig(baseUrl, apiKey, model, protocol, models, reasoning)
+    fun cfg() = ProviderConfig(baseUrl, apiKey, model, protocol, models, reasoning, webSearch)
 
     fun pull() {
         if (baseUrl.isBlank()) { fetchError = "先填 Base URL"; return }
@@ -536,6 +537,17 @@ fun ProviderScreen(vm: AppVm) {
                         }
                         Text(
                             "推理模型（R1 / o 系 / Qwen-Thinking 等）的思考档位，随每次请求发送；「默认」不发参数，由服务商自定。不支持该参数的服务请保持默认。",
+                            fontSize = 11.sp, lineHeight = 17.sp, color = Muted, modifier = Modifier.padding(top = 6.dp)
+                        )
+
+                        Spacer(Modifier.height(12.dp))
+                        FieldLabel("联网搜索")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TjChip("关闭", !webSearch) { webSearch = false }
+                            TjChip("允许 AI 按需搜索", webSearch) { webSearch = true }
+                        }
+                        Text(
+                            "开启后按服务商注入联网参数：阿里百炼 enable_search、OpenRouter :online、智谱 web_search；是否真的搜索由模型自行判断（比如题目涉及它不知道的知识点）。其他服务商不支持时保持关闭。",
                             fontSize = 11.sp, lineHeight = 17.sp, color = Muted, modifier = Modifier.padding(top = 6.dp)
                         )
                     }

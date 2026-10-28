@@ -1448,11 +1448,15 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         val noNeeds: Int,
         val uncat: Int,
         val pendingCats: Int,
+        val duplicates: Int,
     )
 
     /** 本地预检：不调 AI，扫一遍全部题目统计问题。 */
     suspend fun probeTidy(): TidyProbe = withContext(Dispatchers.IO) {
         val qs = db.allQuestions()
+        val dupCount = qs.filter { it.stem.isNotBlank() }
+            .groupBy { it.stem.trim() to com.zhuquan.tijian.data.contentHash(it.stem, it.options, it.answer) }
+            .values.sumOf { g -> if (g.size > 1) g.size - 1 else 0 }
         TidyProbe(
             total = qs.size,
             noTags = qs.count { parseKnowledgeTags(it.tags).isEmpty() },
@@ -1464,6 +1468,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             },
             uncat = qs.count { it.categoryId == com.zhuquan.tijian.data.Db.UNCAT || it.categoryName == "未分类" },
             pendingCats = db.categories().count { it.status == "pending" },
+            duplicates = dupCount,
         )
     }
 
@@ -1477,8 +1482,10 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     private var tidyJob: kotlinx.coroutines.Job? = null
 
     /**
-     * 一键大整理：把全部旧题分批交给 AI 复核，统一到当前版本的分类体系，
-     * 顺带补齐缺失的知识点标签、修正错别题型。只动分类/标签/题型，不改答案解析。
+     * 一键大整理 v2：
+     * 1) 本地查重（内容指纹相同的重复题，保留最早一道，其余进回收站）；
+     * 2) AI 分批复核：统一分类/知识点标签/题型，并复核答案与解析——
+     *    算错、缺漏、或「先给答案再补过程」的都重写（先推理后结论）。
      */
     fun startTidy() {
         if (tidyRunning || busy || importing) return
@@ -1490,13 +1497,34 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             var catFixed = 0
             var tagFixed = 0
             var typeFixed = 0
+            var answerFixed = 0
+            var analysisFixed = 0
+            var dupRemoved = 0
             try {
+                // —— 第一步：本地查重 ——
+                tidyLabel = "本地查重…"
                 val all = withContext(Dispatchers.IO) { db.allQuestions() }
-                val cats = withContext(Dispatchers.IO) { db.categories() }
                 if (all.isEmpty()) { tidyReport = "错题本还是空的，没有需要整理的内容"; return@launch }
-                val batches = all.chunked(12)
+                val byHash = all.filter { it.stem.isNotBlank() }
+                    .groupBy { it.stem.trim() to com.zhuquan.tijian.data.contentHash(it.stem, it.options, it.answer) }
+                val dupIds = ArrayList<String>()
+                byHash.forEach { (_, group) ->
+                    if (group.size > 1) {
+                        // 内容指纹一致才判重；保留最早导入的一道
+                        group.sortedBy { it.createdAt }.drop(1).forEach { dupIds.add(it.id) }
+                    }
+                }
+                if (dupIds.isNotEmpty()) {
+                    withContext(Dispatchers.IO) { dupIds.forEach { db.deleteQuestion(it) } }
+                    dupRemoved = dupIds.size
+                }
+
+                // —— 第二步：AI 分批复核 ——
+                val remaining = withContext(Dispatchers.IO) { db.allQuestions() }
+                val cats = withContext(Dispatchers.IO) { db.categories() }
+                val batches = remaining.chunked(10)
                 batches.forEachIndexed { bi, batch ->
-                    tidyLabel = "AI 复核第 ${bi + 1}/${batches.size} 批（共 ${all.size} 题）"
+                    tidyLabel = "AI 复核第 ${bi + 1}/${batches.size} 批（共 ${remaining.size} 题）"
                     tidyProgress = bi.toFloat() / batches.size
                     val suggestions = ai.tidyBatch(provider, batch, cats)
                     withContext(Dispatchers.IO) {
@@ -1516,12 +1544,33 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                             if (catId != null || newTags != q.tags || newType != q.type) {
                                 db.applyTidyResult(id, catId, newTags, newType)
                             }
+                            // 答案/解析纠错：仅替换判定不合格且给了新内容的维度
+                            var finalAnswer = q.answer
+                            var finalAnalysis = q.analysis
+                            var solutionChanged = false
+                            if (!s.answerOk && s.answer.isNotBlank() && s.answer != q.answer) {
+                                finalAnswer = s.answer; answerFixed++; solutionChanged = true
+                            }
+                            if (!s.analysisOk && s.analysis.isNotBlank() && s.analysis != q.analysis) {
+                                finalAnalysis = s.analysis; analysisFixed++; solutionChanged = true
+                            }
+                            if (solutionChanged) db.updateQuestionSolution(id, finalAnswer, finalAnalysis)
                         }
                     }
                 }
                 tidyProgress = 1f
                 refresh()
-                tidyReport = "整理完成：复核 ${all.size} 道题 · 分类调整 $catFixed · 知识点更新 $tagFixed · 题型修正 $typeFixed"
+                refreshTrash()
+                tidyReport = buildString {
+                    append("整理完成：复核 ${remaining.size} 道")
+                    if (catFixed > 0) append(" · 分类调整 $catFixed")
+                    if (tagFixed > 0) append(" · 知识点更新 $tagFixed")
+                    if (typeFixed > 0) append(" · 题型修正 $typeFixed")
+                    if (answerFixed > 0) append(" · 答案纠错 $answerFixed")
+                    if (analysisFixed > 0) append(" · 解析重写 $analysisFixed")
+                    if (dupRemoved > 0) append(" · 移除重复 $dupRemoved 道（回收站可恢复）")
+                    if (catFixed + tagFixed + typeFixed + answerFixed + analysisFixed + dupRemoved == 0) append(" · 无需修改")
+                }
                 toast = tidyReport ?: "整理完成"
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 tidyReport = "已停止整理，完成的部分保留"
@@ -1605,6 +1654,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             db.saveProviderProfiles(rest + com.zhuquan.tijian.data.ProviderProfile(
                 name = n, baseUrl = cur.baseUrl, apiKey = cur.apiKey, model = cur.model,
                 protocol = cur.protocol, reasoning = cur.reasoning, models = cur.models,
+                webSearch = cur.webSearch,
             ))
             withContext(Dispatchers.Main) {
                 profiles = db.providerProfiles()

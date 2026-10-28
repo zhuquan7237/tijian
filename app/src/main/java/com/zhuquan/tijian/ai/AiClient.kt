@@ -47,11 +47,15 @@ sealed class ChatAttachment {
     data class TextFile(val name: String, val content: String) : ChatAttachment()
 }
 
-/** 一键大整理里单题的复核建议。 */
+/** 一键大整理里单题的复核建议；answer/analysis 仅在判定有误或缺漏时给出。 */
 data class TidySuggestion(
     val category: String,
     val tags: List<String>,
     val type: String,
+    val answerOk: Boolean = true,
+    val analysisOk: Boolean = true,
+    val answer: String = "",
+    val analysis: String = "",
 )
 
 private val client = OkHttpClient.Builder()
@@ -200,9 +204,10 @@ class AiClient {
 要求：
 1. 只输出 JSON，不要解释、不要 markdown 代码块。
 2. 每题给出 answer（最终答案，只写结论）与 analysis（完整推理过程，按「思路 / 1. 2. 3. / 易错 / 结论」结构，公式用 LaTeX ${'$'}...${'$'}）。
-3. 不要编造题目里没有的条件；题目信息不足时 answer 与 analysis 填空字符串。
-4. 已经给出答案的题不要改答案，只补解析。
-5. need_formulas / need_concepts / need_methods 各 0~4 条，只写本题真正需要的内容。
+3. 铁律——先推理后答案：必须先在 analysis 里独立推导并验证，最后才能得出 answer。严禁先给答案再补解析，严禁在解析开头写结论，严禁直接照抄题面、他人批注或原卷上已有（可能错误）的答案——即使题面印了答案，也要在解析里独立推导一遍：推不出来或与题面矛盾时，如实指出。
+4. 不要编造题目里没有的条件；题目信息不足时 answer 与 analysis 填空字符串。
+5. 已经给出答案的题不要改答案，只补解析。
+6. need_formulas / need_concepts / need_methods 各 0~4 条，只写本题真正需要的内容。
 
 题目：
 $list
@@ -451,7 +456,8 @@ ${material.take(9000)}
 
     /**
      * 一键大整理的 AI 复核：一批旧题 + 现有分类树一起给模型，
-     * 逐题返回修正后的分类、知识点标签与题型。只动这三样，不改答案解析。
+     * 逐题返回修正后的分类、知识点标签、题型，并复核答案与解析：
+     * 答案算错、解析残缺、或「先给答案再补过程」（结论前置）都算不合格，需重写。
      */
     suspend fun tidyBatch(
         cfg: ProviderConfig,
@@ -460,35 +466,44 @@ ${material.take(9000)}
     ): Map<String, TidySuggestion> = withContext(Dispatchers.IO) {
         if (items.isEmpty()) return@withContext emptyMap()
         val list = StringBuilder()
-        items.forEach { q ->
-            list.append("- id:").append(q.id).append('\n')
+        items.forEachIndexed { i, q ->
+            list.append("- index:").append(i + 1).append('\n')
             list.append("  当前分类：").append(q.categoryName).append('\n')
             list.append("  题型：").append(q.type.ifBlank { "（空）" }).append('\n')
             list.append("  题干：").append(q.stem.take(400)).append('\n')
             val opts = com.zhuquan.tijian.ui.parseOptions(q.options)
             if (opts.isNotEmpty()) list.append("  选项：").append(opts.joinToString(" / ").take(240)).append('\n')
-            if (q.answer.isNotBlank()) list.append("  答案：").append(q.answer.take(120)).append('\n')
+            list.append("  答案：").append(if (q.answer.isBlank()) "（缺）" else q.answer.take(150)).append('\n')
+            list.append("  解析：").append(if (q.analysis.isBlank()) "（缺）" else q.analysis.take(400)).append('\n')
             val tags = parseTags(q.tags)
             list.append("  现有知识点标签：").append(if (tags.isEmpty()) "（空）" else tags.joinToString("、")).append('\n')
         }
         val catNames = categories.filter { it.id != com.zhuquan.tijian.data.Db.UNCAT }.joinToString("；") { it.fullName() }
-        val prompt = """你是错题本整理助手。用户的错题本早期版本分类混乱，下面是一批旧题和现在完整的分类列表。请逐题复核并输出规范化的分类、知识点标签与题型。
+        val prompt = """你是错题本整理助手。用户的错题本早期版本不规范，下面是一批旧题和现在完整的分类列表。请逐题复核并输出规范化的结果。
 
 现有分类（category 必须从这里选，带学科前缀）：$catNames
 
 题目：
 $list
 
-规则：
-1. category 从现有分类里选最合适的一个；现有分类实在都不合适才提议新分类（格式「学科/小类」，学科仅数学、专业课、英语、政治、其他；专业课指材料类专业课，参考《材料科学基础》上交第三版）。
-2. 知识点标签给 2~6 个具体主题（如「导数的几何意义」），纠正原标签里过宽、重复或错别字的地方。
+对每道题完成两件事：
+A. 归档复核（必做）：
+1. category 从现有分类里选最合适的一个；实在都不合适才提议新分类（格式「学科/小类」，学科仅数学、专业课、英语、政治、其他；专业课指材料类专业课，参考《材料科学基础》上交第三版）。
+2. 知识点标签给 2~6 个具体主题，纠正过宽、重复或错别字。
 3. type 只使用：选择题、判断题、填空题、计算题、证明题、解答题、实验题、材料题。
-4. 不要改题干、答案与解析；不确定的维度保持原值（category 填当前分类，tags 照抄现有标签，type 填当前题型）。
-5. 只输出 JSON：{"items":[{"id":"原id","category":"数学/函数与导数","tags":["标签"],"type":"选择题"}]}"""
+
+B. 答案与解析复核（逐项判定，需要时重写）：
+4. answerOk：当前答案是否数学上正确；缺失算 false。
+5. analysisOk：当前解析是否合格——推理完整、步骤清楚、且必须是「先推理后结论」；缺失、只有一句话、以结论开头、或先给答案再凑过程，都算 false。
+6. answerOk 或 analysisOk 为 false 时，给出重写后的 answer 与 analysis：先独立推理（按「思路 / 1. 2. 3. 每步一行 / 易错 / 结论」结构，公式用 LaTeX ${'$'}...${'$'}），验证无误后 answer 只写最终结论。严禁结论前置、严禁照抄题面或原卷批注里可能错误的答案；与题面矛盾时在解析里如实指出。判定为 true 的维度对应字段留空字符串，不要重写。
+7. 允许联网搜索时，遇到不确定的知识点先查证再下结论。
+
+只输出 JSON：
+{"items":[{"index":1,"category":"数学/函数与导数","tags":["标签"],"type":"选择题","answerOk":true,"analysisOk":true,"answer":"","analysis":""}]}"""
         val body = if (cfg.protocol == "responses") {
             JSONObject().apply {
                 put("model", cfg.model); put("input", prompt)
-                put("temperature", 0.1); put("max_output_tokens", 8000)
+                put("temperature", 0.1); put("max_output_tokens", 12000)
             }
         } else {
             JSONObject().apply {
@@ -496,7 +511,7 @@ $list
                 put("messages", JSONArray()
                     .put(JSONObject().apply { put("role", "system"); put("content", SYSTEM) })
                     .put(JSONObject().apply { put("role", "user"); put("content", prompt) }))
-                put("temperature", 0.1); put("max_tokens", 8000)
+                put("temperature", 0.1); put("max_tokens", 12000)
             }
         }
         val raw = call(cfg, body)
@@ -506,16 +521,22 @@ $list
         val out = HashMap<String, TidySuggestion>()
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
-            val id = o.optString("id")
-            if (id.isBlank()) continue
+            val idx = o.optInt("index", -1) - 1
+            val q = items.getOrNull(idx) ?: continue
             val tags = ArrayList<String>()
             o.optJSONArray("tags")?.let { a ->
                 for (k in 0 until a.length()) a.optString(k).trim().takeIf { it.isNotBlank() }?.let(tags::add)
             }
-            out[id] = TidySuggestion(
+            val answerOk = o.optBoolean("answerOk", true)
+            val analysisOk = o.optBoolean("analysisOk", true)
+            out[q.id] = TidySuggestion(
                 category = o.optString("category").trim(),
                 tags = tags,
                 type = o.optString("type").trim(),
+                answerOk = answerOk,
+                analysisOk = analysisOk,
+                answer = o.optString("answer").trim(),
+                analysis = o.optString("analysis").trim(),
             )
         }
         out
@@ -614,6 +635,7 @@ ${q.analysis.take(1600)}
                 }
             } catch (_: Exception) {}
         }
+        injectWebSearch(cfg, body)
         val builder = Request.Builder().url(url).post(body.toString().toRequestBody(JSON))
         if (cfg.apiKey.isNotBlank()) builder.header("Authorization", "Bearer ${cfg.apiKey}")
         val call = client.newCall(builder.build())
@@ -640,6 +662,29 @@ ${q.analysis.take(1600)}
             }.getOrDefault(false)
             return extractText(text) to truncated
         }
+    }
+
+    /**
+     * 「允许联网搜索」按服务商注入对应参数，是否真的搜由模型自己判断：
+     * - 阿里百炼/DashScope：enable_search=true（仅 chat 协议）
+     * - OpenRouter：模型名追加 :online
+     * - 智谱 BigModel：web_search.enable=true（仅 chat 协议）
+     * 其他服务商不支持时静默跳过，不影响请求。
+     */
+    private fun injectWebSearch(cfg: ProviderConfig, body: JSONObject) {
+        if (!cfg.webSearch) return
+        try {
+            val base = cfg.baseUrl.lowercase()
+            when {
+                base.contains("dashscope") || base.contains("aliyuncs") ->
+                    if (cfg.protocol != "responses") body.putOpt("enable_search", true)
+                base.contains("openrouter") -> {
+                    if (!cfg.model.endsWith(":online")) body.put("model", cfg.model + ":online")
+                }
+                base.contains("bigmodel") || base.contains("zhipu") ->
+                    if (cfg.protocol != "responses") body.putOpt("web_search", JSONObject().put("enable", true))
+            }
+        } catch (_: Exception) {}
     }
 
     private suspend fun call(cfg: ProviderConfig, body: JSONObject): String = callWithMeta(cfg, body).first
@@ -789,6 +834,7 @@ ${q.analysis.take(1600)}
    2. ……（步骤 2~6 步，不要写成一整段）
    易错：最容易出错的一点（没有就省略这一行）
    结论：一句话收束，与 answer 一致
+   铁律——先推理后答案：answer 只能是独立推理验证后的结论；严禁先把答案写出来再补过程，严禁直接照抄题面或原卷批注里可能错误的答案（遇到时在解析里独立推导，并指出对错）。
 9. need_formulas / need_concepts / need_methods 分别列出"要独立做出这道题必须掌握"的公式、概念、方法，各 0~4 条，每条一句话，可用 LaTeX；只写本题真正需要的内容，不要泛泛而谈。
 
 模板：

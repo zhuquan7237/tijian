@@ -13,6 +13,8 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // JLatexMath 初始化一次：列表行内公式渲染读它的 assets 字体与配置
+        ru.noties.jlatexmath.JLatexMathAndroid.init(this)
         db = Db(this)
         ai = AiClient()
         importer = Importer(this, db, ai)

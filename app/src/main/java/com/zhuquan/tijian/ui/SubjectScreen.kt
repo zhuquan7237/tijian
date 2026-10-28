@@ -80,7 +80,7 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
                     DraggableItem(dragState, idx) { _ ->
                         SubjectChildCard(
                             cat,
-                            onOpen = { vm.go(Route.Category(cat.id)) },
+                            onOpen = { if (!dragState.clickConsumed) vm.go(Route.Category(cat.id)) },
                             onDelete = { deleting = cat },
                         )
                     }

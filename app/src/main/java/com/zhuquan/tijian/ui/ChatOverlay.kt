@@ -31,6 +31,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.automirrored.rounded.Send
@@ -180,7 +181,10 @@ private fun ChatPanel(vm: AppVm) {
             Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
 
             if (hasThread) {
-                Box(Modifier.weight(1f).fillMaxWidth()) {
+                // 消息区用页面底色，AI 卡片（CardBg）能浮出来，气泡层次和全 app 一致
+                Box(
+                    Modifier.weight(1f).fillMaxWidth().background(Bg)
+                ) {
                     ChatTranscript(
                         messages = vm.chatMessages,
                         modifier = Modifier.fillMaxSize(),
@@ -201,86 +205,93 @@ private fun ChatPanel(vm: AppVm) {
                     }
                 }
             } else {
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                Column(Modifier.weight(1f).fillMaxWidth().background(Bg).verticalScroll(rememberScrollState())) {
                     ChatHints(q) { input = it }
                 }
             }
 
-            vm.chatError?.let {
-                Text(it, fontSize = 12.sp, color = Red, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-            }
-            if (vm.chatQuote.isNotBlank()) {
-                QuoteBlock(vm.chatQuote, compact = compact) { vm.updateChatQuote("") }
-            }
-
-            if (vm.chatTruncated && !vm.chatBusy) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("回答被模型长度限制截断", fontSize = 11.5.sp, color = Amber)
-                    Spacer(Modifier.weight(1f))
-                    Box(
-                        Modifier.clip(RoundedCornerShape(999.dp)).background(AmberSoft)
-                            .tjClickable(label = "继续生成") { vm.continueChat() }
-                            .padding(horizontal = 12.dp, vertical = 7.dp)
-                    ) { Text("继续", fontSize = 12.sp, color = Amber, fontWeight = FontWeight.SemiBold) }
+            // 底部操作区统一容器：引用 / 截断提示 / 附件预览 / 快捷 chip / 输入条
+            Column(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                    .background(CardBg)
+            ) {
+                vm.chatError?.let {
+                    Text(it, fontSize = 12.sp, color = Red, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                 }
-            }
-            if (!compact) QuickChips(enabled = !vm.chatBusy) { vm.sendChat(it) }
+                if (vm.chatQuote.isNotBlank()) {
+                    QuoteBlock(vm.chatQuote, compact = compact) { vm.updateChatQuote("") }
+                }
 
-            // 附件预览：一张图或一个文本文件，发送后自动清空
-            vm.chatAttachment?.let {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)
-                        .clip(RoundedCornerShape(10.dp)).background(SurfaceAlt)
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (vm.chatAttachmentName == "图片") {
-                        coil.compose.AsyncImage(
-                            model = it, contentDescription = "待发送图片",
-                            modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)),
-                            contentScale = ContentScale.Crop,
-                        )
-                    } else {
+                if (vm.chatTruncated && !vm.chatBusy) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("回答被模型长度限制截断", fontSize = 11.5.sp, color = Amber)
+                        Spacer(Modifier.weight(1f))
                         Box(
-                            Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
-                                .background(AccentSoft),
-                            contentAlignment = Alignment.Center
-                        ) { Icon(Icons.Rounded.AttachFile, null, tint = Accent, modifier = Modifier.size(17.dp)) }
+                            Modifier.clip(RoundedCornerShape(999.dp)).background(AmberSoft)
+                                .tjClickable(label = "继续生成") { vm.continueChat() }
+                                .padding(horizontal = 12.dp, vertical = 7.dp)
+                        ) { Text("继续", fontSize = 12.sp, color = Amber, fontWeight = FontWeight.SemiBold) }
                     }
-                    Column(Modifier.weight(1f).padding(start = 9.dp)) {
-                        Text(
-                            if (vm.chatAttachmentName == "图片") "图片" else vm.chatAttachmentName,
-                            fontSize = 12.sp, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis
-                        )
-                        Text("随下一条消息一起发送", fontSize = 10.5.sp, color = Muted)
-                    }
-                    Box(
-                        Modifier.size(40.dp).clip(CircleShape)
-                            .tjClickable(label = "移除附件") { vm.clearChatAttachment() },
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Rounded.Close, "移除附件", tint = Muted, modifier = Modifier.size(16.dp)) }
                 }
-            }
+                if (!compact) QuickChips(enabled = !vm.chatBusy) { vm.sendChat(it) }
 
-            ChatInput(
-                input = input,
-                busy = vm.chatBusy,
-                compact = compact,
-                onInput = { input = it },
-                onSend = {
-                    val text = input
-                    if (text.isNotBlank() && !vm.chatBusy) {
-                        input = ""
-                        vm.sendChat(text)
+                // 附件预览：一张图或一个文本文件，发送后自动清空
+                vm.chatAttachment?.let {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(10.dp)).background(SurfaceAlt)
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (vm.chatAttachmentName == "图片") {
+                            coil.compose.AsyncImage(
+                                model = it, contentDescription = "待发送图片",
+                                modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop,
+                            )
+                        } else {
+                            Box(
+                                Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
+                                    .background(AccentSoft),
+                                contentAlignment = Alignment.Center
+                            ) { Icon(Icons.Rounded.AttachFile, null, tint = Accent, modifier = Modifier.size(17.dp)) }
+                        }
+                        Column(Modifier.weight(1f).padding(start = 9.dp)) {
+                            Text(
+                                if (vm.chatAttachmentName == "图片") "图片" else vm.chatAttachmentName,
+                                fontSize = 12.sp, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                            Text("随下一条消息一起发送", fontSize = 10.5.sp, color = Muted)
+                        }
+                        Box(
+                            Modifier.size(40.dp).clip(CircleShape)
+                                .tjClickable(label = "移除附件") { vm.clearChatAttachment() },
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Rounded.Close, "移除附件", tint = Muted, modifier = Modifier.size(16.dp)) }
                     }
-                },
-                onStop = { vm.stopChat() },
-                onPickImage = { pickChatImage.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                onPickFile = { pickChatFile.launch("*/*") },
-            )
+                }
+
+                ChatInput(
+                    input = input,
+                    busy = vm.chatBusy,
+                    compact = compact,
+                    onInput = { input = it },
+                    onSend = {
+                        val text = input
+                        if (text.isNotBlank() && !vm.chatBusy) {
+                            input = ""
+                            vm.sendChat(text)
+                        }
+                    },
+                    onStop = { vm.stopChat() },
+                    onPickImage = { pickChatImage.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    onPickFile = { pickChatFile.launch("*/*") },
+                )
+            }
         }
     }
 }
@@ -425,35 +436,68 @@ private fun ChatInput(
     onPickImage: () -> Unit = {},
     onPickFile: () -> Unit = {},
 ) {
+    var attachMenu by remember { mutableStateOf(false) }
     Row(
-        Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 10.dp),
+        Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp),
         verticalAlignment = Alignment.Bottom
     ) {
-        // 附件入口：发图走多模态，发文本类文件直接拼进问题
-        Box(
-            Modifier.size(42.dp).clip(CircleShape)
-                .tjClickable(label = "发送文本文件") { onPickFile() },
-            contentAlignment = Alignment.Center
-        ) { Icon(Icons.Rounded.AttachFile, "发送文本文件", tint = Ink2, modifier = Modifier.size(19.dp)) }
-        Box(
-            Modifier.size(42.dp).clip(CircleShape)
-                .tjClickable(label = "发送图片") { onPickImage() },
-            contentAlignment = Alignment.Center
-        ) { Icon(Icons.Rounded.AddPhotoAlternate, "发送图片", tint = Ink2, modifier = Modifier.size(20.dp)) }
-        TjTextField(
-            value = input,
-            onValueChange = onInput,
-            placeholder = { Text("继续追问这道题…", fontSize = 13.sp, color = Muted) },
-            maxLines = if (compact) 2 else 4,
-            colors = tjFieldColors(),
-            shape = CardShape,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { onSend() }),
-            modifier = Modifier.weight(1f).padding(start = 2.dp)
-        )
+        // 附件入口：成型的「+」按钮，菜单里选发图还是发文件
+        Box {
+            Box(
+                Modifier.size(46.dp)
+                    .clip(CircleShape)
+                    .background(if (attachMenu) AccentSoft else SurfaceAlt)
+                    .border(1.dp, if (attachMenu) Accent else Line, CircleShape)
+                    .tjClickable(label = "添加附件") { attachMenu = !attachMenu },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.Add, "添加附件",
+                    tint = if (attachMenu) Accent else Ink2,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            androidx.compose.material3.DropdownMenu(
+                expanded = attachMenu,
+                onDismissRequest = { attachMenu = false },
+                containerColor = CardBg,
+                shape = RoundedCornerShape(14.dp),
+                shadowElevation = 8.dp,
+            ) {
+                androidx.compose.material3.DropdownMenuItem(
+                    leadingIcon = { Icon(Icons.Rounded.AddPhotoAlternate, null, tint = Ink2, modifier = Modifier.size(19.dp)) },
+                    text = { Text("发送图片", fontSize = 14.sp, color = Ink) },
+                    onClick = { attachMenu = false; onPickImage() }
+                )
+                androidx.compose.material3.DropdownMenuItem(
+                    leadingIcon = { Icon(Icons.Rounded.AttachFile, null, tint = Ink2, modifier = Modifier.size(19.dp)) },
+                    text = { Text("发送文本文件", fontSize = 14.sp, color = Ink) },
+                    onClick = { attachMenu = false; onPickFile() }
+                )
+            }
+        }
         Spacer(Modifier.width(8.dp))
         Box(
-            Modifier.size(48.dp).clip(CircleShape)
+            Modifier.weight(1f)
+                .clip(CardShape)
+                .background(CardBg)
+                .border(1.dp, if (input.isNotBlank()) Accent.copy(alpha = 0.5f) else Line, CardShape)
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+        ) {
+            TjTextField(
+                value = input,
+                onValueChange = onInput,
+                placeholder = { Text("继续追问这道题…", fontSize = 13.sp, color = Muted) },
+                maxLines = if (compact) 2 else 4,
+                colors = tjFieldColors(),
+                shape = CardShape,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { onSend() }),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Box(
+            Modifier.size(46.dp).clip(CircleShape)
                 .background(when {
                     busy -> RedSoft
                     input.isBlank() -> SurfaceAlt

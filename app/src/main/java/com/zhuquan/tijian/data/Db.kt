@@ -482,6 +482,12 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         arrayOf(tag.trim(), System.currentTimeMillis(), id)
     )
 
+    /** 详情页笔记栏就地编辑：停手即存。 */
+    fun updateQuestionNote(id: String, note: String) = writableDatabase.execSQL(
+        "UPDATE question SET note=?, updated_at=? WHERE id=?",
+        arrayOf(note, System.currentTimeMillis(), id)
+    )
+
     /** 错因标签（JSON 字符串数组）：「这道题错在哪」比「属于哪章」更能帮下次做对。 */
     fun updateQuestionErrorReasons(id: String, reasons: String) = writableDatabase.execSQL(
         "UPDATE question SET error_reasons=?, updated_at=? WHERE id=?",
@@ -819,6 +825,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() }
         }.getOrElse { emptyList() },
         reasoning = getSetting("ai.reasoning") ?: "",
+        webSearch = getSetting("ai.webSearch") == "1",
     )
 
     fun saveProvider(cfg: ProviderConfig) {
@@ -828,6 +835,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
         putSetting("ai.protocol", cfg.protocol)
         putSetting("ai.models", org.json.JSONArray(cfg.models).toString())
         putSetting("ai.reasoning", cfg.reasoning)
+        putSetting("ai.webSearch", if (cfg.webSearch) "1" else "0")
     }
 
     // ---------- provider profiles ----------
@@ -851,6 +859,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                 protocol = o.optString("protocol").ifBlank { "chat" },
                 reasoning = o.optString("reasoning"),
                 models = models,
+                webSearch = o.optBoolean("webSearch", false),
             )
         }
     }.getOrElse { emptyList() }
@@ -862,6 +871,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                 put("name", p.name); put("baseUrl", p.baseUrl); put("apiKey", p.apiKey)
                 put("model", p.model); put("protocol", p.protocol); put("reasoning", p.reasoning)
                 put("models", org.json.JSONArray(p.models))
+                put("webSearch", p.webSearch)
             })
         }
         putSetting("ai.profiles", arr.toString())

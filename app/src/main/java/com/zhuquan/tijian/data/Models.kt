@@ -74,6 +74,8 @@ data class ProviderConfig(
     val models: List<String> = emptyList(), // 上次从 /models 拉到的列表
     /** 思考强度：""=服务默认 / low / medium / high（映射 reasoning_effort）。 */
     val reasoning: String = "",
+    /** 允许模型联网搜索：按服务商注入对应参数（百炼 enable_search / OpenRouter :online / 智谱 web_search）。 */
+    val webSearch: Boolean = false,
 ) {
     fun ready() = baseUrl.isNotBlank() && model.isNotBlank()
 }
@@ -87,8 +89,9 @@ data class ProviderProfile(
     val protocol: String,
     val reasoning: String = "",
     val models: List<String> = emptyList(),
+    val webSearch: Boolean = false,
 ) {
-    fun toConfig() = ProviderConfig(baseUrl, apiKey, model, protocol, models, reasoning)
+    fun toConfig() = ProviderConfig(baseUrl, apiKey, model, protocol, models, reasoning, webSearch)
 }
 
 /** 识别阶段尚未入库的题目草稿 */
