@@ -549,9 +549,11 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
         val next = withContext(Dispatchers.IO) { vm.db.questions(id, filter) }
         rows = next
     }
-    // 长按拖动排序：拖动过程中本地交换，松手一次性落库
-    val dragState = rememberDragDropState(listState) { from, to ->
-        if (from in rows.indices && to in rows.indices) {
+    // 长按拖动排序：拖动过程中本地交换，松手一次性落库（按 id 追踪，幂等）
+    val dragState = rememberDragDropState(listState) { fromKey, toKey ->
+        val from = rows.indexOfFirst { it.id == fromKey }
+        val to = rows.indexOfFirst { it.id == toKey }
+        if (from >= 0 && to >= 0 && from != to) {
             rows = rows.toMutableList().apply { add(to, removeAt(from)) }
         }
     }
@@ -639,8 +641,8 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
             if (vm.categoryView == 0) {
                 // 学习列表：题干两行 + 缩略图 + 关键知识点 + 掌握状态，竖向信息一屏可比
                 LazyColumn(Modifier.weight(1f).dragContainer(dragState) { persistOrder() }, state = listState) {
-                    itemsIndexed(rows, key = { _, q -> q.id }) { idx, q ->
-                        DraggableItem(dragState, idx) { isDragging ->
+                    itemsIndexed(rows, key = { _, q -> q.id }) { _, q ->
+                        DraggableItem(dragState, q.id) { isDragging ->
                             Column {
                                 StudyListRow(q, selecting = selecting || isDragging, isSel = selected.value.contains(q.id)) {
                                     if (dragState.clickConsumed) return@StudyListRow

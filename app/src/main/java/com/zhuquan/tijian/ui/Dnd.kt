@@ -16,7 +16,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -29,66 +28,71 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * 长按拖动排序（LazyColumn 通用）：
- * - 长按行进入拖动态（带触感反馈），拖过相邻行中点即交换；
- * - 拖到列表边缘自动滚动；
- * - 松手回调 onSettled，由调用方把新顺序落库。
+ * 长按拖动排序（LazyColumn 通用，按 key 追踪）：
  *
- * 位移只用「原始手指拖动量」计算，交换后不做补偿修正：
- * 行的新槽位由列表重新布局给出，translation = 手指位置 − 新槽位。
+ * 关键实现点（都是「拖动乱跳」的教训）：
+ * - 被拖行按 **key** 而非 index 追踪：交换发生后的一两帧里 LazyColumn 布局
+ *   还是旧的，按 index 查会把位移套到刚换过来的另一行上，看起来就是「乱跳」。
+ *   key 在重排中不变，任何时刻都能查到被拖行自己的槽位。
+ * - 位移 = 手指视口位置 − 被拖行当前槽位。布局过期的那一帧里，
+ *   「旧槽位 + 位移」仍等于手指位置，行在视觉上始终钉在手指下。
+ * - 交换回调按 (fromKey, toKey) 给出，由调用方在**自己的最新列表**里找索引，
+ *   布局滞后导致的重复回调是幂等的（找不到或 from==to 直接无操作）。
  */
 class DragDropState internal constructor(
     val listState: LazyListState,
     private val scope: CoroutineScope,
-    private val onMove: (Int, Int) -> Unit,
+    private val onMove: (fromKey: Any, toKey: Any) -> Unit,
 ) {
-    var draggingItemIndex by mutableStateOf<Int?>(null)
+    var draggingKey by mutableStateOf<Any?>(null)
         private set
 
     /** 本轮手势是否已进入拖动：行点击据此丢弃长按后紧跟的误触发 click。 */
     var clickConsumed by mutableStateOf(false)
         private set
 
+    private var fingerStartY by mutableFloatStateOf(0f)
+    private var grabOffsetY by mutableFloatStateOf(0f)
     private var dragDelta by mutableFloatStateOf(0f)
-    private var initialOffset by mutableIntStateOf(0)
 
-    /** 拖动行相对当前槽位的位移：手指位置（初始槽位 + 拖动量）− 当前行槽位。 */
-    internal fun translationFor(itemOffset: Int, itemIndex: Int): Float {
-        if (itemIndex != draggingItemIndex) return 0f
-        return initialOffset + dragDelta - itemOffset
+    private fun draggedInfo() =
+        listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == draggingKey }
+
+    /** 被拖行相对当前槽位的位移，使「槽位 + 位移」恒等于手指下的行顶。 */
+    internal fun translationFor(itemKey: Any): Float {
+        if (itemKey != draggingKey) return 0f
+        val info = draggedInfo() ?: return 0f
+        return (fingerStartY + dragDelta - grabOffsetY) - info.offset
     }
 
     internal fun onDragStart(offset: Offset) {
-        listState.layoutInfo.visibleItemsInfo
+        val hit = listState.layoutInfo.visibleItemsInfo
             .firstOrNull { item -> offset.y.toInt() in item.offset..(item.offset + item.size) }
-            ?.also {
-                draggingItemIndex = it.index
-                initialOffset = it.offset
-                dragDelta = 0f
-                clickConsumed = true
-            }
+            ?: return
+        draggingKey = hit.key
+        fingerStartY = offset.y
+        grabOffsetY = offset.y - hit.offset
+        dragDelta = 0f
+        clickConsumed = true
     }
 
     internal fun onDrag(offset: Offset) {
-        val dragged = draggingItemIndex ?: return
+        val key = draggingKey ?: return
+        val item = draggedInfo() ?: return
         dragDelta += offset.y
-        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == dragged } ?: return
-        val start = item.offset + dragDelta
-        val middle = start + item.size / 2f
+        val fingerY = fingerStartY + dragDelta
         val target = listState.layoutInfo.visibleItemsInfo.firstOrNull {
-            it.index != dragged && middle.toInt() in it.offset..(it.offset + it.size)
+            it.key != key && fingerY.toInt() in it.offset..(it.offset + it.size)
         }
         if (target != null) {
-            onMove(dragged, target.index)
-            // 不调整 dragDelta：交换后列表重排，target.index 处的槽位就是被拖行的新位置，
-            // translationFor 会用新槽位重新对齐手指。
-            draggingItemIndex = target.index
+            onMove(key, target.key)
         } else {
+            val itemTop = fingerY - grabOffsetY
             val viewportStart = listState.layoutInfo.viewportStartOffset
             val viewportEnd = listState.layoutInfo.viewportEndOffset
             val overscroll = when {
-                start < viewportStart -> start - viewportStart
-                start + item.size > viewportEnd -> start + item.size - viewportEnd
+                itemTop < viewportStart -> itemTop - viewportStart
+                itemTop + item.size > viewportEnd -> itemTop + item.size - viewportEnd
                 else -> 0f
             }
             if (overscroll != 0f) scope.launch { listState.scrollBy(overscroll) }
@@ -96,9 +100,10 @@ class DragDropState internal constructor(
     }
 
     internal fun onDragEnd() {
-        draggingItemIndex = null
+        draggingKey = null
         dragDelta = 0f
-        initialOffset = 0
+        fingerStartY = 0f
+        grabOffsetY = 0f
     }
 
     /** 每次新手指按下时重置；由容器上的 downReset 手势调用。 */
@@ -108,7 +113,7 @@ class DragDropState internal constructor(
 @Composable
 fun rememberDragDropState(
     listState: LazyListState = rememberLazyListState(),
-    onMove: (Int, Int) -> Unit,
+    onMove: (fromKey: Any, toKey: Any) -> Unit,
 ): DragDropState {
     val scope = rememberCoroutineScope()
     val currentOnMove by rememberUpdatedState(onMove)
@@ -125,7 +130,6 @@ fun Modifier.dragContainer(state: DragDropState, onSettled: () -> Unit): Modifie
             awaitEachGesture {
                 awaitFirstDown(requireUnconsumed = false)
                 state.onNewTouchDown()
-                // 等本轮手势结束再退出，保证标记只在下一轮按下时重置
                 while (true) {
                     val event = awaitPointerEvent()
                     if (event.changes.all { !it.pressed }) break
@@ -148,14 +152,14 @@ fun Modifier.dragContainer(state: DragDropState, onSettled: () -> Unit): Modifie
         }
 }
 
-/** 拖动容器里的每一行都包一层：负责拖动态的位移、轻微缩放与 z 序。 */
+/** 拖动容器里的每一行都包一层：按 key 追踪拖动态的位移、轻微缩放与 z 序。 */
 @Composable
 fun LazyItemScope.DraggableItem(
     state: DragDropState,
-    index: Int,
+    key: Any,
     content: @Composable (isDragging: Boolean) -> Unit,
 ) {
-    val isDragging = state.draggingItemIndex == index
+    val isDragging = state.draggingKey == key
     val scale by animateFloatAsState(
         targetValue = if (isDragging) 1.015f else 1f,
         animationSpec = spring(dampingRatio = 0.7f, stiffness = 500f),
@@ -166,10 +170,7 @@ fun LazyItemScope.DraggableItem(
             .animateItem()
             .zIndex(if (isDragging) 1f else 0f)
             .graphicsLayer {
-                val info = state.listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
-                translationY = if (isDragging && info != null) {
-                    state.translationFor(info.offset, index)
-                } else 0f
+                translationY = state.translationFor(key)
                 scaleX = scale; scaleY = scale
             }
     ) { content(isDragging) }

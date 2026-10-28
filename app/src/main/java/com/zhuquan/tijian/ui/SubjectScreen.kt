@@ -38,8 +38,10 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
         children = vm.categories.filter { it.subjectGroup() == route.name }
     }
     val listState = rememberLazyListState()
-    val dragState = rememberDragDropState(listState) { from, to ->
-        if (from in children.indices && to in children.indices) {
+    val dragState = rememberDragDropState(listState) { fromKey, toKey ->
+        val from = children.indexOfFirst { it.id == fromKey }
+        val to = children.indexOfFirst { it.id == toKey }
+        if (from >= 0 && to >= 0 && from != to) {
             children = children.toMutableList().apply { add(to, removeAt(from)) }
         }
     }
@@ -76,8 +78,8 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
                 state = listState,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                itemsIndexed(children, key = { _, c -> c.id }) { idx, cat ->
-                    DraggableItem(dragState, idx) { _ ->
+                itemsIndexed(children, key = { _, c -> c.id }) { _, cat ->
+                    DraggableItem(dragState, cat.id) { _ ->
                         SubjectChildCard(
                             cat,
                             onOpen = { if (!dragState.clickConsumed) vm.go(Route.Category(cat.id)) },
