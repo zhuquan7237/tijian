@@ -4,7 +4,7 @@ set -euo pipefail
 
 VER="${1:?version required, e.g. 0.1.0}"
 NOTES="${2:-题笺更新}"
-CODE="$(python - "$VER" <<'PY'
+CODE="$(python3 - "$VER" <<'PY'
 import sys
 p=[int(x) for x in sys.argv[1].split('.')]
 while len(p)<3: p.append(0)
@@ -17,7 +17,7 @@ ROOT="$(pwd)"
 REPO="zhuquan7237/tijian"
 
 echo "==> 版本 $VER (versionCode $CODE)"
-python - "$VER" "$CODE" <<'PY'
+python3 - "$VER" "$CODE" <<'PY'
 import re,sys
 ver,code=sys.argv[1],sys.argv[2]
 p='app/build.gradle.kts'
@@ -49,7 +49,7 @@ SHA=$(sha256sum "$APK" | cut -d' ' -f1)
 SIZE=$(stat -c%s "$APK")
 URL="https://github.com/$REPO/releases/download/v$VER/tijian-$VER.apk"
 
-python - "$VER" "$CODE" "$URL" "$SHA" "$SIZE" "$NOTES" <<'PY' > build/update.json
+python3 - "$VER" "$CODE" "$URL" "$SHA" "$SIZE" "$NOTES" <<'PY' > build/update.json
 import json,sys
 ver,code,url,sha,size,notes=sys.argv[1:7]
 print(json.dumps({"version":ver,"versionCode":int(code),"apkUrl":url,
