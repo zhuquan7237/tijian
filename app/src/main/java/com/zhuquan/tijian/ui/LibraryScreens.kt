@@ -87,7 +87,7 @@ fun LibraryScreen(vm: AppVm) {
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             title = "知识库",
-            subtitle = "${vm.docs.size} 篇 · 从错题里长出来的知识点",
+            subtitle = if (vm.docs.isEmpty()) "从错题里整理出能复习的知识点" else "${vm.docs.size} 篇文档",
             actions = {
                 IconCircle(Icons.Rounded.AutoAwesome, "生成") { pickCategory = true }
             }

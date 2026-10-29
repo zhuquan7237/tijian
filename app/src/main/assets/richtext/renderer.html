@@ -7,29 +7,29 @@
 <style>
   /* 夜读台配色。与 ui/Theme.kt 的 token 一一对应，改色时两边同步。 */
   :root {
-    --bg: #1C1E22;          /* Bg */
-    --card: #26282C;        /* CardBg */
-    --surface-alt: #303236; /* SurfaceAlt */
-    --ink: #E6E8EB;         /* Ink */
-    --ink2: #C3C8D0;        /* Ink2 */
-    --muted: #9CA3AF;       /* Muted */
-    --line: #3F4451;        /* Line */
-    --accent: #3D8BFF;      /* Accent */
-    --accent-soft: #14294D; /* AccentSoft */
-    --accent-rgb: 61,139,255;
-    --red: #F87171;         /* Red */
-    --red-soft: #3D2326;    /* RedSoft */
-    --amber: #FBBF24;       /* Amber */
-    --amber-soft: #3F2E1A;  /* AmberSoft */
-    --menu-bg: #3A3D44;     /* Fill */
+    --bg: #171614;          /* Bg */
+    --card: #221F1C;        /* CardBg */
+    --surface-alt: #2C2926; /* SurfaceAlt */
+    --ink: #F4EFE8;         /* Ink */
+    --ink2: #D6D0C6;        /* Ink2 */
+    --muted: #A8A199;       /* Muted */
+    --line: #3C3833;        /* Line */
+    --accent: #B7C0F0;      /* Accent */
+    --accent-soft: #2A2E44; /* AccentSoft */
+    --accent-rgb: 183,192,240;
+    --red: #F0A3A3;         /* Red */
+    --red-soft: #3D2628;    /* RedSoft */
+    --amber: #E4C27A;       /* Amber */
+    --amber-soft: #3A3120;  /* AmberSoft */
+    --menu-bg: #38342F;     /* Fill */
   }
-  /* 日间墨白（浅色界面）：暖纸白 + 深青，与 Theme.kt 的 Light token 对应。 */
+  /* 日间书桌：暖纸 + 靛蓝，与 Theme.kt 的 Light token 对应。 */
   body.rt-day {
-    --bg: #F5F4EF; --card: #FFFFFF; --surface-alt: #EDEBE3;
-    --ink: #23262B; --ink2: #464B54; --muted: #7C828C; --line: #E0DED4;
-    --accent: #006EFD; --accent-soft: #E6F0FF; --accent-rgb: 0,110,253;
-    --red: #C0454D; --red-soft: #FBEDEE; --menu-bg: #FFFFFF;
-    --amber: #9A6B1F; --amber-soft: #FBF1DC;
+    --bg: #F6F3EC; --card: #FFFCF7; --surface-alt: #EFEAE2;
+    --ink: #1C1917; --ink2: #44403C; --muted: #78716C; --line: #E6E0D4;
+    --accent: #3E4C7E; --accent-soft: #E6E8F3; --accent-rgb: 62,76,126;
+    --red: #B4454C; --red-soft: #F8E8E9; --menu-bg: #FFFCF7;
+    --amber: #8F6420; --amber-soft: #F8F0DE;
   }
   /* PDF 导出（RichBitmap，白底位图）：浅色打印配色，与界面无关。 */
   body.rt-print {
@@ -59,7 +59,7 @@
   h1 { font-size: 1.5em; line-height: 1.35; margin: 6px 0 14px; font-weight: 700; }
   h2 { font-size: 1.22em; line-height: 1.4; margin: 22px 0 9px; font-weight: 700; }
   h3 { font-size: 1.06em; line-height: 1.45; margin: 18px 0 7px; font-weight: 700; }
-  h4 { display: inline-block; font-size: 0.72em; letter-spacing: 0.12em; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 4px 9px; margin: 18px 0 9px; font-weight: 700; }
+  h4 { display: inline-block; font-size: 0.72em; letter-spacing: 0; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 4px 9px; margin: 18px 0 9px; font-weight: 700; }
   h5, h6 { font-size: 1em; margin: 12px 0 6px; font-weight: 600; }
   ul, ol { margin: 6px 0 10px; padding-left: 22px; }
   li { margin: 3px 0; line-height: 1.9; }
@@ -125,7 +125,7 @@
   /* 卡片标题是「标签」而不是第二个正文标题：小号、字距拉开、次级色，内容才是主角 */
   .rt-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   .rt-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
-  .rt-card-title { font-size: 12px; font-weight: 600; letter-spacing: .14em; color: var(--muted); line-height: 1.4; }
+  .rt-card-title { font-size: 12px; font-weight: 600; letter-spacing: 0; color: var(--muted); line-height: 1.4; }
   .rt-card-sub { font-size: 12px; color: var(--muted); margin-left: auto; }
   .k-answer { border-left: 3px solid var(--accent); }
   .k-answer .rt-card-body { font-weight: 600; color: var(--ink); }
@@ -141,7 +141,7 @@
   .an-think { background: var(--surface-alt); }
   .an-pit { background: var(--amber-soft); }
   .an-concl { background: var(--accent-soft); border-left: 3px solid var(--accent); }
-  .an-tag { display: block; font-size: 11px; line-height: 1.4; font-weight: 700; letter-spacing: .14em; margin-bottom: 3px; }
+  .an-tag { display: block; font-size: 11px; line-height: 1.4; font-weight: 700; letter-spacing: 0; margin-bottom: 3px; }
   .an-think .an-tag { color: var(--muted); }
   .an-pit .an-tag { color: var(--amber); }
   .an-concl .an-tag { color: var(--accent); }
@@ -169,7 +169,7 @@
     -webkit-user-select: none; user-select: none;
   }
   #rt-menu button {
-    appearance: none; border: 0; background: transparent; color: #fff;
+    appearance: none; border: 0; background: transparent; color: var(--ink);
     font-family: inherit; font-size: 13px; font-weight: 600;
     padding: 9px 14px; border-radius: 8px; margin: 0;
   }

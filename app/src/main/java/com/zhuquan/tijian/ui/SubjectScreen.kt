@@ -48,7 +48,11 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             route.name,
-            if (route.name == "专业课") "材料类 · 材料科学基础（上交第三版）" else "按知识点管理子分类 · 长按可拖动排序",
+            run {
+                val n = children.sumOf { it.count }
+                if (children.isEmpty()) "还没有子分类"
+                else "${children.size} 个分类 · $n 道"
+            },
             onBack = { vm.back() },
             actions = { IconCircle(Icons.Rounded.Add, "新增子分类") { name = ""; creating = true } }
         )

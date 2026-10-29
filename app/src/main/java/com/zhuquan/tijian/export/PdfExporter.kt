@@ -37,6 +37,8 @@ object PdfExporter {
         val includeAnalysis: Boolean = true,
         val includeTags: Boolean = true,
         val onePerPage: Boolean = true,
+        /** 期末打印：题目和作答线在前，答案与解析集中在文末。 */
+        val answersAtEnd: Boolean = false,
     )
 
     private val ink = Color.rgb(20, 20, 24)
@@ -59,13 +61,30 @@ object PdfExporter {
         val sub = paint(10f, false, muted)
         pager.canvas!!.drawText("题笺", MARGIN, TOP + 2f, paint(9.5f, false, accent))
         pager.canvas!!.drawText(title, MARGIN, TOP + 32f, paint(22f, true))
-        pager.canvas!!.drawText("共 ${questions.size} 题 · ${date()}", MARGIN, TOP + 52f, sub)
+        val cover = when {
+            !opts.includeAnswer && !opts.includeAnalysis -> "共 ${questions.size} 题 · 只印题目 · ${date()}"
+            opts.answersAtEnd -> "共 ${questions.size} 题 · 答案在最后 · ${date()}"
+            else -> "共 ${questions.size} 题 · ${date()}"
+        }
+        pager.canvas!!.drawText(cover, MARGIN, TOP + 52f, sub)
         // The title belongs to the first question page, not a cover page.
         pager.y = TOP + 66f
         pager.hairline()
         pager.y += 18f
 
+        val deferredAnswers = ArrayList<Pair<Int, String>>()
         questions.forEachIndexed { index, q ->
+            val practicePage = !opts.includeAnswer || opts.answersAtEnd
+            val writingReserve = if (practicePage) 20f + 5 * 22f else 0f
+            val topic = listOf(q.subjectName, q.categoryName).filter { it.isNotBlank() }.distinct().joinToString(" · ")
+            val prevTopic = if (index == 0) "" else listOf(
+                questions[index - 1].subjectName, questions[index - 1].categoryName
+            ).filter { it.isNotBlank() }.distinct().joinToString(" · ")
+            if (index > 0 && (opts.onePerPage || topic != prevTopic)) pager.newPage()
+            if (topic.isNotBlank() && (index == 0 || topic != prevTopic)) {
+                pager.canvas!!.drawText(topic, MARGIN, pager.y + 14f, paint(15f, true))
+                pager.y += 24f
+            }
             val head = paint(13f, true)
             val small = paint(9f, false, muted)
             val body = paint(11f)
@@ -87,8 +106,9 @@ object PdfExporter {
                     append("**解析**\n\n").append(q.analysis)
                 }
             }
+            if (opts.answersAtEnd && richAnswerMd.isNotBlank()) deferredAnswers += index to richAnswerMd
             val richStem = if (richStemMd.isBlank()) null else RichBitmap.render(context, richStemMd)
-            val richAnswer = if (richAnswerMd.isBlank()) null else RichBitmap.render(context, richAnswerMd)
+            val richAnswer = if (opts.answersAtEnd || richAnswerMd.isBlank()) null else RichBitmap.render(context, richAnswerMd)
             val richStemH = richStem?.let { CONTENT_W * it.height / it.width.toFloat() } ?: 0f
             val richAnswerH = richAnswer?.let { CONTENT_W * it.height / it.width.toFloat() } ?: 0f
 
@@ -96,7 +116,7 @@ object PdfExporter {
             val stemLines = if (richStem == null)
                 wrap(cleanMath(q.stem.ifBlank { "（未识别题干）" }), body, CONTENT_W)
             else emptyList()
-            val answerText = if (richAnswer != null) "" else buildString {
+            val answerText = if (richAnswer != null || opts.answersAtEnd) "" else buildString {
                 if (opts.includeAnswer && q.answer.isNotBlank()) append("答案：").append(q.answer).append("\n")
                 if (opts.includeAnalysis && q.analysis.isNotBlank()) append("解析：").append(q.analysis)
             }.trim()
@@ -112,10 +132,8 @@ object PdfExporter {
             // the fit is calculated. Count drawing offsets exactly once here.
             val blockH = headerH + stemLines.size * 17f + 6f + imgH + 4f + richStemH + 4f + richAnswerH + 18f
 
-            // 一题一页时每题整页起排；紧凑版式只在题块放不下时才翻页
-            if (index > 0) {
-                if (opts.onePerPage) pager.newPage() else pager.ensure(headerH + 8f)
-            }
+            // 一题一页和换主题的翻页已经在本题开头做过。紧凑版式只在题块放不下时才翻页。
+            if (!opts.onePerPage && index > 0 && topic == prevTopic) pager.ensure(headerH + 8f)
 
             // Compute after any page switch: the available height is the space left
             // below this page's actual starting cursor, not the whole page height.
@@ -147,18 +165,21 @@ object PdfExporter {
             // push the answer/analysis outside the page. The scan receives only
             // the remaining height and shrinks uniformly.
             if (richStem != null) {
-                // Text must stay readable at natural scale; if the whole block does
-                // not fit, move it to the next page instead of clipping it.
-                pager.ensure(richStemH + 4f)
                 pager.y += 4f
-                pager.image(richStem, 1f, allowSlice = false)
+                if (opts.onePerPage) {
+                    // 一题一页时题干留在本页，超高才缩小，避免题号和题干被拆到两页。
+                    val room = (BOTTOM - pager.y - writingReserve).coerceAtLeast(96f)
+                    pager.image(richStem, 1f, allowSlice = false, maxHeight = room)
+                } else {
+                    pager.ensure(richStemH + 4f)
+                    pager.image(richStem, 1f, allowSlice = false)
+                }
                 richStem.recycle()
             }
             if (bmp != null) {
-                val reservedText = richAnswerH + answerLines.size * 16f + 42f
-                val imageRoom = (BOTTOM - pager.y - reservedText).coerceAtLeast(36f)
-                // Keep the scan's aspect ratio. Wide/tall source images may be far
-                // taller than the page; fit by the limiting dimension here.
+                val reservedText = richAnswerH + answerLines.size * 16f + writingReserve + 12f
+                val imageRoom = (BOTTOM - pager.y - reservedText).coerceAtLeast(120f)
+                // 原图按比例缩小到本页剩余空间，保留作答线，不切到下一页。
                 pager.image(bmp, 1f, allowSlice = false, maxHeight = imageRoom)
                 bmp.recycle()
             }
@@ -168,6 +189,8 @@ object PdfExporter {
                 pager.image(richAnswer, 1f, allowSlice = false)
                 richAnswer.recycle()
             }
+
+            if (practicePage) drawWritingLines(pager, 6)
 
             if (answerLines.isNotEmpty()) {
                 pager.y += 8f
@@ -183,6 +206,34 @@ object PdfExporter {
                 }
             }
             pager.y += 20f
+        }
+
+        if (deferredAnswers.isNotEmpty()) {
+            pager.newPage()
+            pager.canvas!!.drawText("答案与解析", MARGIN, pager.y + 16f, paint(18f, true))
+            pager.y += 28f
+            pager.canvas!!.drawText("做完再翻到这里。", MARGIN, pager.y + 12f, paint(10f, false, muted))
+            pager.y += 22f
+            pager.hairline()
+            pager.y += 16f
+            deferredAnswers.forEach { (index, md) ->
+                pager.ensure(36f)
+                val q = questions[index]
+                pager.canvas!!.drawText(
+                    "第 ${index + 1} 题 · ${q.categoryName.ifBlank { q.type.ifBlank { "题目" } }}",
+                    MARGIN, pager.y + 12f, paint(12f, true, accent)
+                )
+                pager.y += 20f
+                val bmp = RichBitmap.render(context, md)
+                if (bmp != null) {
+                    val h = CONTENT_W * bmp.height / bmp.width.toFloat()
+                    pager.ensure(h + 8f)
+                    pager.y += 4f
+                    pager.image(bmp, 1f, allowSlice = false)
+                    bmp.recycle()
+                }
+                pager.y += 16f
+            }
         }
 
         pager.finish()
@@ -357,6 +408,21 @@ object PdfExporter {
                 srcY += hPx - if (srcY + hPx < bmp.height) overlap.coerceAtMost(hPx - 1) else 0
                 if (srcY < bmp.height) newPage()
             }
+        }
+    }
+
+    /** 作答线只画本页还放得下的行，不再翻页，避免一道题被拆成两页。 */
+    private fun drawWritingLines(pager: Pager, wanted: Int) {
+        val lineH = 22f
+        val canvas = pager.canvas ?: return
+        if (BOTTOM - pager.y < lineH + 16f) return
+        canvas.drawText("作答", MARGIN, pager.y + 12f, paint(10f, true, muted))
+        pager.y += 18f
+        val count = minOf(wanted, ((BOTTOM - pager.y - 6f) / lineH).toInt()).coerceAtLeast(0)
+        val line = Paint().apply { color = lineColor; strokeWidth = 0.6f }
+        repeat(count) {
+            canvas.drawLine(MARGIN, pager.y + 16f, PAGE_W - MARGIN, pager.y + 16f, line)
+            pager.y += lineH
         }
     }
 

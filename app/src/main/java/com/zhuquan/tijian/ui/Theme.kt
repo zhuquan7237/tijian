@@ -53,9 +53,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /* ------------------------------------------------------------------
- * 题笺 · 夜读台（8.9.0）/ 日间墨白（8.11.0）
+ * 题笺 · 书桌（8.16.0）
  *
- * 深浅两套 token：夜读台（深石墨 + 亮蓝）与日间墨白（暖纸白 + 品牌蓝 #006EFD）。
+ * 深浅两套 token：夜读是暖石墨 + 淡墨靛蓝，日间是暖纸 + 靛蓝。
+ * 不再用高饱和仪表盘蓝。强调色只给「现在该做的那一步」。
  * 层级靠明度（Bg < CardBg < SurfaceAlt < Fill），不靠阴影。
  * WebView 端在 assets/richtext 目录的 html 里用同名 CSS 变量镜像（rt-day / 默认夜色），
  * 改色时两边一起改。
@@ -77,56 +78,56 @@ internal fun updateSystemNight(dark: Boolean) { sysNight.value = dark }
 private val night: Boolean get() = isNight
 
 // ---- 夜读台（深） ----
-private val DarkBg = Color(0xFF1C1E22)
-private val DarkCardBg = Color(0xFF26282C)
-private val DarkSurfaceAlt = Color(0xFF303236)
-private val DarkFill = Color(0xFF3A3D44)
-private val DarkInk = Color(0xFFE6E8EB)
-private val DarkInk2 = Color(0xFFC3C8D0)
-private val DarkMuted = Color(0xFF9CA3AF)
-private val DarkLine = Color(0xFF3F4451)
-private val DarkFieldBorder = Color(0xFF6B7280)
-private val DarkAccent = Color(0xFF3D8BFF)
-private val DarkAccentSoft = Color(0xFF14294D)
-private val DarkAccentPressed = Color(0xFF2E74E8)
-private val DarkOnAccent = Color(0xFF06152B)
-private val DarkHeroBrush = Brush.linearGradient(listOf(Color(0xFF12305B), Color(0xFF1A2531), Color(0xFF26282C)))
-private val DarkHeroLine = Color(0x333D8BFF)
-private val DarkGreen = Color(0xFF34D399)
-private val DarkGreenSoft = Color(0xFF1F4D3D)
-private val DarkAmber = Color(0xFFFBBF24)
-private val DarkAmberSoft = Color(0xFF3F2E1A)
-private val DarkRed = Color(0xFFF87171)
-private val DarkRedSoft = Color(0xFF3D2326)
-private val DarkOnHeroMuted = Color(0xFF8B94A8)
-private val DarkOnHeroKicker = Color(0xFF9CA8BD)
-private val DarkBarBg = Color(0xFA1C1E22)
+private val DarkBg = Color(0xFF171614)
+private val DarkCardBg = Color(0xFF221F1C)
+private val DarkSurfaceAlt = Color(0xFF2C2926)
+private val DarkFill = Color(0xFF38342F)
+private val DarkInk = Color(0xFFF4EFE8)
+private val DarkInk2 = Color(0xFFD6D0C6)
+private val DarkMuted = Color(0xFFA8A199)
+private val DarkLine = Color(0xFF3C3833)
+private val DarkFieldBorder = Color(0xFF8A8378)
+private val DarkAccent = Color(0xFFB7C0F0)
+private val DarkAccentSoft = Color(0xFF2A2E44)
+private val DarkAccentPressed = Color(0xFF9AA6E4)
+private val DarkOnAccent = Color(0xFF16192C)
+private val DarkHeroBrush = Brush.linearGradient(listOf(Color(0xFF24283A), Color(0xFF1C1A17), Color(0xFF221F1C)))
+private val DarkHeroLine = Color(0x33B7C0F0)
+private val DarkGreen = Color(0xFF7DCEA0)
+private val DarkGreenSoft = Color(0xFF1C3B2C)
+private val DarkAmber = Color(0xFFE4C27A)
+private val DarkAmberSoft = Color(0xFF3A3120)
+private val DarkRed = Color(0xFFF0A3A3)
+private val DarkRedSoft = Color(0xFF3D2628)
+private val DarkOnHeroMuted = Color(0xFFA39E94)
+private val DarkOnHeroKicker = Color(0xFFB7B1A6)
+private val DarkBarBg = Color(0xF2171614)
 
 // ---- 日间墨白（浅）：暖纸白底 + 深青强调，白天不刺眼、夜里开深色 ----
-private val LightBg = Color(0xFFF5F4EF)
-private val LightCardBg = Color(0xFFFFFFFF)
-private val LightSurfaceAlt = Color(0xFFEDEBE3)
-private val LightFill = Color(0xFFE2DFD5)
-private val LightInk = Color(0xFF23262B)
-private val LightInk2 = Color(0xFF464B54)
-private val LightMuted = Color(0xFF7C828C)
-private val LightLine = Color(0xFFE0DED4)
-private val LightFieldBorder = Color(0xFFA9ADB6)
-private val LightAccent = Color(0xFF006EFD)
-private val LightAccentSoft = Color(0xFFE6F0FF)
-private val LightAccentPressed = Color(0xFF0058D2)
+private val LightBg = Color(0xFFF6F3EC)
+private val LightCardBg = Color(0xFFFFFCF7)
+private val LightSurfaceAlt = Color(0xFFEFEAE2)
+private val LightFill = Color(0xFFE5DFD4)
+private val LightInk = Color(0xFF1C1917)
+private val LightInk2 = Color(0xFF44403C)
+private val LightMuted = Color(0xFF78716C)
+private val LightLine = Color(0xFFE6E0D4)
+private val LightFieldBorder = Color(0xFFB7AFA3)
+private val LightAccent = Color(0xFF3E4C7E)
+private val LightAccentSoft = Color(0xFFE6E8F3)
+private val LightAccentPressed = Color(0xFF2E3A64)
 private val LightOnAccent = Color(0xFFFFFFFF)
-private val LightHeroBrush = Brush.linearGradient(listOf(Color(0xFFDCE9FF), Color(0xFFEFEFF2), Color(0xFFFFFFFF)))
-private val LightHeroLine = Color(0x33006EFD)
-private val LightGreen = Color(0xFF15803D)
-private val LightGreenSoft = Color(0xFFDCEFDD)
-private val LightAmber = Color(0xFF9A6B1F)
-private val LightAmberSoft = Color(0xFFFBF1DC)
-private val LightRed = Color(0xFFC0454D)
-private val LightRedSoft = Color(0xFFFBEDEE)
-private val LightOnHeroMuted = Color(0xFF6E7683)
-private val LightOnHeroKicker = Color(0xFF5B6472)
-private val LightBarBg = Color(0xFAFFFFFF)
+private val LightHeroBrush = Brush.linearGradient(listOf(Color(0xFFE7E9F4), Color(0xFFF6F3EC), Color(0xFFFFFCF7)))
+private val LightHeroLine = Color(0x333E4C7E)
+private val LightGreen = Color(0xFF1B7A4A)
+private val LightGreenSoft = Color(0xFFE2F0E7)
+private val LightAmber = Color(0xFF8F6420)
+private val LightAmberSoft = Color(0xFFF8F0DE)
+private val LightRed = Color(0xFFB4454C)
+private val LightRedSoft = Color(0xFFF8E8E9)
+private val LightOnHeroMuted = Color(0xFF6B6560)
+private val LightOnHeroKicker = Color(0xFF5E5954)
+private val LightBarBg = Color(0xFBFBF8F3)
 
 /** 深浅都成立的功能色（不随主题翻转）。 */
 val Scrim = Color(0x99000000)
@@ -260,15 +261,15 @@ fun TijianTheme(content: @Composable () -> Unit) {
         typography = Typography(
             displaySmall = Typography().displaySmall.copy(
                 fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold,
-                fontSize = 32.sp, lineHeight = 40.sp, letterSpacing = (-0.9).sp,
+                fontSize = 32.sp, lineHeight = 40.sp, letterSpacing = 0.sp,
             ),
             headlineMedium = Typography().headlineMedium.copy(
                 fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold,
-                fontSize = 22.sp, lineHeight = 30.sp, letterSpacing = (-0.4).sp,
+                fontSize = 22.sp, lineHeight = 30.sp, letterSpacing = 0.sp,
             ),
             titleLarge = Typography().titleLarge.copy(
                 fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold,
-                fontSize = 17.sp, lineHeight = 24.sp, letterSpacing = (-0.2).sp,
+                fontSize = 17.sp, lineHeight = 24.sp, letterSpacing = 0.sp,
             ),
             bodyLarge = Typography().bodyLarge.copy(
                 fontFamily = FontFamily.SansSerif, fontSize = 15.sp, lineHeight = 25.sp,
@@ -278,7 +279,7 @@ fun TijianTheme(content: @Composable () -> Unit) {
             ),
             labelSmall = Typography().labelSmall.copy(
                 fontFamily = FontFamily.SansSerif, fontSize = 11.sp,
-                lineHeight = 16.sp, letterSpacing = 0.3.sp,
+                lineHeight = 16.sp, letterSpacing = 0.sp,
             ),
         ),
         content = content
@@ -448,7 +449,7 @@ fun TjTopBar(
                 fontSize = if (onBack != null) 19.sp else 26.sp,
                 lineHeight = if (onBack != null) 26.sp else 34.sp,
                 fontWeight = if (onBack != null) FontWeight.SemiBold else FontWeight.Bold,
-                letterSpacing = if (onBack != null) (-0.3).sp else (-1.0).sp,
+                letterSpacing = 0.sp,
                 color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis
             )
             if (subtitle != null) Text(
@@ -468,7 +469,7 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, trailing: (@Compos
         modifier.fillMaxWidth().padding(top = Space.xl, bottom = Space.m),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text, fontSize = 17.sp, lineHeight = 25.sp, color = Ink, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp)
+        Text(text, fontSize = 17.sp, lineHeight = 25.sp, color = Ink, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp)
         Spacer(Modifier.weight(1f))
         trailing?.invoke()
     }

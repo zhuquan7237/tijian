@@ -52,6 +52,12 @@ data class QuestionRow(
     val imageId: String?,
     val imagePath: String?,
     val createdAt: Long,
+    /** 打印和复习都优先看标星的题。 */
+    val starred: Boolean = false,
+    /** 分类所属学科，打印按主题分组时用。 */
+    val subjectName: String = "",
+    /** 用户标成不重要：不占每日复习名额，可以改回来。 */
+    val unimportant: Boolean = false,
 )
 
 data class DocRow(
@@ -154,6 +160,12 @@ data class DraftQuestion(
 }
 
 fun clampMastery(v: Int) = v.coerceIn(0, 5)
+
+/** 新收录的题先留给「看解析 / 追问」，第一次复习排到一天后，避免刚拍完就堆进今天的到期队列。 */
+const val REVIEW_DAY_MS = 86_400_000L
+fun firstReviewAt(capturedAt: Long): Long = capturedAt + REVIEW_DAY_MS
+
+data class SaveResult(val saved: Int, val skipped: Int, val ids: List<String>)
 fun colorFor(name: String): String {
     val palette = listOf("#E7EAF8", "#EDEAE1", "#E4EFE9", "#F2E7E3", "#E9E6F2", "#E8EEF2", "#F4EDE4")
     // hashCode 可能是 Int.MIN_VALUE，abs 后仍为负，先取模再回正

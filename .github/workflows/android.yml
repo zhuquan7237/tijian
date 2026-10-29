@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish 8.1.0 with the original signing key
+        description: Publish the current versionName with the original signing key
         type: boolean
         default: false
 permissions:
@@ -76,4 +76,6 @@ jobs:
           TIJIAN_KEY_ALIAS: ${{ secrets.TIJIAN_KEY_ALIAS }}
           TIJIAN_KEY_PASSWORD: ${{ secrets.TIJIAN_KEY_PASSWORD }}
           GH_TOKEN: ${{ github.token }}
-        run: bash scripts/release.sh 8.1.0 "$(cat docs/releases/8.1.0.md)"
+        run: |
+          VER=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
+          bash scripts/release.sh "$VER" "$(cat "docs/releases/${VER}.md")"

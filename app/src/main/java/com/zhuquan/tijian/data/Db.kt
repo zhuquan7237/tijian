@@ -7,7 +7,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.io.File
 
-class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelper(context, databaseName, null, 7) {
+class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelper(context, databaseName, null, 8) {
 
     companion object {
         const val UNCAT = "uncat"
@@ -53,6 +53,9 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                 ai_confidence REAL NOT NULL DEFAULT 0, note TEXT DEFAULT '',
                 custom_tag TEXT DEFAULT '', note_images TEXT DEFAULT '[]',
                 image_id TEXT, content_hash TEXT,
+                sort INTEGER NOT NULL DEFAULT 0,
+                starred INTEGER NOT NULL DEFAULT 0,
+                unimportant INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER)"""
             )
         db.execSQL("CREATE INDEX idx_q_cat ON question(category_id, deleted_at)")
@@ -143,6 +146,16 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             if (hasTable(db, "question")) {
                 addColumnIfMissing(db, "question", "sort", "INTEGER NOT NULL DEFAULT 0")
             }
+        }
+        if (oldVersion < 8 && hasTable(db, "question")) {
+            addColumnIfMissing(db, "question", "sort", "INTEGER NOT NULL DEFAULT 0")
+            addColumnIfMissing(db, "question", "starred", "INTEGER NOT NULL DEFAULT 0")
+            addColumnIfMissing(db, "question", "unimportant", "INTEGER NOT NULL DEFAULT 0")
+            // 从未排过期的旧题补上「收录后一天」；已有复习计划的题不动。
+            db.execSQL(
+                """UPDATE question SET next_review_at = created_at + $REVIEW_DAY_MS
+                   WHERE deleted_at IS NULL AND (next_review_at IS NULL OR next_review_at = 0)"""
+            )
         }
     }
 
@@ -325,13 +338,22 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
 
     // ---------- questions ----------
 
-    fun questions(categoryId: String? = null, filter: String = "all", query: String = ""): List<QuestionRow> {
+    fun questions(
+        categoryId: String? = null,
+        filter: String = "all",
+        query: String = "",
+        subject: String? = null,
+    ): List<QuestionRow> {
         val where = StringBuilder("q.deleted_at IS NULL")
         val args = ArrayList<String>()
         if (categoryId != null) { where.append(" AND q.category_id=?"); args.add(categoryId) }
+        if (!subject.isNullOrBlank()) {
+            where.append(" AND (q.subject=? OR IFNULL(c.subject,'')=?)")
+            args.add(subject); args.add(subject)
+        }
         when (filter) {
             "weak" -> where.append(" AND q.mastery<4")
-            "due" -> where.append(" AND q.next_review_at IS NOT NULL AND q.next_review_at<=${System.currentTimeMillis()}")
+            "due" -> where.append(" AND IFNULL(q.unimportant,0)=0 AND q.mastery<4 AND q.next_review_at IS NOT NULL AND q.next_review_at<=${System.currentTimeMillis()}")
             "week" -> where.append(" AND q.created_at>=?").also {
                 args.add((System.currentTimeMillis() - 7L * 86400_000).toString())
             }
@@ -357,12 +379,48 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
     fun recentQuestions(limit: Int): List<QuestionRow> =
         queryQuestions("q.deleted_at IS NULL", emptyArray(), "q.created_at DESC LIMIT $limit")
 
-    fun dueQuestions(limit: Int = 30): List<QuestionRow> =
-        queryQuestions(
-            "q.deleted_at IS NULL AND q.next_review_at IS NOT NULL AND q.next_review_at<=?",
+    /**
+     * 今天真正要看的题：到期、还没掌握、没有标成不重要。
+     * 标星的排在前面。超出每日上限的留在库里，明天这批做完后会轮到。
+     */
+    fun todayQueue(limit: Int): List<QuestionRow> {
+        val cap = limit.coerceIn(1, 30)
+        return queryQuestions(
+            "q.deleted_at IS NULL AND IFNULL(q.unimportant,0)=0 AND q.mastery<4 AND q.next_review_at IS NOT NULL AND q.next_review_at<=?",
             arrayOf(System.currentTimeMillis().toString()),
-            "q.next_review_at ASC LIMIT $limit"
+            "IFNULL(q.starred,0) DESC, q.next_review_at ASC LIMIT $cap"
         )
+    }
+
+    fun dueEligibleCount(): Int = scalar(
+        """SELECT COUNT(*) FROM question WHERE deleted_at IS NULL AND IFNULL(unimportant,0)=0
+           AND mastery<4 AND next_review_at IS NOT NULL AND next_review_at<=${System.currentTimeMillis()}"""
+    )
+
+    fun dueQuestions(limit: Int = 30): List<QuestionRow> = todayQueue(limit)
+
+    data class QueueHold(val id: String, val mastery: Int, val nextReviewAt: Long, val unimportant: Boolean)
+
+    fun queueHold(id: String): QueueHold? = read(
+        "SELECT mastery, IFNULL(next_review_at,0), IFNULL(unimportant,0) FROM question WHERE id=?",
+        arrayOf(id)
+    ) { QueueHold(id, it.getInt(0), it.getLong(1), it.getInt(2) != 0) }.firstOrNull()
+
+    /** 一键掌握：掌握度提到 4，立刻退出每日名额。时间表留着，撤销后还能回来。 */
+    fun markMasteredOut(id: String) = writableDatabase.execSQL(
+        "UPDATE question SET mastery=?, unimportant=0, updated_at=? WHERE id=?",
+        arrayOf(4, System.currentTimeMillis(), id)
+    )
+
+    fun markUnimportant(id: String, value: Boolean) = writableDatabase.execSQL(
+        "UPDATE question SET unimportant=?, updated_at=? WHERE id=?",
+        arrayOf(if (value) 1 else 0, System.currentTimeMillis(), id)
+    )
+
+    fun restoreQueueHold(hold: QueueHold) = writableDatabase.execSQL(
+        "UPDATE question SET mastery=?, next_review_at=?, unimportant=?, updated_at=? WHERE id=?",
+        arrayOf(hold.mastery, hold.nextReviewAt, if (hold.unimportant) 1 else 0, System.currentTimeMillis(), hold.id)
+    )
 
     /** 内容指纹判重：题干+选项+答案完全一致才算重复（图片层面的重复由 sha256 那层负责）。 */
     fun hasContentHash(hash: String): Boolean = hash.isNotEmpty() && scalar(
@@ -382,7 +440,9 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             q.answer, q.analysis, q.knowledge_tags, q.difficulty, q.error_reasons, q.source,
             q.mastery, q.review_count, IFNULL(q.next_review_at,0), q.ai_confidence, q.note,
             q.image_id, i.path, q.created_at, q.need_formulas, q.need_concepts, q.need_methods,
-            q.custom_tag, q.note_images
+            q.custom_tag, q.note_images, IFNULL(q.starred,0),
+            CASE WHEN IFNULL(c.subject,'')!='' THEN c.subject ELSE IFNULL(q.subject,'') END,
+            IFNULL(q.unimportant,0)
             FROM question q LEFT JOIN category c ON c.id=q.category_id
             LEFT JOIN image i ON i.id=q.image_id
             WHERE $where ORDER BY $order"""
@@ -399,18 +459,22 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                 needConcepts = c.getString(21) ?: "[]",
                 needMethods = c.getString(22) ?: "[]",
                 customTag = c.getString(23) ?: "",
-                noteImages = c.getString(24) ?: "[]"
+                noteImages = c.getString(24) ?: "[]",
+                starred = c.getInt(25) != 0,
+                subjectName = c.getString(26) ?: "",
+                unimportant = c.getInt(27) != 0
             )
         }
     }
 
     /** All selected drafts commit together, or remain available for retry. */
-    fun saveDrafts(drafts: List<DraftQuestion>, batchId: String?): Pair<Int, Int> {
+    fun saveDrafts(drafts: List<DraftQuestion>, batchId: String?): SaveResult {
         val sql = writableDatabase
         sql.beginTransaction()
         try {
             var saved = 0
             var skipped = 0
+            val ids = ArrayList<String>()
             val seen = HashSet<String>()
             // 指纹和分类一次性预取，避免每道草稿在事务里反复全表查询
             val existingHashes = HashSet<String>()
@@ -425,13 +489,14 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
                 } else {
                     val catKey = draft.categoryName.ifBlank { "未分类" }
                     val categoryId = catCache.getOrPut(catKey) { ensureCategory(catKey) }
-                    insertQuestion(draft, categoryId, batchId, categorySubject(categoryId), contentHashValue = hash)
+                    val id = insertQuestion(draft, categoryId, batchId, categorySubject(categoryId), contentHashValue = hash)
+                    ids.add(id)
                     if (hash.isNotEmpty()) existingHashes.add(hash)
                     saved++
                 }
             }
             sql.setTransactionSuccessful()
-            return saved to skipped
+            return SaveResult(saved, skipped, ids)
         } finally {
             sql.endTransaction()
         }
@@ -458,7 +523,7 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
             put("need_methods", draft.needMethods)
             put("error_reasons", errorReasons); put("source", source)
             put("captured_at", now); put("mastery", 0); put("review_count", 0)
-            put("next_review_at", now); put("ai_confidence", draft.confidence)
+            put("next_review_at", firstReviewAt(now)); put("ai_confidence", draft.confidence)
             put("custom_tag", draft.customTag.trim())
             put("image_id", draft.imageId); put("content_hash", contentHashValue)
             put("created_at", now); put("updated_at", now)
@@ -477,6 +542,11 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
     )
 
     /** 手输的自定义标签（如「卷一 · 第 12 题」），列表里跟在分类后面显示。 */
+    fun setStarred(id: String, starred: Boolean) = writableDatabase.execSQL(
+        "UPDATE question SET starred=?, updated_at=? WHERE id=?",
+        arrayOf(if (starred) 1 else 0, System.currentTimeMillis(), id)
+    )
+
     fun updateQuestionTag(id: String, tag: String) = writableDatabase.execSQL(
         "UPDATE question SET custom_tag=?, updated_at=? WHERE id=?",
         arrayOf(tag.trim(), System.currentTimeMillis(), id)
@@ -683,15 +753,11 @@ class Db(context: Context, databaseName: String = "tijian.db") : SQLiteOpenHelpe
     fun stats(): Stats {
         val total = scalar("SELECT COUNT(*) FROM question WHERE deleted_at IS NULL")
         val mastered = scalar("SELECT COUNT(*) FROM question WHERE deleted_at IS NULL AND mastery>=4")
-        val due = scalar("SELECT COUNT(*) FROM question WHERE deleted_at IS NULL AND next_review_at IS NOT NULL AND next_review_at<=${System.currentTimeMillis()}")
+        val due = dueEligibleCount()
         val streak = scalar(
             "SELECT COUNT(DISTINCT date(reviewed_at/1000,'unixepoch','localtime')) FROM review_log WHERE reviewed_at>=${System.currentTimeMillis() - 7L * 86400_000}"
         )
         return Stats(total, mastered, due, streak)
-    }
-
-    private fun scalar(sql: String): Int = readableDatabase.rawQuery(sql, null).use {
-        if (it.moveToFirst()) it.getInt(0) else 0
     }
 
     // ---------- images ----------

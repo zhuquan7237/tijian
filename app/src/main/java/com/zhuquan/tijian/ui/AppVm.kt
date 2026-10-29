@@ -14,6 +14,9 @@ import com.zhuquan.tijian.data.DocRow
 import com.zhuquan.tijian.data.DraftQuestion
 import com.zhuquan.tijian.data.ProviderConfig
 import com.zhuquan.tijian.data.QuestionRow
+import com.zhuquan.tijian.data.ReviewSessionState
+import com.zhuquan.tijian.data.decodeReviewSession
+import com.zhuquan.tijian.data.encodeReviewSession
 import com.zhuquan.tijian.data.parseKnowledgeTags
 import com.zhuquan.tijian.data.Stats
 import com.zhuquan.tijian.data.newId
@@ -40,6 +43,7 @@ sealed interface Route {
     data object Provider : Route
     data object Trash : Route
     data object Tidy : Route
+    data object Print : Route
 }
 
 class AppVm(app: Application) : AndroidViewModel(app) {
@@ -60,12 +64,33 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         private set
     var stats by androidx.compose.runtime.mutableStateOf(Stats(0, 0, 0, 0))
         private set
+    var todayQueue by androidx.compose.runtime.mutableStateOf<List<QuestionRow>>(emptyList())
+        private set
+    var dueOverflow by androidx.compose.runtime.mutableIntStateOf(0)
+        private set
+    var dailyCap by androidx.compose.runtime.mutableIntStateOf(8)
+        private set
+    var remindEnabled by androidx.compose.runtime.mutableStateOf(true)
+        private set
+    var remindHour by androidx.compose.runtime.mutableIntStateOf(20)
+        private set
+    var remindMinute by androidx.compose.runtime.mutableIntStateOf(0)
+        private set
     var docs by androidx.compose.runtime.mutableStateOf<List<DocRow>>(emptyList())
         private set
     var provider by androidx.compose.runtime.mutableStateOf(ProviderConfig())
         private set
 
     var toast by androidx.compose.runtime.mutableStateOf<String?>(null)
+
+    /** 首页「其他方式」底部面板。任意页面都能打开，不必各自再做一套入口。 */
+    var importSheet by androidx.compose.runtime.mutableStateOf(false)
+
+    /** 刚入库的题目：详情页用来串「看解析 → 追问 → 下一题」。 */
+    var freshIds by androidx.compose.runtime.mutableStateOf<List<String>>(emptyList())
+        private set
+
+    private var armCamera = false
     var importing by androidx.compose.runtime.mutableStateOf(false)
         private set
     var importProgress by androidx.compose.runtime.mutableStateOf(0f)
@@ -387,14 +412,11 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             busy = true; busyLabel = "载入示例题"
             try {
-                val n = withContext(Dispatchers.IO) {
-                    val drafts = sampleDrafts()
-                    val (saved, _) = db.saveDrafts(drafts, null)
-                    saved
-                }
+                val result = withContext(Dispatchers.IO) { db.saveDrafts(sampleDrafts(), null) }
                 dismissOnboarding()
                 refresh()
-                toast = "已载入 $n 道示例题，去「今日复习」试试流程"
+                if (result.ids.isNotEmpty()) landOnFresh(result.ids)
+                toast = "已载入 ${result.saved} 道示例题。先看解析，看不懂就追问，明天再复习"
             } finally {
                 busy = false; busyLabel = ""
             }
@@ -451,14 +473,108 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     fun refresh() {
         viewModelScope.launch(Dispatchers.IO) {
+            val cap = db.getSetting("review.dailyCap")?.toIntOrNull()?.coerceIn(5, 15) ?: 8
             val cats = db.categories()
             val st = db.stats()
+            val today = db.todayQueue(cap)
+            val overflow = (db.dueEligibleCount() - today.size).coerceAtLeast(0)
             val ds = db.docs()
             val p = db.provider()
             val trash = db.trashCount()
+            val remind = com.zhuquan.tijian.review.ReviewReminder.enabled(db)
+            val hour = com.zhuquan.tijian.review.ReviewReminder.hour(db)
+            val minute = com.zhuquan.tijian.review.ReviewReminder.minute(db)
             withContext(Dispatchers.Main) {
-                categories = cats; stats = st; docs = ds; provider = p; trashCount = trash; dataRevision++
+                dailyCap = cap
+                categories = cats; stats = st; todayQueue = today; dueOverflow = overflow
+                docs = ds; provider = p; trashCount = trash
+                remindEnabled = remind; remindHour = hour; remindMinute = minute
+                dataRevision++
             }
+        }
+    }
+
+    fun chooseDailyCap(n: Int) {
+        val cap = n.coerceIn(5, 15)
+        dailyCap = cap
+        viewModelScope.launch(Dispatchers.IO) {
+            db.putSetting("review.dailyCap", cap.toString())
+            withContext(Dispatchers.Main) { refresh() }
+        }
+    }
+
+    fun setReminder(enabled: Boolean, hour: Int, minute: Int) {
+        remindEnabled = enabled
+        remindHour = hour.coerceIn(0, 23)
+        remindMinute = minute.coerceIn(0, 59)
+        viewModelScope.launch(Dispatchers.IO) {
+            db.putSetting("review.remind", if (enabled) "1" else "0")
+            db.putSetting("review.remindHour", remindHour.toString())
+            db.putSetting("review.remindMinute", remindMinute.toString())
+            withContext(Dispatchers.Main) {
+                com.zhuquan.tijian.review.ReviewReminder.schedule(getApplication())
+            }
+        }
+    }
+
+    fun openTodayReview() {
+        startReview(ReviewMode.DUE, dailyCap)
+    }
+
+    fun markMasteredQuick(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val hold = db.queueHold(id) ?: return@launch
+            db.markMasteredOut(id)
+            withContext(Dispatchers.Main) {
+                dropFromReview(id)
+                refresh()
+                showUndo("已标为掌握，不再占复习名额") {
+                    viewModelScope.launch(Dispatchers.IO) {
+                        db.restoreQueueHold(hold)
+                        withContext(Dispatchers.Main) { refresh() }
+                    }
+                }
+            }
+        }
+    }
+
+    fun markUnimportantQuick(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val hold = db.queueHold(id) ?: return@launch
+            db.markUnimportant(id, true)
+            withContext(Dispatchers.Main) {
+                dropFromReview(id)
+                refresh()
+                showUndo("已标为不重要，不再占复习名额") {
+                    viewModelScope.launch(Dispatchers.IO) {
+                        db.restoreQueueHold(hold)
+                        withContext(Dispatchers.Main) { refresh() }
+                    }
+                }
+            }
+        }
+    }
+
+    fun restoreToQueue(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val hold = db.queueHold(id) ?: return@launch
+            val back = hold.copy(
+                mastery = hold.mastery.coerceAtMost(3),
+                unimportant = false,
+                nextReviewAt = hold.nextReviewAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
+            )
+            db.restoreQueueHold(back)
+            withContext(Dispatchers.Main) { refresh(); toast = "已重新加入复习" }
+        }
+    }
+
+    private fun dropFromReview(id: String) {
+        if (reviewQueue.any { it.id == id }) {
+            val idx = reviewQueue.indexOfFirst { it.id == id }
+            reviewQueue = reviewQueue.filter { it.id != id }
+            if (idx in 0 until reviewIndex) reviewIndex--
+            if (reviewIndex > reviewQueue.size) reviewIndex = reviewQueue.size
+            persistReviewSession()
         }
     }
 
@@ -576,6 +692,65 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             runCatching { uri.path?.let { File(it).takeIf { f -> f.parentFile == stagingDir }?.delete() } }
         }
         if (captureUris.isEmpty()) { synchronized(stagedByOriginal) { stagedByOriginal.clear() }; wipeStaging() } else saveCaptureManifest()
+    }
+
+    /** 收录入口：有未完成的识别就接着做，否则打开方式面板。 */
+    fun openAdd() {
+        when {
+            importing || pending.isNotEmpty() -> go(Route.Import)
+            captureUris.isNotEmpty() -> go(Route.Capture)
+            else -> importSheet = true
+        }
+    }
+
+    /** 拍照是每天的第一步：直接进相机，而不是先看空工作台。 */
+    fun openCameraCapture() {
+        if (importing || pending.isNotEmpty()) {
+            openAdd()
+            return
+        }
+        clearCapture()
+        armCamera = true
+        go(Route.Capture)
+    }
+
+    fun consumeCameraArm(): Boolean {
+        val armed = armCamera
+        armCamera = false
+        return armed
+    }
+
+    fun landOnFresh(ids: List<String>) {
+        if (ids.isEmpty()) {
+            home()
+            return
+        }
+        freshIds = ids
+        navForward = true
+        stack.clear()
+        stack.add(Route.Home)
+        route = Route.Detail(ids.first())
+    }
+
+    fun stepFresh(delta: Int) {
+        val current = (route as? Route.Detail)?.id ?: return
+        val index = freshIds.indexOf(current)
+        if (index < 0) return
+        val next = index + delta
+        if (next !in freshIds.indices) return
+        route = Route.Detail(freshIds[next])
+    }
+
+    fun dismissFresh() {
+        freshIds = emptyList()
+    }
+
+    fun setStarred(id: String, starred: Boolean) {
+        cachedQuestion(id)?.let { cacheQuestion(it.copy(starred = starred)) }
+        viewModelScope.launch(Dispatchers.IO) {
+            db.setStarred(id, starred)
+            withContext(Dispatchers.Main) { refresh() }
+        }
     }
 
     fun clearCapture() {
@@ -765,13 +940,16 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         busyLabel = "正在入库"
         viewModelScope.launch {
             try {
-                val (saved, skipped) = withContext(Dispatchers.IO) { db.saveDrafts(list, pendingBatch) }
+                val result = withContext(Dispatchers.IO) { db.saveDrafts(list, pendingBatch) }
                 val completed = list.map { it.id }.toSet()
                 pending = pending.filterNot { it.id in completed }
-                if (pending.isEmpty()) { pendingBatch = null; home() }
+                val done = pending.isEmpty()
+                if (done) pendingBatch = null
                 saveDraftState()
                 refresh()
-                toast = if (skipped > 0) "已入库 $saved 题 · 跳过 $skipped 道重复" else "已入库 $saved 题"
+                toast = if (result.skipped > 0) "已入库 ${result.saved} 题 · 跳过 ${result.skipped} 道重复" else "已入库 ${result.saved} 题"
+                if (done && result.ids.isNotEmpty()) landOnFresh(result.ids)
+                else if (done) home()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -875,22 +1053,63 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) { db.putSetting("review.showImage", if (v) "1" else "0") }
     }
 
-    /** 上一轮没复习完时，首页给「继续上次复习」入口。 */
+    /** 上一轮没做完（含刚打开还没评的第一题）。做完的队列不算。 */
     val canResumeReview: Boolean
-        get() = reviewQueue.isNotEmpty() && reviewIndex in 1 until reviewQueue.size
+        get() = reviewQueue.isNotEmpty() && reviewIndex < reviewQueue.size
 
-    fun resumeReview() { if (canResumeReview) { revealAnswer = false; route = Route.Review } }
+    fun resumeReview() { if (canResumeReview) route = Route.Review }
 
     /** 一轮结束回到首页：清掉队列，避免「继续上次复习」残留。 */
     fun clearReviewSession() {
         reviewQueue = emptyList(); reviewIndex = 0; revealAnswer = false
         wrongThisRound.clear(); rateHistory.clear(); canUndoRate = false
+        persistReviewSession()
     }
+
+    private fun persistReviewSession() {
+        val queue = reviewQueue
+        val index = reviewIndex
+        val modeName = reviewMode.name
+        val reveal = revealAnswer
+        val wrong = wrongThisRound.toList()
+        viewModelScope.launch(Dispatchers.IO) {
+            if (queue.isEmpty() || index >= queue.size) {
+                db.putSetting("review.session", "")
+            } else {
+                db.putSetting(
+                    "review.session",
+                    encodeReviewSession(ReviewSessionState(modeName, index, reveal, queue.map { it.id }, wrong))
+                )
+            }
+        }
+    }
+
+    private fun restoreReviewSession() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val state = decodeReviewSession(db.getSetting("review.session").orEmpty()) ?: return@launch
+            val list = state.ids.mapNotNull { db.question(it) }
+            if (list.isEmpty()) return@launch
+            val index = state.index.coerceIn(0, list.lastIndex)
+            val mode = runCatching { ReviewMode.valueOf(state.mode) }.getOrDefault(ReviewMode.DUE)
+            withContext(Dispatchers.Main) {
+                if (reviewQueue.isNotEmpty()) return@withContext
+                reviewQueue = list
+                reviewIndex = index
+                reviewMode = mode
+                revealAnswer = state.reveal
+                wrongThisRound.clear()
+                val live = list.map { it.id }.toSet()
+                state.wrong.filter { it in live }.forEach { wrongThisRound.add(it) }
+            }
+        }
+    }
+
+    init { restoreReviewSession() }
 
     fun startReview(mode: ReviewMode = ReviewMode.DUE, count: Int = reviewCountPref, categoryId: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             val base = when (mode) {
-                ReviewMode.DUE -> db.dueQuestions(if (count > 0) count else 200)
+                ReviewMode.DUE -> db.todayQueue(dailyCap)
                 ReviewMode.CATEGORY -> {
                     val all = db.questions(categoryId)
                     all.filter { it.mastery < 4 }.ifEmpty { all }
@@ -907,6 +1126,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 rateHistory.clear()
                 canUndoRate = false
                 route = Route.Review
+                persistReviewSession()
             }
         }
     }
@@ -931,29 +1151,32 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 rateHistory.clear()
                 canUndoRate = false
                 route = Route.Review
+                persistReviewSession()
             }
         }
     }
 
-    fun reveal() { revealAnswer = true }
+    fun reveal() { revealAnswer = true; persistReviewSession() }
 
     fun rate(rating: Int) {
-        val q = reviewQueue.getOrNull(reviewIndex) ?: return
-        // 先同步推进队列再落库：评分按钮立刻失效，连点不会对同一题记两次
+        val index = reviewIndex
+        val q = reviewQueue.getOrNull(index) ?: return
+        // 先在主线程推进，连点只会落到下一题，不会把同一题记两次。
+        reviewIndex = index + 1
+        revealAnswer = false
+        if (rating == 0 && q.id !in wrongThisRound) wrongThisRound.add(q.id)
+        persistReviewSession()
         viewModelScope.launch(Dispatchers.IO) {
             val snapshot = db.snapshotForReview(q.id)
+            db.review(q.id, rating)
             withContext(Dispatchers.Main) {
                 if (snapshot != null) {
                     rateHistory.addLast(q to snapshot)
-                    if (rateHistory.size > 20) rateHistory.removeFirst()
+                    while (rateHistory.size > 20) rateHistory.removeFirst()
                     canUndoRate = true
                 }
-                if (rating == 0) wrongThisRound.add(q.id)
-                reviewIndex++
-                revealAnswer = false
+                if (reviewIndex >= reviewQueue.size) refresh()
             }
-            db.review(q.id, rating)
-            if (reviewIndex >= reviewQueue.size) withContext(Dispatchers.Main) { refresh() }
         }
     }
 
@@ -964,7 +1187,27 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         if (reviewIndex > 0) reviewIndex--
         revealAnswer = false
         canUndoRate = rateHistory.isNotEmpty()
+        persistReviewSession()
         viewModelScope.launch(Dispatchers.IO) { db.revertReview(snapshot) }
+    }
+
+    /** 详情页上的快捷追问：带上当前题的上下文，点一下就发出去。 */
+    fun askAboutCurrent(prompt: String) {
+        val id = (route as? Route.Detail)?.id ?: return
+        if (chatBusy) return
+        viewModelScope.launch {
+            val q = withContext(Dispatchers.IO) { db.question(id) } ?: return@launch
+            if (!provider.ready()) {
+                toast = "先在「我的 → AI 接入」配置模型"
+                return@launch
+            }
+            lastQuestionId = id
+            chatQuestion = q
+            chatMessages = withContext(Dispatchers.IO) { db.chatMessages(id) }
+            chatQuote = ""
+            chatOpen = true
+            sendChat(prompt)
+        }
     }
 
     var needsBusyFor by androidx.compose.runtime.mutableStateOf<String?>(null)
