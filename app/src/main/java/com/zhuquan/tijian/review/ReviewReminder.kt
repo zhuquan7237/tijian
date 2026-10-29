@@ -88,7 +88,12 @@ object ReviewReminder {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
-        NotificationManagerCompat.from(context).notify(NOTICE, notice)
+        try {
+            NotificationManagerCompat.from(context).notify(NOTICE, notice)
+        } catch (_: SecurityException) {
+            // Notification permission can be revoked after the check above.
+            // Keep the next reminder scheduled without crashing the receiver.
+        }
     }
 
     private fun ensureChannel(context: Context) {
