@@ -44,7 +44,11 @@ object ReviewReminder {
     }
 
     fun schedule(context: Context) {
-        val app = context.applicationContext as App
+        runCatching { scheduleExact(context) }
+    }
+
+    private fun scheduleExact(context: Context) {
+        val app = context.applicationContext as? App ?: return
         val am = context.getSystemService(AlarmManager::class.java) ?: return
         val pi = pending(context)
         if (!enabled(app.db)) {
@@ -52,13 +56,9 @@ object ReviewReminder {
             return
         }
         val whenMs = nextDailyTrigger(hour(app.db), minute(app.db), System.currentTimeMillis(), TimeZone.getDefault())
-        try {
-            val exactOk = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
-            if (exactOk) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, whenMs, pi)
-            else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, whenMs, pi)
-        } catch (_: SecurityException) {
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, whenMs, pi)
-        }
+        val exactOk = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
+        if (exactOk) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, whenMs, pi)
+        else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, whenMs, pi)
     }
 
     fun showToday(context: Context) {
