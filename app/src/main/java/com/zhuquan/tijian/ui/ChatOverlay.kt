@@ -76,10 +76,9 @@ import kotlinx.coroutines.withContext
 @Composable
 fun ChatOverlay(vm: AppVm) {
     BackHandler(enabled = vm.chatOpen) { vm.closeChat() }
-    // 悬浮球只在「有题目上下文」的页面出现（详情 / 复习）。识别校对、导入工作台
-    // 这类页面它没有可追问的对象，留在那里只会压住「确认入库」「开始识别」等主按钮。
-    // 复习揭晓前不放追问球：这一步是自己回想。看解析、追问发生在题目详情里。
-    val contextual = vm.route is Route.Detail || (vm.route is Route.Review && vm.revealAnswer)
+    // 详情页已经有「还没看懂？」卡片，不再叠一颗会盖住它的悬浮球。
+    // 复习揭晓后没有这张卡片，才保留追问球。揭晓前不放：那一步是自己回想。
+    val contextual = vm.route is Route.Review && vm.revealAnswer
     when {
         vm.chatOpen -> ChatPanel(vm)
         contextual -> ChatFab(vm)

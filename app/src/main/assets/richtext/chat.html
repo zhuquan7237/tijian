@@ -71,8 +71,9 @@
   th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
   th { background: var(--surface-alt); }
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .katex { font-size: 1.04em; }
-  .math-inline { display: inline-block; vertical-align: middle; max-width: 100%; }
+  .katex { font-size: 1em; }
+  .math-inline { display: inline-block; vertical-align: baseline; max-width: 100%; }
+  .math-inline > .katex { vertical-align: baseline; padding: 0; }
   .math-display { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 8px 0; }
   .math-display .katex-display { margin: 0; padding: .1em 0; }
   .math-display .katex-display > .katex { text-align: left; }
@@ -165,6 +166,17 @@
       var copyBtn = '<div class="copy-row"><button class="copy-btn" data-copy="' + i + '">复制全文</button></div>';
       return '<div class="row ai"><div class="card"><div class="who">题笺 AI</div>' + body + copyBtn + '</div></div>';
     }).join('');
+    var bodyPx = parseFloat(getComputedStyle(document.body).fontSize) || 14;
+    var cap = bodyPx * 1.7;
+    var nodes = out.querySelectorAll('.math-inline > .katex');
+    for (var n = 0; n < nodes.length; n++) {
+      var el = nodes[n];
+      var h = el.getBoundingClientRect().height;
+      if (h > cap + 0.5) {
+        var fs = parseFloat(getComputedStyle(el).fontSize) || bodyPx;
+        el.style.fontSize = (fs * cap / h) + 'px';
+      }
+    }
     if (scrollBottom) {
       requestAnimationFrame(function () { window.scrollTo(0, document.body.scrollHeight); });
       setTimeout(function () { window.scrollTo(0, document.body.scrollHeight); }, 120);

@@ -50,7 +50,7 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.PlayCircle
-import androidx.compose.material.icons.rounded.MenuBook
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import kotlin.math.roundToInt
@@ -150,7 +150,7 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
             title = "错题本",
             subtitle = when {
                 vm.stats.total == 0 -> "拍一道错题，看懂后再复习"
-                vm.stats.due > 0 -> "${vm.stats.due} 道到了复习时间"
+                vm.stats.due > 0 -> null
                 else -> "${vm.stats.total} 道 · 今天没有到期"
             },
             actions = {
@@ -1161,6 +1161,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
     var revealed by rememberSaveable(id) { mutableStateOf(false) }
     // 原图与识别题干快捷切换：默认看题干，免得同一内容占两屏
     var showImage by rememberSaveable(id) { mutableStateOf(false) }
+    var moreMenu by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(id, vm.dataRevision) {
@@ -1214,12 +1215,6 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
             onBack = { vm.back() },
             actions = {
                 IconCircle(
-                    if (practice) Icons.Rounded.MenuBook else Icons.Rounded.School,
-                    if (practice) "切换到阅读模式" else "切换到练习模式",
-                ) {
-                    if (practice) { practice = false; revealed = false } else practice = true
-                }
-                IconCircle(
                     if (question.starred) Icons.Rounded.Star else Icons.Rounded.StarBorder,
                     if (question.starred) "取消标星" else "标为重要",
                     tint = if (question.starred) Amber else Ink2,
@@ -1229,8 +1224,29 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                     vm.cacheQuestion(question.copy(starred = next))
                     vm.setStarred(question.id, next)
                 }
-                IconCircle(Icons.Rounded.Edit, "编辑") { editing = true }
-                IconCircle(Icons.Rounded.DeleteOutline, "删除", tint = Red) { confirmDelete = true }
+                Box {
+                    IconCircle(Icons.Rounded.MoreVert, "更多") { moreMenu = true }
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = moreMenu,
+                        onDismissRequest = { moreMenu = false },
+                    ) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text(if (practice) "改为阅读" else "改为练习", fontSize = 14.sp) },
+                            onClick = {
+                                moreMenu = false
+                                if (practice) { practice = false; revealed = false } else practice = true
+                            },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("编辑", fontSize = 14.sp) },
+                            onClick = { moreMenu = false; editing = true },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("删除", fontSize = 14.sp, color = Red) },
+                            onClick = { moreMenu = false; confirmDelete = true },
+                        )
+                    }
+                }
             }
         )
         Column(Modifier.weight(1f).verticalScroll(detailScroll).padding(horizontal = Space.page, vertical = 8.dp)) {
@@ -1321,14 +1337,14 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
             }
             if (hasStemText(stemText) && !(hasImage && showImage)) {
                 CardBox {
-                    Column(Modifier.padding(vertical = 6.dp)) {
-                        RichText(
-                            markdown = "",
-                            sections = listOf(RichSectionSpec("题目", stemText, "", Ink2.toHexColor(), s(16), kind = "stem")),
-                            selectable = true,
-                            onAsk = { vm.openChat(it) },
-                        )
-                    }
+                    RichText(
+                        markdown = "",
+                        sections = listOf(RichSectionSpec("题目", stemText, "", Ink2.toHexColor(), s(16), kind = "stem")),
+                        selectable = true,
+                        onAsk = { vm.openChat(it) },
+                        fallbackHorizontal = 16.dp,
+                        fallbackVertical = 14.dp,
+                    )
                 }
                 Spacer(Modifier.height(12.dp))
             }
@@ -1568,8 +1584,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
             ) {
                 NoteCardContent(vm, question)
             }
-            // 底部留出悬浮追问球的高度，最后一张卡（掌握度）能滚到球上方，不被压住。
-            Spacer(Modifier.height(96.dp))
+            Spacer(Modifier.height(24.dp))
         }
     }
 

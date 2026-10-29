@@ -198,6 +198,9 @@ fun RichText(
     onSelect: (String) -> Unit = {},
     onAsk: (String) -> Unit = {},
     onReady: () -> Unit = {},
+    /** WebView 退出后的降级排版没有 HTML 卡片内边距，由调用方补上。 */
+    fallbackHorizontal: androidx.compose.ui.unit.Dp = 0.dp,
+    fallbackVertical: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     if (sections == null && markdown.isBlank()) return
     val context = LocalContext.current
@@ -254,7 +257,7 @@ fun RichText(
     val crashed = remember { mutableStateOf(false) }
     val onRendererGone = rememberUpdatedState { crashed.value = true }
     if (crashed.value) {
-        RichPlainFallback(markdown, sections, scaledFontSize)
+        RichPlainFallback(markdown, sections, scaledFontSize, fallbackHorizontal, fallbackVertical)
         return@BoxWithConstraints
     }
 
@@ -380,8 +383,14 @@ fun RichText(
 
 /** WebView 渲染进程退出后的同一套行内公式，避免详情页空白或把应用杀掉。 */
 @Composable
-private fun RichPlainFallback(markdown: String, sections: List<RichSectionSpec>?, fontSize: Int) {
-    Column(Modifier.fillMaxWidth()) {
+private fun RichPlainFallback(
+    markdown: String,
+    sections: List<RichSectionSpec>?,
+    fontSize: Int,
+    horizontal: androidx.compose.ui.unit.Dp,
+    vertical: androidx.compose.ui.unit.Dp,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = horizontal, vertical = vertical)) {
         if (sections.isNullOrEmpty()) {
             if (markdown.isNotBlank()) {
                 MathText(markdown, Ink, fontSize.toFloat(), Modifier.fillMaxWidth())
