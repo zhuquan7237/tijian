@@ -68,6 +68,15 @@ object RichBitmap {
                 override fun onPageFinished(view: android.webkit.WebView, url: String?) {
                     view.evaluateJavascript("window.__report && window.__report()", null)
                 }
+
+                override fun onRenderProcessGone(
+                    view: android.webkit.WebView,
+                    detail: android.webkit.RenderProcessGoneDetail,
+                ): Boolean {
+                    android.util.Log.e("RichBitmap", "renderer gone crashed=${detail.didCrash()}")
+                    if (!first.isCompleted) first.complete(-1)
+                    return true
+                }
             }
 
             val host = FrameLayout(ctx)
@@ -91,6 +100,7 @@ object RichBitmap {
             )
 
             val h0 = withTimeoutOrNull(9000) { first.await() } ?: return@withContext null
+            if (h0 <= 0) return@withContext null
             var stable = 0
             var previous = -1
             for (attempt in 0 until 12) {

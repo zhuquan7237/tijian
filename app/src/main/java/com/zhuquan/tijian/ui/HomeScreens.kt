@@ -82,6 +82,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -144,7 +145,6 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             title = "错题本",
@@ -174,6 +174,7 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
 
         if (query.isNotBlank()) {
             val list = results
+            Box(Modifier.weight(1f).fillMaxWidth()) {
             if (searching) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Accent)
@@ -196,11 +197,15 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
                     }
                 }
             }
+            }
             return@Column
         }
 
+        // 滚动区只占顶栏和底部收录条之间的空间，并裁掉越界绘制，
+        // 避免题目卡片画到「拍照收录」下面。
+        Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 84.dp)
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 12.dp)
         ) {
             // 上次异常退出时被隔离的待确认题目：由用户决定恢复还是丢弃
             if (vm.quarantinedDrafts.isNotEmpty()) {
@@ -383,24 +388,8 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
             }
         }
-    }
-        if (query.isBlank()) {
-            Column(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                    .background(Bg).padding(horizontal = Space.page, vertical = 8.dp)
-            ) {
-                if (!vm.provider.ready() && vm.stats.total == 0) {
-                    Text(
-                        "还没接 AI 也可以先拍照或手动录入，识别时再去配置。",
-                        fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(bottom = 6.dp)
-                    )
-                }
-                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TjButton("拍照收录", Modifier.weight(1.4f).fillMaxHeight()) { vm.openCameraCapture() }
-                    TjButton("其他方式", Modifier.weight(1f).fillMaxHeight(), style = ActionStyle.Secondary) { onImport() }
-                }
-            }
         }
+        CaptureDock(vm, onImport)
     }
 
     if (showReviewSetup) {
@@ -493,8 +482,8 @@ private fun ReviewHero(vm: AppVm, onClick: () -> Unit) {
     val detail = when {
         total == 0 -> "拍下来，先看解析、追问没懂的地方。明天会自动排进复习。"
         resume -> "进行到第 ${vm.reviewIndex + 1} / ${vm.reviewQueue.size} 题"
-        due > 0 -> "先做这 $batch 道。标星的排在前面，掌握了或不重要的不占名额。" +
-            if (vm.dueOverflow > 0) " 还有 ${vm.dueOverflow} 道留到后面。" else ""
+        due > 0 -> "今天先做 $batch 道，标星的排在前面。掌握了或不重要的不占名额。" +
+            if (vm.dueOverflow > 0) "还有 ${vm.dueOverflow} 道留到后面。" else ""
         else -> "可以随便练 $batch 道，或去打印出来总复习。已掌握 $mastered / $total。"
     }
     val action = when {
@@ -504,13 +493,16 @@ private fun ReviewHero(vm: AppVm, onClick: () -> Unit) {
         else -> "随便练 $batch 题"
     }
     Column(
-        Modifier.padding(horizontal = Space.page).fillMaxWidth()
+        Modifier.padding(start = Space.page, end = Space.page, top = 4.dp).fillMaxWidth()
             .clip(CardShape).background(HeroBrush)
             .border(1.dp, HeroLine, CardShape)
             .padding(horizontal = 18.dp, vertical = 16.dp)
     ) {
         Text(title, fontSize = 18.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-        Text(detail, fontSize = 13.sp, lineHeight = 20.sp, color = Ink2, modifier = Modifier.padding(top = 6.dp))
+        Text(
+            detail, fontSize = 13.sp, lineHeight = 20.sp, color = Ink2,
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+        )
         if (total > 0) {
             Spacer(Modifier.height(12.dp))
             Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Accent.copy(alpha = 0.18f))) {
@@ -1017,11 +1009,9 @@ private fun GridCell(q: QuestionRow, selecting: Boolean, isSel: Boolean, onClick
                     contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
                 )
             } else {
-                Text(
-                    cleanMathLite(q.stem).ifBlank { "（无题干）" },
-                    fontSize = 11.sp, lineHeight = 16.sp, color = Ink2,
-                    maxLines = 5, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxSize().padding(start = 9.dp, end = 9.dp, top = 30.dp, bottom = 9.dp)
+                StemText(
+                    q.stem, color = Ink2, fontSizeSp = 11f, lineHeightSp = 16f, maxLines = 4,
+                    modifier = Modifier.fillMaxSize().padding(start = 9.dp, end = 9.dp, top = 30.dp, bottom = 9.dp),
                 )
             }
             // 题型徽标：左上，最醒目的类型信号
@@ -1243,7 +1233,7 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                 IconCircle(Icons.Rounded.DeleteOutline, "删除", tint = Red) { confirmDelete = true }
             }
         )
-        Column(Modifier.fillMaxSize().verticalScroll(detailScroll).padding(horizontal = Space.page, vertical = 8.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(detailScroll).padding(horizontal = Space.page, vertical = 8.dp)) {
             if (question.unimportant || question.mastery >= 4) {
                 Row(
                     Modifier.fillMaxWidth().clip(CardShape).background(SurfaceAlt)
@@ -2310,36 +2300,63 @@ fun reviewWhenLabel(next: Long): String {
 }
 
 @Composable
+private fun CaptureDock(vm: AppVm, onImport: () -> Unit) {
+    Column(Modifier.fillMaxWidth().background(Bg)) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
+        Column(Modifier.padding(horizontal = Space.page, vertical = 8.dp)) {
+            if (!vm.provider.ready() && vm.stats.total == 0) {
+                Text(
+                    "还没接 AI 也可以先拍照或手动录入，识别时再去配置。",
+                    fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(bottom = 6.dp)
+                )
+            }
+            Row(Modifier.fillMaxWidth().height(52.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TjButton("拍照收录", Modifier.weight(1.4f).fillMaxHeight()) { vm.openCameraCapture() }
+                TjButton("其他方式", Modifier.weight(1f).fillMaxHeight(), style = ActionStyle.Secondary) { onImport() }
+            }
+        }
+    }
+}
+
+@Composable
 private fun TodayRow(
     q: QuestionRow,
     onOpen: () -> Unit,
     onMastered: () -> Unit,
     onSkip: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = Space.page, vertical = 6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(
-                Modifier.weight(1f).tjClickable(label = "打开这道题", onClick = onOpen).padding(vertical = 4.dp)
-            ) {
-                Text(
-                    listOf(
-                        if (q.starred) "重要" else null,
-                        q.subjectName.ifBlank { null },
-                        q.categoryName.ifBlank { null },
-                    ).filterNotNull().joinToString(" · "),
-                    fontSize = 11.sp, color = if (q.starred) Amber else Muted, maxLines = 1
-                )
-                StemText(q.stem, color = Ink, fontSizeSp = 14f, lineHeightSp = 20f, maxLines = 2, modifier = Modifier.padding(top = 2.dp))
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = Space.page, vertical = 5.dp)
+            .clip(CardShape).background(CardBg).border(1.dp, Line, CardShape)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().tjClickable(label = "打开这道题", onClick = onOpen)) {
             Text(
-                "掌握", fontSize = 12.5.sp, color = Green, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.tjClickable(label = "标为掌握", onClick = onMastered).padding(vertical = 4.dp)
+                listOf(
+                    if (q.starred) "重要" else null,
+                    q.subjectName.ifBlank { null },
+                    q.categoryName.ifBlank { null },
+                ).filterNotNull().joinToString(" · "),
+                fontSize = 12.sp, color = if (q.starred) Amber else Muted, maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            StemText(
+                q.stem, color = Ink, fontSizeSp = 14.5f, lineHeightSp = 22f, maxLines = 3,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            )
+        }
+        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "掌握", fontSize = 13.sp, color = Green, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(CircleShape).background(GreenSoft)
+                    .tjClickable(label = "标为掌握", onClick = onMastered)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
             )
             Text(
-                "不重要", fontSize = 12.5.sp, color = Muted, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.tjClickable(label = "标为不重要", onClick = onSkip).padding(vertical = 4.dp)
+                "不重要", fontSize = 13.sp, color = Ink2, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(CircleShape).background(SurfaceAlt)
+                    .tjClickable(label = "标为不重要", onClick = onSkip)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
             )
         }
     }

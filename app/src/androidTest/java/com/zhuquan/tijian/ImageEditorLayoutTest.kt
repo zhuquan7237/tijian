@@ -190,6 +190,39 @@ class ImageEditorLayoutTest {
         } finally { source.delete(); out.delete() }
     }
 
+    @Test fun pdfWithoutWindowStillRendersInlineMath() {
+        val ctx = instrumentation.targetContext
+        val out = File(ctx.cacheDir, "pdf-inline.pdf")
+        try {
+            val q = com.zhuquan.tijian.data.QuestionRow(
+                id = "inline", categoryId = null, categoryName = "数学/多元函数微分学", type = "解答题",
+                stem = "计算 \$z=e^{xy}\$ 在 \$(1,0)\$ 处的全微分 \$dz\$。",
+                options = "[]", answer = "", analysis = "",
+                tags = "[]", difficulty = 2, errorReasons = "[]", source = "test", mastery = 0,
+                reviewCount = 0, nextReviewAt = 0, confidence = 1.0, note = "",
+                imageId = null, imagePath = null, createdAt = 0
+            )
+            val pages = kotlinx.coroutines.runBlocking {
+                com.zhuquan.tijian.export.PdfExporter.export(
+                    ctx, listOf(q), out, "行内公式",
+                    com.zhuquan.tijian.export.PdfExporter.Options(
+                        includeAnswer = false, includeAnalysis = false, includeTags = false, onePerPage = true
+                    )
+                )
+            }
+            val bytes = out.readBytes()
+            val latin = String(bytes, Charsets.ISO_8859_1)
+            java.io.File(ctx.filesDir, "pdf-inline.pdf").writeBytes(bytes)
+            java.io.File(ctx.getExternalFilesDir(null)!!, "pdf-inline.pdf").outputStream().use { target ->
+                target.write(bytes)
+            }
+            assertTrue(pages >= 1)
+            assertTrue(out.length() > 1000)
+            assertFalse("PDF must not print the raw exponent", latin.contains("e^{xy}"))
+            assertFalse(latin.contains("\\frac"))
+        } finally { out.delete() }
+    }
+
     @Test fun pdfRendersRichAnswerAndAnalysisWhenOptionsEnabled() {
         val appCtx = instrumentation.targetContext
         val ctx = instrumentation.startActivitySync(

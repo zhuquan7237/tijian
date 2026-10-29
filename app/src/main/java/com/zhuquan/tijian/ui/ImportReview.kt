@@ -627,7 +627,7 @@ fun ReviewScreen(vm: AppVm) {
         if (finished) {
             val wrong = vm.wrongThisRound.toList().mapNotNull { wid -> vm.reviewQueue.firstOrNull { it.id == wid } }
             Column(
-                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.page),
+                Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Space.page),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(Modifier.height(40.dp))
@@ -677,7 +677,7 @@ fun ReviewScreen(vm: AppVm) {
             return@Column
         }
 
-        Column(Modifier.fillMaxSize().padding(horizontal = Space.page)) {
+        Column(Modifier.weight(1f).padding(horizontal = Space.page)) {
             Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(SurfaceAlt)) {
                 Box(
                     Modifier.fillMaxWidth((vm.reviewIndex + 1).toFloat() / vm.reviewQueue.size)

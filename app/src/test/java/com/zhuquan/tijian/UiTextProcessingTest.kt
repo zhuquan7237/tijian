@@ -78,6 +78,29 @@ class UiTextProcessingTest {
         assertTrue(out.contains("x>1"))
     }
 
+    @Test fun promoteAsciiLimitIntoTex() {
+        val out = Normalize.text("求 lim_(x→ 1)(e^(ln x)-e^(xln x))/(1-x+xln x) 的值。")
+        assertTrue(out.contains("\\lim"))
+        assertTrue(out.contains("\\frac"))
+        assertTrue(out.contains("\\ln"))
+        assertTrue(out.contains("的值。"))
+        assertFalse(out.contains("lim_("))
+        assertFalse(out.contains("e^("))
+    }
+
+    @Test fun promoteLeavesDelimitedMath() {
+        assertEquals("若 \$x>1\$ 则", Normalize.text("""若 \(x>1\) 则"""))
+    }
+
+    @Test fun promoteSkipsPlainProse() {
+        val out = Normalize.text("普通中文 English text without math")
+        assertFalse(out.contains("$"))
+    }
+
+    @Test fun liteParenSuperscriptSingleLetter() {
+        assertEquals("eˣ", cleanMathLite("e^(x)"))
+    }
+
     @Test fun litePartialDerivative() {
         val out = cleanMathLite("""$\frac{\partial F}{\partial x}$""")
         assertTrue(out.contains("∂"))

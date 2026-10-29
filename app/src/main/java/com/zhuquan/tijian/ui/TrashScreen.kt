@@ -72,16 +72,14 @@ fun TrashScreen(vm: AppVm) {
             EmptyState("回收站是空的", "删除的题目会先到这里，随时可以恢复")
             return@Column
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Space.page, vertical = 10.dp)) {
+        LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Space.page, vertical = 10.dp)) {
             items(rows, key = { it.id }) { q ->
                 Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Thumb(q.imagePath, Modifier.size(width = 40.dp, height = 48.dp))
                         Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                            Text(
-                                cleanMathLite(q.stem).ifBlank { "（无题干）" },
-                                fontSize = 13.sp, lineHeight = 19.sp, color = Ink,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis
+                            StemText(
+                                q.stem, color = Ink, fontSizeSp = 13f, lineHeightSp = 19f, maxLines = 2,
                             )
                             Text(
                                 listOf(q.categoryName, q.customTag).filter { it.isNotBlank() }

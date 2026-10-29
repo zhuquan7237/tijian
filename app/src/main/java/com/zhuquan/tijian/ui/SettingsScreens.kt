@@ -108,7 +108,7 @@ fun SettingsScreen(vm: AppVm) {
             title = "我的",
             subtitle = if (vm.provider.ready()) "AI 已接入" else "识别前需要接入 AI，题目仍只存在本机"
         )
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.page)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Space.page, vertical = 4.dp)) {
             if (vm.lastCrashReport != null) {
                 CardBox(Modifier.fillMaxWidth().padding(bottom = 8.dp).border(1.dp, Amber.copy(alpha = 0.5f), CardShape)) {
                     Column(Modifier.padding(16.dp)) {

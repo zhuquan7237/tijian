@@ -6,6 +6,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -24,7 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Icon
-import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -43,7 +45,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -282,7 +286,14 @@ fun TijianTheme(content: @Composable () -> Unit) {
                 lineHeight = 16.sp, letterSpacing = 0.sp,
             ),
         ),
-        content = content
+        content = {
+            // Material 默认把小于 48dp 的控件从中心撑到 48dp，而且不遵守父级最大约束。
+            // 调用方先写了 size(28.dp) 时，多出来的部分会画到兄弟控件上，图标就“飞”出圆框。
+            // 需要大热区的按钮自己写明高度，不再靠这层偷偷扩。
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalMinimumInteractiveComponentSize provides 0.dp
+            ) { content() }
+        }
     )
 }
 
@@ -309,8 +320,8 @@ fun tjFieldColors() = OutlinedTextFieldDefaults.colors(
 
 /**
  * 所有可点元素的统一入口：真实涟漪 + 无障碍 role + 可读标签。
- * 视觉尺寸可以小（例如 36dp 的 chip），但 `minimumInteractiveComponentSize`
- * 保证实际触控区域不小于 48dp —— 这是“看得见却点不中”的根因修复。
+ * 不在这里改测量尺寸。以前用 minimumInteractiveComponentSize 把小图标从中心撑开，
+ * 热区画到了布局框外面，圆钮、复选框和行内图标都会错位。
  */
 @Composable
 fun Modifier.tjClickable(
@@ -321,10 +332,8 @@ fun Modifier.tjClickable(
     onClick: () -> Unit,
 ): Modifier {
     val indication = LocalIndication.current
-    var m = this
-    if (enabled) m = m.minimumInteractiveComponentSize()
     val src = interactionSource ?: remember { MutableInteractionSource() }
-    return m
+    return this
         .then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)
         .clickable(
             interactionSource = src,
@@ -429,6 +438,7 @@ fun TjTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(Bg)
             .padding(
                 start = if (onBack != null) 10.dp else Space.page,
                 end = Space.page,
@@ -458,7 +468,39 @@ fun TjTopBar(
                 modifier = Modifier.padding(top = if (onBack != null) 3.dp else 5.dp)
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) { actions() }
+        ActionStrip { actions() }
+    }
+}
+
+/**
+ * 顶栏按钮按内容收缩。放不下时才横向滚动。
+ * 直接套 horizontalScroll 会把父 Row 给的最大宽度全部占掉，标题被挤成 0。
+ */
+@Composable
+private fun ActionStrip(content: @Composable () -> Unit) {
+    val scroll = rememberScrollState()
+    SubcomposeLayout { constraints ->
+        val loose = subcompose("measure") {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) { content() }
+        }.first().measure(constraints.copy(minWidth = 0, maxWidth = Constraints.Infinity))
+        val width = loose.width.coerceIn(constraints.minWidth, constraints.maxWidth)
+        val height = loose.height.coerceIn(constraints.minHeight, constraints.maxHeight)
+        if (loose.width <= constraints.maxWidth) {
+            layout(width, height) { loose.place(0, 0) }
+        } else {
+            val scrolled = subcompose("scroll") {
+                Row(
+                    Modifier.horizontalScroll(scroll),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { content() }
+            }.first().measure(constraints.copy(minWidth = 0, maxWidth = width))
+            val h = scrolled.height.coerceIn(constraints.minHeight, constraints.maxHeight)
+            layout(width, h) { scrolled.place(0, 0) }
+        }
     }
 }
 

@@ -1,32 +1,71 @@
 package com.zhuquan.tijian.ui
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextUtils
-import android.text.style.ImageSpan
+import android.text.style.ReplacementSpan
 import android.widget.TextView
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import org.scilab.forge.jlatexmath.TeXConstants
+import org.scilab.forge.jlatexmath.TeXFormula
+import kotlin.math.roundToInt
 
 /**
- * 列表行内的轻量公式渲染：直接用 JLatexMath Android 分支把 $...$ / $$...$$ /
- * \(...\) / 裸 LaTeX 命令段光栅化成 ImageSpan，套在原生 TextView 里。
- * 比每行挂 WebView 轻得多；单条公式渲染失败只回退原文，不影响整行。
+ * 列表里的行内公式。用文本样式（不是展示样式）光栅化，高度封顶，
+ * 基线和旁边的汉字对齐，超宽的公式按顶层运算符拆开以便换行。
+ * 单条公式失败只回退成可读文本，不把 LaTeX 源码甩到界面上。
  */
 object MathTextEngine {
 
-    private val LaTeX_COMMAND = Regex("""\\[a-zA-Z]+""")
+    private class Glyph(val bitmap: Bitmap, val baselineFromTop: Int)
 
-    /**
-     * 把题干切成 (文本 | LaTeX) 段：
-     * 1. 显式定界 $$..$$ / $..$ / \(..\) / \[..\]；
-     * 2. 没有定界符时，抓「以 \ 命令开头的连续 ASCII 数学串」
-     *    （识别输出经常漏写 $；中文/全角会自然截断段落）。
-     */
+    private class MathImageSpan(
+        private val bitmap: Bitmap,
+        private val baselineFromTop: Int,
+    ) : ReplacementSpan() {
+        override fun getSize(
+            paint: android.graphics.Paint,
+            text: CharSequence,
+            start: Int,
+            end: Int,
+            fm: android.graphics.Paint.FontMetricsInt?,
+        ): Int {
+            if (fm != null) {
+                val ascent = -baselineFromTop
+                val descent = bitmap.height - baselineFromTop
+                if (fm.ascent > ascent) fm.ascent = ascent
+                if (fm.top > fm.ascent) fm.top = fm.ascent
+                if (fm.descent < descent) fm.descent = descent
+                if (fm.bottom < fm.descent) fm.bottom = fm.descent
+            }
+            return bitmap.width + 2
+        }
+
+        override fun draw(
+            canvas: Canvas,
+            text: CharSequence,
+            start: Int,
+            end: Int,
+            x: Float,
+            top: Int,
+            y: Int,
+            bottom: Int,
+            paint: android.graphics.Paint,
+        ) {
+            canvas.drawBitmap(bitmap, x + 1f, (y - baselineFromTop).toFloat(), null)
+        }
+    }
+
     fun segments(raw: String): List<Pair<String, String?>> {
         val t = Normalize.text(raw)
         if (!looksLikeMath(t)) return listOf(t to null)
@@ -41,38 +80,18 @@ object MathTextEngine {
             val delimiter = when {
                 t.startsWith("$$", i) -> "$$"
                 t[i] == '$' -> "$"
-                t.startsWith("\\(", i) -> "\\("
-                t.startsWith("\\[", i) -> "\\["
                 else -> null
             }
             if (delimiter != null) {
-                val closing = when (delimiter) {
-                    "$$" -> "$$"
-                    "\\[" -> "\\]"
-                    "\\(" -> "\\)"
-                    else -> "$"
-                }
-                val close = t.indexOf(closing, i + delimiter.length)
+                val close = t.indexOf(delimiter, i + delimiter.length)
                 if (close > i) {
-                    val inner = t.substring(i + delimiter.length, close)
-                    if (inner.isNotBlank()) {
+                    val inner = t.substring(i + delimiter.length, close).trim()
+                    if (inner.isNotEmpty()) {
                         flush()
                         out.add(inner to inner)
-                        i = close + closing.length
+                        i = close + delimiter.length
                         continue
                     }
-                }
-            }
-            val cmd = LaTeX_COMMAND.find(t, i)
-            if (cmd != null && cmd.range.first == i) {
-                var j = i
-                while (j < n && t[j].code < 0x80) j++
-                val inner = t.substring(i, j)
-                if (inner.length > 1) {
-                    flush()
-                    out.add(inner to inner)
-                    i = j
-                    continue
                 }
             }
             plain.append(t[i])
@@ -80,59 +99,120 @@ object MathTextEngine {
         }
         flush()
         if (out.isEmpty()) out.add(t to null)
-
-        // 相邻纯文本合并，减少碎片段
-        val merged = ArrayList<Pair<String, String?>>()
-        for (seg in out) {
-            val last = merged.lastOrNull()
-            if (last != null && last.second == null && seg.second == null) {
-                merged[merged.size - 1] = (last.first + seg.first) to null
-            } else merged.add(seg)
-        }
-        return merged
+        return out
     }
 
-    /** LaTeX → 着色好的 Drawable（JLatexMath 官方 Android 封装）；失败返回 null（调用方回退原文）。 */
-    fun texDrawable(tex: String, sizePx: Float, foreground: Int): android.graphics.drawable.Drawable? = runCatching {
-        ru.noties.jlatexmath.JLatexMathDrawable.builder(tex.trim())
-            .textSize(sizePx)
-            .color(foreground)
-            .padding(1)
-            .build()
-    }.onFailure { android.util.Log.d("MathText", "formula render failed: ${tex.take(80)}: $it") }.getOrNull()
-
-    /** 文本 → 含公式 ImageSpan 的 Spanned；没有成功渲染的公式时返回 null（调用方用普通 Text）。 */
-    fun build(raw: String, sizePx: Float, color: Int): Spanned? {
+    fun build(raw: String, sizePx: Float, color: Int, maxWidthPx: Int): Spanned? {
         val segs = segments(raw)
         if (segs.all { it.second == null }) return null
         val sb = SpannableStringBuilder()
         var renderedAny = false
+        val heightCap = (sizePx * 1.7f).roundToInt().coerceAtLeast(1)
+        val widthCap = maxWidthPx.coerceAtLeast(1)
         for ((plain, tex) in segs) {
             if (tex == null) {
                 sb.append(plain)
                 continue
             }
-            val drawable = texDrawable(tex, sizePx, color)
-            if (drawable == null) {
+            val glyphs = layoutFormula(tex, sizePx, color, widthCap, heightCap)
+            if (glyphs.isEmpty()) {
                 sb.append(cleanMathLite(tex))
-            } else {
-                renderedAny = true
-                sb.append("￼")
-                val start = sb.length - 1
-                sb.setSpan(ImageSpan(drawable), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                continue
+            }
+            renderedAny = true
+            glyphs.forEachIndexed { index, glyph ->
+                if (index > 0) sb.append(' ')
+                val start = sb.length
+                sb.append('\uFFFC')
+                sb.setSpan(
+                    MathImageSpan(glyph.bitmap, glyph.baselineFromTop),
+                    start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
             }
         }
         return if (renderedAny) sb else null
     }
+
+    private fun layoutFormula(tex: String, sizePx: Float, color: Int, widthCap: Int, heightCap: Int): List<Glyph> {
+        val whole = render(tex, sizePx, color, widthCap, heightCap)
+        if (whole != null && whole.bitmap.width <= widthCap) return listOf(whole)
+        val parts = splitTopLevel(tex)
+        if (parts.size <= 1) return listOfNotNull(whole)
+        return parts.mapNotNull { render(it, sizePx, color, widthCap, heightCap) }
+    }
+
+    /** 只在花括号外面拆 + − =，长公式才能换行，分式内部不会被拦腰截断。 */
+    private fun splitTopLevel(tex: String): List<String> {
+        val parts = ArrayList<String>()
+        val sb = StringBuilder()
+        var depth = 0
+        var i = 0
+        while (i < tex.length) {
+            val c = tex[i]
+            if (c == '\\') {
+                sb.append(c)
+                if (i + 1 < tex.length) sb.append(tex[i + 1])
+                i += 2
+                continue
+            }
+            if (c == '{') depth++
+            if (c == '}') depth = (depth - 1).coerceAtLeast(0)
+            val breakHere = depth == 0 && sb.isNotEmpty() && (c == '+' || c == '=' || (c == '-' && sb.last().let { it.isLetterOrDigit() || it == '}' || it == ')' }))
+            if (breakHere) {
+                val left = sb.toString().trim()
+                if (left.isNotEmpty()) parts.add(left)
+                sb.clear()
+                sb.append(c)
+            } else {
+                sb.append(c)
+            }
+            i++
+        }
+        val tail = sb.toString().trim()
+        if (tail.isNotEmpty()) parts.add(tail)
+        return parts
+    }
+
+    private fun render(tex: String, sizePx: Float, color: Int, widthCap: Int, heightCap: Int): Glyph? {
+        val trimmed = tex.trim()
+        if (trimmed.isEmpty()) return null
+        return runCatching {
+            val icon = TeXFormula(trimmed).TeXIconBuilder()
+                .setStyle(TeXConstants.STYLE_TEXT)
+                .setSize(sizePx)
+                .setFGColor(ru.noties.jlatexmath.awt.Color(color))
+                .build()
+            val w = icon.iconWidth.coerceAtLeast(1)
+            val h = icon.iconHeight.coerceAtLeast(1)
+            val depth = icon.iconDepth.coerceIn(0, h)
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bmp)
+            val graphics = ru.noties.jlatexmath.awt.AndroidGraphics2D()
+            graphics.setCanvas(canvas)
+            icon.paintIcon(null, graphics, 0, 0)
+            var scale = 1f
+            if (h > heightCap) scale = minOf(scale, heightCap.toFloat() / h)
+            if (w * scale > widthCap) scale = minOf(scale, widthCap.toFloat() / w)
+            if (scale < 0.98f) {
+                val nw = (w * scale).roundToInt().coerceAtLeast(1)
+                val nh = (h * scale).roundToInt().coerceAtLeast(1)
+                val scaled = Bitmap.createScaledBitmap(bmp, nw, nh, true)
+                Glyph(scaled, ((h - depth) * scale).roundToInt().coerceIn(0, nh))
+            } else {
+                Glyph(bmp, h - depth)
+            }
+        }.onFailure {
+            android.util.Log.d("MathText", "formula render failed: ${trimmed.take(80)}: $it")
+        }.getOrNull()
+    }
 }
 
-/** 是否值得一渲染管线：$ 定界、\( \[ 或反斜杠命令。 */
+/** 是否值得走公式管线：定界符、反斜杠命令，或 lim_() / e^() 这种半成品。 */
 fun looksLikeMath(text: String): Boolean {
-    if (text.contains('$') || text.contains("\\(") || text.contains("\\[")) return true
-    return text.contains('\\') && LaTeX_COMMAND_RUN.containsMatchIn(text)
+    if (text.contains('$') || text.contains("\\(") || text.contains("\\[") || text.contains('\\')) return true
+    if (text.contains('^') || text.contains('→') || text.contains('∫')) return true
+    return text.contains("lim_") || text.contains("_(") || text.contains("_\\{")
 }
-
-private val LaTeX_COMMAND_RUN = Regex("""\\[a-zA-Z]+""")
 
 @Composable
 fun MathText(
@@ -143,41 +223,49 @@ fun MathText(
     maxLines: Int = Int.MAX_VALUE,
 ) {
     val density = LocalDensity.current
-    val fontScale = density.fontScale
-    val fs = fontSizeSp * fontScale
     val argb = android.graphics.Color.argb(
-        (color.alpha * 255).toInt(), (color.red * 255).toInt(), (color.green * 255).toInt(), (color.blue * 255).toInt()
+        (color.alpha * 255).toInt(),
+        (color.red * 255).toInt(),
+        (color.green * 255).toInt(),
+        (color.blue * 255).toInt(),
     )
-    val spanned = remember(text, fs, argb) {
-        runCatching { MathTextEngine.build(text, fs * density.density, argb) }.getOrNull()
+    BoxWithConstraints(modifier) {
+        val widthPx = with(density) {
+            (if (maxWidth.value.isFinite()) maxWidth else 360.dp).toPx()
+        }.roundToInt().coerceAtLeast(1)
+        val fontPx = fontSizeSp * density.fontScale * density.density
+        val spanned = remember(text, fontPx, argb, widthPx) {
+            runCatching { MathTextEngine.build(text, fontPx, argb, widthPx) }.getOrNull()
+        }
+        if (spanned == null) {
+            androidx.compose.material3.Text(
+                cleanMathLite(text),
+                color = color,
+                fontSize = androidx.compose.ui.unit.TextUnit(fontSizeSp, androidx.compose.ui.unit.TextUnitType.Sp),
+                lineHeight = androidx.compose.ui.unit.TextUnit(fontSizeSp * 1.45f, androidx.compose.ui.unit.TextUnitType.Sp),
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            AndroidView(
+                modifier = Modifier.fillMaxWidth(),
+                factory = { ctx ->
+                    TextView(ctx).apply {
+                        includeFontPadding = false
+                        ellipsize = TextUtils.TruncateAt.END
+                        setTextColor(argb)
+                    }
+                },
+                update = { tv ->
+                    tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, fontPx)
+                    tv.setLineSpacing(fontPx * 0.28f, 1f)
+                    tv.setTextColor(argb)
+                    tv.maxLines = maxLines
+                    tv.ellipsize = TextUtils.TruncateAt.END
+                    tv.text = spanned
+                },
+            )
+        }
     }
-    if (spanned == null) {
-        androidx.compose.material3.Text(
-            cleanMathLite(text),
-            color = color,
-            fontSize = androidx.compose.ui.unit.TextUnit(fontSizeSp, androidx.compose.ui.unit.TextUnitType.Sp),
-            lineHeight = androidx.compose.ui.unit.TextUnit(fontSizeSp * 1.45f, androidx.compose.ui.unit.TextUnitType.Sp),
-            maxLines = maxLines,
-            overflow = TextOverflow.Ellipsis,
-            modifier = modifier,
-        )
-        return
-    }
-    AndroidView(
-        modifier = modifier,
-        factory = { tctx ->
-            TextView(tctx).apply {
-                textSize = fs
-                ellipsize = TextUtils.TruncateAt.END
-                setTextColor(argb)
-            }
-        },
-        update = { tv ->
-            tv.textSize = fs
-            tv.setTextColor(argb)
-            tv.maxLines = maxLines
-            tv.ellipsize = TextUtils.TruncateAt.END
-            tv.text = spanned
-        },
-    )
 }

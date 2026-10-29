@@ -8,16 +8,24 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -241,6 +249,14 @@ fun RichText(
     } else {
         Modifier.heightIn(min = 1.dp)
     }
+    // 渲染进程被系统杀掉时必须返回 true，否则 Chromium 会连带结束整个应用。
+    // 这一页改走与列表相同的行内公式，题目和解析仍然可读。
+    val crashed = remember { mutableStateOf(false) }
+    val onRendererGone = rememberUpdatedState { crashed.value = true }
+    if (crashed.value) {
+        RichPlainFallback(markdown, sections, scaledFontSize)
+        return@BoxWithConstraints
+    }
 
     AndroidView(
         factory = { ctx ->
@@ -259,7 +275,14 @@ fun RichText(
                         view.scrollTo(0, 0)
                         view.evaluateJavascript("window.__report && window.__report()", null)
                     }
+
+                    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                        android.util.Log.e("RichText", "renderer gone crashed=${detail.didCrash()}")
+                        onRendererGone.value.invoke()
+                        return true
+                    }
                 }
+                setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
                 webChromeClient = object : android.webkit.WebChromeClient() {
                     override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean {
                         android.util.Log.d("RichTextJS", "${m.message()} @${m.lineNumber()}")
@@ -355,6 +378,41 @@ fun RichText(
     }
 }
 
+/** WebView 渲染进程退出后的同一套行内公式，避免详情页空白或把应用杀掉。 */
+@Composable
+private fun RichPlainFallback(markdown: String, sections: List<RichSectionSpec>?, fontSize: Int) {
+    Column(Modifier.fillMaxWidth()) {
+        if (sections.isNullOrEmpty()) {
+            if (markdown.isNotBlank()) {
+                MathText(markdown, Ink, fontSize.toFloat(), Modifier.fillMaxWidth())
+            }
+        } else {
+            sections.forEach { sec ->
+                if (sec.title.isNotBlank()) {
+                    Text(
+                        sec.title,
+                        color = Ink,
+                        fontSize = (sec.fontSize + 1).sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                if (sec.subtitle.isNotBlank()) {
+                    Text(
+                        sec.subtitle,
+                        color = Muted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 6.dp),
+                    )
+                }
+                if (sec.markdown.isNotBlank()) {
+                    MathText(sec.markdown, Ink, sec.fontSize.toFloat(), Modifier.fillMaxWidth())
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+        }
+    }
+}
+
 /** 列表/卡片用的轻量文本：把常见 LaTeX 转成可读符号，绝不把源码直显。 */
 fun cleanMathLite(input: String): String {
     var t = input
@@ -364,6 +422,9 @@ fun cleanMathLite(input: String): String {
     // \(..\) 与 \[..\] 定界符直接去掉，正文保留
     t = t.replace("\\(", "").replace("\\)", "")
         .replace("\\[", "").replace("\\]", "")
+    // e^(ln x)、lim_(x→1) 先收成花括号，后面的上下标规则才能接住
+    t = parenScriptsToBraces(t)
+    t = Regex("""lim_\{([^{}]*)\}""").replace(t) { "lim(${it.groupValues[1].replace(" ", "")})" }
     // JSON 多层转义：\\sin → \sin
     t = Regex("""\\\\(?=[A-Za-z])""").replace(t, """\""")
     t = expandLatex(t)

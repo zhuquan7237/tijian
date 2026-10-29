@@ -38,6 +38,14 @@ class SelectionQuoteTest {
                         latch.countDown()
                     }
                 }
+
+                override fun onRenderProcessGone(
+                    view: WebView,
+                    detail: android.webkit.RenderProcessGoneDetail,
+                ): Boolean {
+                    latch.countDown()
+                    return true
+                }
             }
             wv.loadDataWithBaseURL("file:///android_asset/richtext/", html, "text/html", "utf-8", null)
         }
