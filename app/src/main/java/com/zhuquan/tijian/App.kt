@@ -19,6 +19,7 @@ class App : Application() {
         ai = AiClient()
         importer = Importer(this, db, ai)
         installCrashLogger()
+        com.zhuquan.tijian.review.ReviewReminder.schedule(this)
         if (BuildConfig.DEBUG && db.provider().baseUrl.isBlank()) {
             // 调试构建默认指向本机 mock 服务（10.0.2.2 = 模拟器宿主机）
             db.saveProvider(com.zhuquan.tijian.data.ProviderConfig(

@@ -85,6 +85,10 @@ fun CaptureScreen(vm: AppVm) {
         }
     }
 
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (vm.consumeCameraArm() && vm.captureUris.isEmpty()) shoot()
+    }
+
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             title = "导入工作台",

@@ -7,28 +7,28 @@
 <style>
   /* 夜读台配色。与 ui/Theme.kt 的 token 一一对应，改色时两边同步。 */
   :root {
-    --bg: #1C1E22;          /* Bg */
-    --card: #26282C;        /* CardBg */
-    --surface-alt: #303236; /* SurfaceAlt */
-    --ink: #E6E8EB;         /* Ink */
-    --ink2: #C3C8D0;        /* Ink2 */
-    --muted: #9CA3AF;       /* Muted */
-    --line: #3F4451;        /* Line */
-    --accent: #3D8BFF;      /* Accent */
-    --accent-soft: #14294D; /* AccentSoft */
-    --accent-rgb: 61,139,255;
-    --red: #F87171;         /* Red */
-    --red-soft: #3D2326;    /* RedSoft */
-    --amber: #FBBF24;       /* Amber */
-    --amber-soft: #3F2E1A;  /* AmberSoft */
+    --bg: #171614;          /* Bg */
+    --card: #221F1C;        /* CardBg */
+    --surface-alt: #2C2926; /* SurfaceAlt */
+    --ink: #F4EFE8;         /* Ink */
+    --ink2: #D6D0C6;        /* Ink2 */
+    --muted: #A8A199;       /* Muted */
+    --line: #3C3833;        /* Line */
+    --accent: #B7C0F0;      /* Accent */
+    --accent-soft: #2A2E44; /* AccentSoft */
+    --accent-rgb: 183,192,240;
+    --red: #F0A3A3;         /* Red */
+    --red-soft: #3D2628;    /* RedSoft */
+    --amber: #E4C27A;       /* Amber */
+    --amber-soft: #3A3120;  /* AmberSoft */
   }
-  /* 日间墨白（浅色界面），与 renderer.html 的 rt-day 保持一致 */
+  /* 日间书桌，与 renderer.html 的 rt-day 保持一致 */
   body.rt-day {
-    --bg: #F5F4EF; --card: #FFFFFF; --surface-alt: #EDEBE3;
-    --ink: #23262B; --ink2: #464B54; --muted: #7C828C; --line: #E0DED4;
-    --accent: #006EFD; --accent-soft: #E6F0FF; --accent-rgb: 0,110,253;
-    --red: #C0454D; --red-soft: #FBEDEE;
-    --amber: #9A6B1F; --amber-soft: #FBF1DC;
+    --bg: #F6F3EC; --card: #FFFCF7; --surface-alt: #EFEAE2;
+    --ink: #1C1917; --ink2: #44403C; --muted: #78716C; --line: #E6E0D4;
+    --accent: #3E4C7E; --accent-soft: #E6E8F3; --accent-rgb: 62,76,126;
+    --red: #B4454C; --red-soft: #F8E8E9;
+    --amber: #8F6420; --amber-soft: #F8F0DE;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -53,7 +53,7 @@
     background: var(--card); border: 1px solid var(--line);
     border-radius: 16px 16px 16px 6px;
   }
-  .who { font-size: 11px; font-weight: 700; color: var(--accent); margin-bottom: 7px; letter-spacing: .02em; }
+  .who { font-size: 11px; font-weight: 700; color: var(--accent); margin-bottom: 7px; letter-spacing: 0; }
   p { margin: 0 0 7px; }
   p:last-child { margin-bottom: 0; }
   h1,h2,h3,h4 { margin: 12px 0 6px; line-height: 1.35; color: var(--ink); }
@@ -92,7 +92,7 @@
   .an-think { background: var(--surface-alt); }
   .an-pit { background: var(--amber-soft); }
   .an-concl { background: var(--accent-soft); border: 1px solid rgba(var(--accent-rgb),.32); }
-  .an-tag { display: block; font-size: 11px; line-height: 1.4; font-weight: 700; letter-spacing: .14em; margin-bottom: 3px; }
+  .an-tag { display: block; font-size: 11px; line-height: 1.4; font-weight: 700; letter-spacing: 0; margin-bottom: 3px; }
   .an-think .an-tag { color: var(--muted); }
   .an-pit .an-tag { color: var(--amber); }
   .an-concl .an-tag { color: var(--accent); }

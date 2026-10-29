@@ -757,28 +757,40 @@ fun ReviewScreen(vm: AppVm) {
                 BigButton("显示答案", Modifier.fillMaxWidth()) { vm.reveal() }
             } else {
                 Text(
-                    "这道题记得多牢？选完会自动安排下次复习时间",
+                    "这道题记得多牢？",
                     fontSize = 12.sp, color = Muted,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RateButton("不会", "明天再来", Red, Modifier.weight(1f)) { vm.rate(0) }
-                    RateButton("不熟", intervalLabel(vm.db.previewIntervalDays(q.mastery, 1)), Amber, Modifier.weight(1f)) { vm.rate(1) }
-                    RateButton("掌握", intervalLabel(vm.db.previewIntervalDays(q.mastery, 2)), Green, Modifier.weight(1f)) { vm.rate(2) }
+                    RateButton("不会", rateHint(q.mastery, 0, vm.db.previewIntervalDays(q.mastery, 0)), Red, Modifier.weight(1f)) { vm.rate(0) }
+                    RateButton("不熟", rateHint(q.mastery, 1, vm.db.previewIntervalDays(q.mastery, 1)), Amber, Modifier.weight(1f)) { vm.rate(1) }
+                    RateButton("掌握", rateHint(q.mastery, 2, vm.db.previewIntervalDays(q.mastery, 2)), Green, Modifier.weight(1f)) { vm.rate(2) }
                 }
-                Text(
-                    "点错了？点顶部「撤销上一题」",
-                    fontSize = 11.5.sp, color = Muted,
-                    modifier = Modifier.padding(top = 8.dp).align(Alignment.CenterHorizontally)
-                )
+                if (vm.canUndoRate) {
+                    Text(
+                        "撤销上一题",
+                        fontSize = 12.5.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 8.dp).align(Alignment.CenterHorizontally)
+                            .tjClickable(label = "撤销上一题评分") { vm.undoRating() }
+                            .padding(vertical = 6.dp)
+                    )
+                }
             }
-            // 底部留出追问悬浮球的高度，别让它压住自评按钮
-            Spacer(Modifier.height(84.dp))
+            Spacer(Modifier.height(if (vm.revealAnswer) 72.dp else 16.dp))
         }
     }
 }
 
 private fun intervalLabel(days: Long): String = if (days <= 1L) "明天" else "约 $days 天后"
+
+private fun rateHint(mastery: Int, rating: Int, days: Long): String {
+    val whenText = intervalLabel(days)
+    return when (rating) {
+        0 -> if (mastery <= 0) whenText else "$whenText · 降"
+        1 -> "$whenText · 保持"
+        else -> if (mastery >= 5) "$whenText · 满" else "$whenText · +1"
+    }
+}
 
 @Composable
 private fun RateButton(text: String, sub: String, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {

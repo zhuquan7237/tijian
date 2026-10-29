@@ -78,7 +78,6 @@ import java.io.File
 fun AppRoot(vm: AppVm = viewModel()) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var showImport by remember { mutableStateOf(false) }
     val reducedMotion = android.provider.Settings.Global.getFloat(
         ctx.contentResolver,
         android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
@@ -152,13 +151,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
                 Column(Modifier.fillMaxSize().background(Bg)) {
                     Box(Modifier.weight(1f)) {
                         when (route) {
-                            is Route.Home -> HomeScreen(vm) {
-                                when {
-                                    vm.importing || vm.pending.isNotEmpty() -> vm.go(Route.Import)
-                                    vm.captureUris.isNotEmpty() -> vm.go(Route.Capture)
-                                    else -> showImport = true
-                                }
-                            }
+                            is Route.Home -> HomeScreen(vm) { vm.openAdd() }
                             is Route.Subject -> SubjectScreen(vm, route)
                             is Route.Category -> CategoryScreen(vm, route)
                             is Route.Detail -> QuestionDetailScreen(vm, route)
@@ -171,6 +164,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
                             is Route.Provider -> ProviderScreen(vm)
                             is Route.Trash -> TrashScreen(vm)
                             is Route.Tidy -> TidyScreen(vm)
+                            is Route.Print -> PrintScreen(vm)
                         }
                     }
                     if (isPeerRoute(route)) BottomBar(route,
@@ -224,31 +218,31 @@ fun AppRoot(vm: AppVm = viewModel()) {
         // 全局追问：悬浮球在所有页面可见；面板打开时接管整个屏幕
         ChatOverlay(vm)
 
-        if (showImport) {
-            ModalBottomSheet(onDismissRequest = { showImport = false }, containerColor = CardBg) {
+        if (vm.importSheet) {
+            ModalBottomSheet(onDismissRequest = { vm.importSheet = false }, containerColor = CardBg) {
                 Column(Modifier.blockSheetDrag().padding(horizontal = Space.page).padding(bottom = 26.dp)) {
-                    Text("导入错题", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink, letterSpacing = (-0.3).sp)
-                    Text("可以一次选 9 张，AI 会自动切题", fontSize = 12.5.sp, color = Muted, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
-                    ImportOption(Icons.Rounded.PhotoLibrary, "从相册选择", "支持多选，原图会保留") {
-                        showImport = false; pickImages.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    Text("收录错题", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    Text("拍下来之后会先看解析，再决定要不要追问", fontSize = 12.5.sp, color = Muted, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
+                    ImportOption(Icons.Rounded.CameraAlt, "拍照", "拍完直接进入识别") {
+                        vm.importSheet = false
+                        vm.openCameraCapture()
                     }
-                    ImportOption(Icons.Rounded.CameraAlt, "连续拍照", "拍一张回到这里，可接着拍多张") {
-                        showImport = false
-                        vm.clearCapture()
-                        vm.go(Route.Capture)
+                    ImportOption(Icons.Rounded.PhotoLibrary, "从相册选择", "可以一次选 9 张，原图会保留") {
+                        vm.importSheet = false
+                        pickImages.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     }
                     // 名副其实的手动录入：直接写文字，图片想补随时补
                     ImportOption(Icons.Rounded.EditNote, "手动录入", "直接输入文字，图片是选填项") {
-                        showImport = false
+                        vm.importSheet = false
                         vm.addManualText()
                     }
                     ImportOption(Icons.Rounded.Add, "只存一张图片", "先留个底，题干以后再补") {
-                        showImport = false
+                        vm.importSheet = false
                         pickOne.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     }
                     if (BuildConfig.DEBUG) {
                         ImportOption(Icons.Rounded.Add, "导入示例图（调试）", "用内置样张跑通整条链路") {
-                            showImport = false
+                            vm.importSheet = false
                             scope.launch {
                                 val f = File(ctx.cacheDir, "sample_exam.jpg")
                                 ctx.assets.open("sample_exam.jpg").use { input ->
@@ -265,7 +259,7 @@ fun AppRoot(vm: AppVm = viewModel()) {
         if (vm.showOnboarding) {
             OnboardingSheet(
                 onTry = { vm.loadSampleQuestions() },
-                onImport = { vm.dismissOnboarding(); showImport = true },
+                onImport = { vm.dismissOnboarding(); vm.importSheet = true },
                 onConfigure = { vm.dismissOnboarding(); vm.go(Route.Provider) },
                 onSkip = { vm.dismissOnboarding() },
             )
@@ -283,7 +277,7 @@ private fun OnboardingSheet(
 ) {
     ModalBottomSheet(onDismissRequest = onSkip, containerColor = CardBg) {
         Column(Modifier.blockSheetDrag().padding(horizontal = Space.page).padding(bottom = 22.dp)) {
-            Text("欢迎使用题笺", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Ink, letterSpacing = (-0.4).sp)
+            Text("欢迎使用题笺", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Ink)
             Text(
                 "拍下错题 → AI 识别归类 → 按记忆曲线复习。\n三件事按你的节奏来，先选一件：",
                 fontSize = 13.sp, lineHeight = 21.sp, color = Muted, modifier = Modifier.padding(top = 6.dp, bottom = 12.dp)

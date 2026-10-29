@@ -30,14 +30,21 @@ class ImportTransactionTest {
         assertEquals(0, db.questions().size)
         assertEquals(before, db.categories().map { it.id }.toSet())
         db.writableDatabase.execSQL("DROP TRIGGER reject_test")
-        assertEquals(2 to 0, db.saveDrafts(drafts, null))
+        val saved = db.saveDrafts(drafts, null)
+        assertEquals(2, saved.saved)
+        assertEquals(0, saved.skipped)
+        assertEquals(2, saved.ids.size)
         assertEquals(2, db.questions().size)
     }
 
     @Test fun duplicatesAreSkippedWithinBatchAndOnRetry() = withDb { db ->
         val drafts = listOf(draft("same"), draft("same"), draft("other"))
-        assertEquals(2 to 1, db.saveDrafts(drafts, null))
-        assertEquals(0 to 3, db.saveDrafts(drafts, null))
+        val first = db.saveDrafts(drafts, null)
+        assertEquals(2, first.saved)
+        assertEquals(1, first.skipped)
+        val again = db.saveDrafts(drafts, null)
+        assertEquals(0, again.saved)
+        assertEquals(3, again.skipped)
         assertEquals(2, db.questions().size)
     }
 }

@@ -46,6 +46,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
+        if (intent.getBooleanExtra(com.zhuquan.tijian.review.ReviewReminder.EXTRA_OPEN, false)) {
+            intent.removeExtra(com.zhuquan.tijian.review.ReviewReminder.EXTRA_OPEN)
+            vm.openTodayReview()
+            return
+        }
         val uris = ArrayList<Uri>()
         when (intent.action) {
             Intent.ACTION_SEND -> extractedStreams(intent)?.let { uris.addAll(it) }

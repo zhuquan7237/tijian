@@ -2,7 +2,9 @@
 
 package com.zhuquan.tijian.ui
 
+import android.Manifest
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -36,7 +38,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Calculate
+import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.Gavel
@@ -51,6 +55,8 @@ import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import kotlin.math.roundToInt
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.ZoomOutMap
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -73,6 +79,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -89,6 +96,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.zhuquan.tijian.data.SUBJECT_ROOTS
+import com.zhuquan.tijian.review.ReviewReminder
 import com.zhuquan.tijian.data.fullName
 import com.zhuquan.tijian.data.subjectGroup
 import com.zhuquan.tijian.data.CategoryRow
@@ -112,6 +120,14 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
     var searchError by remember { mutableStateOf(false) }
     var searchRevision by remember { mutableStateOf(0) }
     var showReviewSetup by remember { mutableStateOf(false) }
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    val ctx = LocalContext.current
+    val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            vm.setReminder(true, vm.remindHour, vm.remindMinute)
+            vm.toast = "会在每天 ${"%02d:%02d".format(vm.remindHour, vm.remindMinute)} 提醒你"
+        } else vm.toast = "没有通知权限。今天的题仍列在首页，不会漏在通知里。"
+    }
     LaunchedEffect(query, vm.dataRevision, searchRevision) {
         searchError = false
         if (query.isBlank()) { results = emptyList(); searching = false; return@LaunchedEffect }
@@ -128,20 +144,33 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             title = "错题本",
-            subtitle = "${vm.stats.total} 道错题"
+            subtitle = when {
+                vm.stats.total == 0 -> "拍一道错题，看懂后再复习"
+                vm.stats.due > 0 -> "${vm.stats.due} 道到了复习时间"
+                else -> "${vm.stats.total} 道 · 今天没有到期"
+            },
+            actions = {
+                IconCircle(Icons.Rounded.Search, "搜索") {
+                    searchOpen = !searchOpen
+                    if (!searchOpen) query = ""
+                }
+            }
         )
 
-        TjTextField(
-            value = query, onValueChange = { query = it },
-            placeholder = { Text("搜题干、题号、知识点…", fontSize = 13.sp, color = Muted) },
-            singleLine = true,
-            colors = tjFieldColors(),
-            leadingIcon = { Icon(Icons.Rounded.Search, null, tint = Muted, modifier = Modifier.size(18.dp)) },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.page, vertical = 4.dp)
-        )
+        if (searchOpen || query.isNotBlank()) {
+            TjTextField(
+                value = query, onValueChange = { query = it },
+                placeholder = { Text("搜题干、题号、知识点…", fontSize = 13.sp, color = Muted) },
+                singleLine = true,
+                colors = tjFieldColors(),
+                leadingIcon = { Icon(Icons.Rounded.Search, null, tint = Muted, modifier = Modifier.size(18.dp)) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Space.page, vertical = 4.dp)
+            )
+        }
 
         if (query.isNotBlank()) {
             val list = results
@@ -171,7 +200,7 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
         }
 
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 88.dp)
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 84.dp)
         ) {
             // 上次异常退出时被隔离的待确认题目：由用户决定恢复还是丢弃
             if (vm.quarantinedDrafts.isNotEmpty()) {
@@ -216,94 +245,159 @@ fun HomeScreen(vm: AppVm, onImport: () -> Unit) {
                 )
             }
 
-            if (vm.canResumeReview) {
-                Row(
-                    Modifier.padding(horizontal = Space.page, vertical = 4.dp).fillMaxWidth()
-                        .clip(CardShape).background(AccentSoft)
-                        .border(1.dp, Accent.copy(alpha = 0.25f), CardShape)
-                        .tjClickable(label = "继续上次复习") { vm.resumeReview() }
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Rounded.PlayCircle, null, tint = Accent, modifier = Modifier.size(20.dp))
-                    Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                        Text("上次复习还没结束", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Accent)
-                        Text(
-                            "进行到第 ${vm.reviewIndex + 1} / ${vm.reviewQueue.size} 题，点这里接着来",
-                            fontSize = 12.sp, color = Ink2, modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
-                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = Accent)
+            ReviewHero(vm) {
+                when {
+                    vm.stats.total == 0 -> vm.openCameraCapture()
+                    vm.canResumeReview -> vm.resumeReview()
+                    vm.stats.due > 0 -> vm.startReview(AppVm.ReviewMode.DUE, vm.reviewCountPref)
+                    else -> vm.startReview(AppVm.ReviewMode.FREE, vm.reviewCountPref)
                 }
             }
-
-            ReviewHero(vm.stats.due, vm.stats.total, vm.stats.mastered) {
-                if (vm.stats.total == 0) onImport() else showReviewSetup = true
-            }
-
-            // 学科行右侧：带文字的「添加错题」，单手也能碰到；搜索已常驻顶部，不再占这里
-            SectionLabel("学科", Modifier.padding(horizontal = Space.page)) {
-                Row(
-                    Modifier.clip(CircleShape).background(Accent)
-                        .tjClickable(label = "添加错题") { onImport() }
-                        .padding(horizontal = 12.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Rounded.Add, null, tint = OnAccent, modifier = Modifier.size(16.dp))
+            if (vm.todayQueue.isNotEmpty()) {
+                SectionLabel("今天的题", Modifier.padding(horizontal = Space.page)) {
                     Text(
-                        "添加错题", fontSize = 12.5.sp, color = OnAccent, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(start = 3.dp)
+                        if (vm.dueOverflow > 0) "还有 ${vm.dueOverflow} 道排到后面" else "做完这 ${vm.todayQueue.size} 道就够了",
+                        fontSize = 12.sp, color = Muted
+                    )
+                }
+                vm.todayQueue.forEach { q ->
+                    TodayRow(
+                        q,
+                        onOpen = { vm.go(Route.Detail(q.id)) },
+                        onMastered = { vm.markMasteredQuick(q.id) },
+                        onSkip = { vm.markUnimportantQuick(q.id) },
                     )
                 }
             }
+            if (vm.stats.total > 0 && vm.remindEnabled && !ReviewReminder.notificationsAllowed(ctx)) {
+                Text(
+                    "打开每天 ${"%02d:%02d".format(vm.remindHour, vm.remindMinute)} 的提醒，免得忘掉要复习哪几道",
+                    fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = Space.page, vertical = 4.dp)
+                        .tjClickable(label = "开启复习提醒") {
+                            if (Build.VERSION.SDK_INT >= 33) askNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            else vm.setReminder(true, vm.remindHour, vm.remindMinute)
+                        }
+                        .padding(vertical = 6.dp)
+                )
+            }
+            if (vm.stats.total > 0) {
+                Text(
+                    "调整题量或范围",
+                    fontSize = 12.5.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = Space.page, vertical = 4.dp)
+                        .tjClickable(label = "调整复习") { showReviewSetup = true }
+                        .padding(vertical = 6.dp)
+                )
+            }
 
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = Space.page),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val majors = SUBJECT_ROOTS.dropLast(1)
-                majors.chunked(2).forEach { pair ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        pair.forEach { subject ->
-                            val children = vm.categories.filter { it.subjectGroup() == subject }
+            val present = SUBJECT_ROOTS.filter { subject ->
+                vm.categories.filter { it.subjectGroup() == subject }.sumOf { it.count } > 0
+            }
+            val absent = SUBJECT_ROOTS.filter { it !in present }
+            if (present.isNotEmpty()) {
+                SectionLabel("学科", Modifier.padding(horizontal = Space.page))
+                val tailOther = present.lastOrNull() == "其他"
+                val grid = if (tailOther) present.dropLast(1) else present
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = Space.page),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    grid.chunked(2).forEach { pair ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            val left = pair[0]
+                            val leftChildren = vm.categories.filter { it.subjectGroup() == left }
                             SubjectTile(
-                                name = subject,
-                                count = children.sumOf { it.count },
-                                mastered = children.sumOf { it.mastered },
+                                name = left,
+                                count = leftChildren.sumOf { it.count },
+                                mastered = leftChildren.sumOf { it.mastered },
                                 modifier = Modifier.weight(1f),
-                                onClick = { vm.go(Route.Subject(subject)) }
+                                onClick = { vm.go(Route.Subject(left)) }
                             )
+                            if (pair.size > 1) {
+                                val right = pair[1]
+                                val rightChildren = vm.categories.filter { it.subjectGroup() == right }
+                                SubjectTile(
+                                    name = right,
+                                    count = rightChildren.sumOf { it.count },
+                                    mastered = rightChildren.sumOf { it.mastered },
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { vm.go(Route.Subject(right)) }
+                                )
+                            } else {
+                                Spacer(Modifier.weight(1f))
+                            }
                         }
                     }
+                    if (tailOther) {
+                        val children = vm.categories.filter { it.subjectGroup() == "其他" }
+                        SubjectWideRow(
+                            name = "其他",
+                            count = children.sumOf { it.count },
+                            mastered = children.sumOf { it.mastered },
+                            onClick = { vm.go(Route.Subject("其他")) }
+                        )
+                    }
                 }
-                val other = SUBJECT_ROOTS.last()
-                val otherChildren = vm.categories.filter { it.subjectGroup() == other }
-                SubjectWideRow(
-                    name = other,
-                    count = otherChildren.sumOf { it.count },
-                    mastered = otherChildren.sumOf { it.mastered },
-                    onClick = { vm.go(Route.Subject(other)) }
-                )
+                if (absent.isNotEmpty()) {
+                    Text(
+                        absent.joinToString("、") + "还没有错题",
+                        fontSize = 12.sp, color = Muted,
+                        modifier = Modifier.padding(horizontal = Space.page, vertical = 8.dp)
+                    )
+                }
             }
             run {
                 var recent by remember { mutableStateOf<List<QuestionRow>>(emptyList()) }
-                LaunchedEffect(vm.stats.total, vm.stats.due, vm.dataRevision) {
-                    recent = withContext(Dispatchers.IO) { vm.db.recentQuestions(8) }
+                LaunchedEffect(vm.stats.total, vm.dataRevision) {
+                    recent = withContext(Dispatchers.IO) { vm.db.recentQuestions(5) }
                 }
                 if (recent.isNotEmpty()) {
-                    SectionLabel("最近导入", Modifier.padding(horizontal = Space.page)) {
-                        Text("全部 ${vm.stats.total} 道", fontSize = 12.sp, color = Muted, fontWeight = FontWeight.Medium)
+                    SectionLabel("最近收录", Modifier.padding(horizontal = Space.page)) {
+                        Text("点开继续看解析", fontSize = 12.sp, color = Muted)
                     }
-                    Row(
-                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                            .padding(start = Space.page, end = Space.page),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        recent.forEach { q ->
-                            RecentCard(q) { vm.go(Route.Detail(q.id)) }
-                        }
+                    recent.forEach { q ->
+                        RecentRow(q) { vm.go(Route.Detail(q.id)) }
                     }
-                    Spacer(Modifier.height(10.dp))
+                }
+            }
+            if (vm.stats.total > 0) {
+                SectionLabel("打印", Modifier.padding(horizontal = Space.page))
+                Row(
+                    Modifier.padding(horizontal = Space.page).fillMaxWidth()
+                        .clip(CardShape).background(CardBg)
+                        .border(1.dp, Line, CardShape)
+                        .tjClickable(label = "打印题目") { vm.go(Route.Print) }
+                        .padding(horizontal = 14.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Rounded.PictureAsPdf, null, tint = Accent, modifier = Modifier.size(20.dp))
+                    Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                        Text("按主题打印", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                        Text(
+                            "勾选几个主题合成一份，或只挑标星的题。默认只印题目。",
+                            fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+        if (query.isBlank()) {
+            Column(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                    .background(Bg).padding(horizontal = Space.page, vertical = 8.dp)
+            ) {
+                if (!vm.provider.ready() && vm.stats.total == 0) {
+                    Text(
+                        "还没接 AI 也可以先拍照或手动录入，识别时再去配置。",
+                        fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                }
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TjButton("拍照收录", Modifier.weight(1.4f).fillMaxHeight()) { vm.openCameraCapture() }
+                    TjButton("其他方式", Modifier.weight(1f).fillMaxHeight(), style = ActionStyle.Secondary) { onImport() }
                 }
             }
         }
@@ -321,7 +415,7 @@ private fun ReviewSetupSheet(vm: AppVm, onDismiss: () -> Unit) {
     var count by remember { mutableStateOf(vm.reviewCountPref) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = CardBg) {
         Column(Modifier.blockSheetDrag().padding(horizontal = Space.page).padding(bottom = 26.dp)) {
-            Text("开始复习", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink, letterSpacing = (-0.3).sp)
+            Text("开始复习", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
             Text(
                 "自评不会的题明天会再出现在队列里",
                 fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
@@ -335,28 +429,43 @@ private fun ReviewSetupSheet(vm: AppVm, onDismiss: () -> Unit) {
                 TjChip("自由练习 · 全部", selected = mode == AppVm.ReviewMode.FREE) { mode = AppVm.ReviewMode.FREE }
             }
             Spacer(Modifier.height(14.dp))
-            Text("每次题量", fontSize = 12.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
+            Text(
+                if (mode == AppVm.ReviewMode.DUE) "每天最多" else "每次题量",
+                fontSize = 12.sp, color = Ink2, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp)
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TjChip("5 题", selected = count == 5) { count = 5 }
-                TjChip("10 题", selected = count == 10) { count = 10 }
-                TjChip("全部", selected = count == 0) { count = 0 }
+                TjChip("8 题", selected = count == 8) { count = 8 }
+                TjChip(if (mode == AppVm.ReviewMode.DUE) "10 题" else "全部", selected = if (mode == AppVm.ReviewMode.DUE) count == 10 else count == 0) {
+                    count = if (mode == AppVm.ReviewMode.DUE) 10 else 0
+                }
             }
             Text(
-                "会记住这次的选择，下次直接用",
+                if (mode == AppVm.ReviewMode.DUE) "多出来的题留到后面，不会一次堆给你" else "会记住这次的选择，下次直接用",
                 fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 8.dp)
             )
             Spacer(Modifier.height(16.dp))
+            if (vm.canResumeReview) {
+                TjButton("继续未完成的复习", Modifier.fillMaxWidth()) {
+                    vm.resumeReview(); onDismiss()
+                }
+                Spacer(Modifier.height(8.dp))
+            }
             TjButton(
                 when {
+                    vm.canResumeReview -> "放弃本轮，按上面的设置重开"
                     mode == AppVm.ReviewMode.DUE && count > 0 -> "开始复习 ${minOf(count, vm.stats.due)} 题"
                     mode == AppVm.ReviewMode.DUE -> "开始复习 ${vm.stats.due} 题"
                     count > 0 -> "自由练习 ${count} 题"
                     else -> "自由练习全部题目"
                 },
-                Modifier.fillMaxWidth()
+                Modifier.fillMaxWidth(),
+                style = if (vm.canResumeReview) ActionStyle.Secondary else ActionStyle.Primary
             ) {
-                vm.chooseReviewCount(count)
-                vm.startReview(mode, count)
+                vm.chooseReviewCount(if (mode == AppVm.ReviewMode.DUE && count == 0) 8 else count)
+                if (mode == AppVm.ReviewMode.DUE) vm.chooseDailyCap(if (count == 0) 8 else count.coerceIn(5, 10))
+                if (vm.canResumeReview) vm.clearReviewSession()
+                vm.startReview(mode, if (mode == AppVm.ReviewMode.DUE && count == 0) 8 else count)
                 onDismiss()
             }
         }
@@ -364,63 +473,60 @@ private fun ReviewSetupSheet(vm: AppVm, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun ReviewHero(due: Int, total: Int, mastered: Int, onClick: () -> Unit) {
-    // 夜读台主卡：整套界面唯一一处渐变光源，数字是视觉中心。
+private fun ReviewHero(vm: AppVm, onClick: () -> Unit) {
+    val due = vm.stats.due
+    val total = vm.stats.total
+    val mastered = vm.stats.mastered
+    val resume = vm.canResumeReview
+    val batch = when {
+        resume -> 0
+        due > 0 -> vm.todayQueue.size.coerceAtLeast(1)
+        total > 0 && vm.reviewCountPref > 0 -> minOf(vm.reviewCountPref, total)
+        else -> total
+    }
+    val title = when {
+        total == 0 -> "从一道错题开始"
+        resume -> "上次复习还没做完"
+        due > 0 -> "有 $due 道到了复习时间"
+        else -> "今天没有到期的题"
+    }
+    val detail = when {
+        total == 0 -> "拍下来，先看解析、追问没懂的地方。明天会自动排进复习。"
+        resume -> "进行到第 ${vm.reviewIndex + 1} / ${vm.reviewQueue.size} 题"
+        due > 0 -> "先做这 $batch 道。标星的排在前面，掌握了或不重要的不占名额。" +
+            if (vm.dueOverflow > 0) " 还有 ${vm.dueOverflow} 道留到后面。" else ""
+        else -> "可以随便练 $batch 道，或去打印出来总复习。已掌握 $mastered / $total。"
+    }
+    val action = when {
+        total == 0 -> "拍下第一道"
+        resume -> "继续复习"
+        due > 0 -> "复习 $batch 题"
+        else -> "随便练 $batch 题"
+    }
     Column(
         Modifier.padding(horizontal = Space.page).fillMaxWidth()
             .clip(CardShape).background(HeroBrush)
             .border(1.dp, HeroLine, CardShape)
-            .padding(horizontal = 20.dp, vertical = 18.dp)
+            .padding(horizontal = 18.dp, vertical = 16.dp)
     ) {
-        Text("今日复习", fontSize = 11.sp, letterSpacing = 1.6.sp, fontWeight = FontWeight.SemiBold, color = Accent)
-        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.Bottom) {
-            Text(
-                "$due", fontSize = 64.sp, lineHeight = 64.sp, fontWeight = FontWeight.Medium,
-                color = Ink, letterSpacing = (-2.5).sp, fontFamily = NumFont,
-            )
-            Text("题待复习", fontSize = 13.sp, color = Ink2, modifier = Modifier.padding(start = 8.dp, bottom = 10.dp))
-            Spacer(Modifier.weight(1f))
-            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(bottom = 8.dp)) {
-                Text(
-                    if (total == 0) "0%" else "${(mastered * 100 / total)}%",
-                    fontSize = 22.sp, lineHeight = 26.sp, fontWeight = FontWeight.Medium,
-                    color = Green, fontFamily = NumFont, letterSpacing = (-0.6).sp,
+        Text(title, fontSize = 18.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+        Text(detail, fontSize = 13.sp, lineHeight = 20.sp, color = Ink2, modifier = Modifier.padding(top = 6.dp))
+        if (total > 0) {
+            Spacer(Modifier.height(12.dp))
+            Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Accent.copy(alpha = 0.18f))) {
+                Box(
+                    Modifier.fillMaxWidth((mastered.toFloat() / total).coerceIn(0f, 1f))
+                        .height(4.dp).clip(RoundedCornerShape(2.dp)).background(Green)
                 )
-                Text("已掌握", fontSize = 11.sp, color = Muted)
             }
         }
         Spacer(Modifier.height(14.dp))
-        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Accent.copy(alpha = 0.20f))) {
-            Box(
-                Modifier.fillMaxWidth(if (total == 0) 0f else (mastered.toFloat() / total).coerceIn(0f, 1f))
-                    .height(4.dp).clip(RoundedCornerShape(2.dp)).background(Green)
-            )
-        }
-        Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                if (total == 0) "拍照或从相册导入，开始整理错题" else "已掌握 $mastered / $total 道",
-                fontSize = 12.sp, color = Muted, fontFamily = if (total == 0) null else NumFont,
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                if (due > 0) "约 ${maxOf(1, due * 2 / 3 + 1)} 分钟" else if (total == 0) "尚未开始" else "今天没有到期",
-                fontSize = 12.sp, color = Muted,
-            )
-        }
-        Spacer(Modifier.height(16.dp))
-        val primary = due > 0 || total == 0
         Box(
-            Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(CircleShape)
-                .background(if (primary) Accent else Fill)
-                .tjClickable(label = if (due > 0) "开始复习" else if (total > 0) "自由复习" else "导入第一道题") { onClick() },
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(CircleShape).background(Accent)
+                .tjClickable(label = action) { onClick() },
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                if (due > 0) "开始复习" else if (total > 0) "自由复习" else "导入第一道题",
-                fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                color = if (primary) OnAccent else Ink
-            )
+            Text(action, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = OnAccent)
         }
     }
 }
@@ -459,7 +565,7 @@ private fun SubjectTile(name: String, count: Int, mastered: Int, modifier: Modif
             Text(
                 if (hasQuestions) "$count" else "0",
                 fontSize = 20.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium,
-                color = if (hasQuestions) Ink else Muted, fontFamily = NumFont, letterSpacing = (-0.5).sp
+                color = if (hasQuestions) Ink else Muted, fontFamily = NumFont
             )
         }
         Spacer(Modifier.height(12.dp))
@@ -580,7 +686,7 @@ fun CategoryScreen(vm: AppVm, route: Route.Category? = vm.route as? Route.Catego
             subtitle = "${rows.size} 道题",
             onBack = { vm.back() },
             actions = {
-                IconCircle(Icons.Rounded.Add, "导入错题", tint = Color.White, filled = true) { vm.go(Route.Import) }
+                IconCircle(Icons.Rounded.Add, "收录错题", tint = Color.White, filled = true) { vm.openAdd() }
                 Text(
                     if (selecting) "取消" else "选择",
                     fontSize = 13.sp, color = Accent, fontWeight = FontWeight.Medium,
@@ -1105,6 +1211,9 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
     }
     val missingSolution = question.answer.isBlank() || question.analysis.isBlank()
     val showSolution = !practice || revealed
+    val freshIndex = vm.freshIds.indexOf(question.id)
+    val justCaptured = freshIndex >= 0
+    var freshExpanded by rememberSaveable(id) { mutableStateOf(true) }
 
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
@@ -1120,11 +1229,77 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                 ) {
                     if (practice) { practice = false; revealed = false } else practice = true
                 }
+                IconCircle(
+                    if (question.starred) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                    if (question.starred) "取消标星" else "标为重要",
+                    tint = if (question.starred) Amber else Ink2,
+                ) {
+                    val next = !question.starred
+                    q = question.copy(starred = next)
+                    vm.cacheQuestion(question.copy(starred = next))
+                    vm.setStarred(question.id, next)
+                }
                 IconCircle(Icons.Rounded.Edit, "编辑") { editing = true }
                 IconCircle(Icons.Rounded.DeleteOutline, "删除", tint = Red) { confirmDelete = true }
             }
         )
         Column(Modifier.fillMaxSize().verticalScroll(detailScroll).padding(horizontal = Space.page, vertical = 8.dp)) {
+            if (question.unimportant || question.mastery >= 4) {
+                Row(
+                    Modifier.fillMaxWidth().clip(CardShape).background(SurfaceAlt)
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        if (question.unimportant) "已标为不重要，不占复习名额" else "已掌握，不占复习名额",
+                        fontSize = 13.sp, color = Ink2, modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        "重新加入", fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.tjClickable(label = "重新加入复习") { vm.restoreToQueue(question.id) }
+                            .padding(vertical = 6.dp, horizontal = 4.dp)
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+            if (justCaptured) {
+                Column(
+                    Modifier.fillMaxWidth().clip(CardShape).background(AccentSoft)
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                ) {
+                    Text(
+                        "刚收录 · ${reviewWhenLabel(question.nextReviewAt)}",
+                        fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Accent
+                    )
+                    Text(
+                        if (vm.freshIds.size > 1) "本批 ${freshIndex + 1} / ${vm.freshIds.size}。先看解析，没懂就追问。"
+                        else "先看解析，没懂就追问。复习排在明天，不会堆进今天。",
+                        fontSize = 12.sp, lineHeight = 18.sp, color = Ink2, modifier = Modifier.padding(top = 3.dp)
+                    )
+                    if (vm.freshIds.size > 1) {
+                        Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (freshIndex > 0) {
+                                Text(
+                                    "上一题", fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.tjClickable(label = "上一题") { vm.stepFresh(-1) }.padding(vertical = 6.dp)
+                                )
+                            }
+                            if (freshIndex < vm.freshIds.lastIndex) {
+                                Text(
+                                    "下一题", fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.tjClickable(label = "下一题") { vm.stepFresh(1) }.padding(vertical = 6.dp)
+                                )
+                            } else {
+                                Text(
+                                    "这批看完了", fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.tjClickable(label = "回到错题本") { vm.dismissFresh(); vm.home() }.padding(vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
             // —— 看题：题干与原图快捷切换，默认题干 ——
             if (hasImage && hasStemText(stemText)) {
                 Row(Modifier.padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1224,8 +1399,11 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                         title = "答案与解析",
                         subtitle = "对完答案，把每一步都看懂",
                         color = Accent,
-                        expanded = vm.answerExpanded,
-                        onToggle = { vm.chooseAnswerExpanded(!vm.answerExpanded) },
+                        expanded = if (justCaptured) freshExpanded else vm.answerExpanded,
+                        onToggle = {
+                            if (justCaptured) freshExpanded = !freshExpanded
+                            else vm.chooseAnswerExpanded(!vm.answerExpanded)
+                        },
                     ) {
                         val solSections = buildList {
                             if (question.answer.isNotBlank()) add(RichSectionSpec("答案", question.answer, "", Green.toHexColor(), s(16), kind = "answer"))
@@ -1240,6 +1418,10 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
                             )
                         }
                     }
+                    Spacer(Modifier.height(12.dp))
+                }
+                if (!missingSolution) {
+                    AskCard(vm)
                     Spacer(Modifier.height(12.dp))
                 }
             }
@@ -1432,6 +1614,29 @@ fun QuestionDetailScreen(vm: AppVm, route: Route.Detail? = vm.route as? Route.De
             }) { Text("删除", color = Red) } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } }
         )
+    }
+}
+
+@Composable
+private fun AskCard(vm: AppVm) {
+    CardBox(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("还没看懂？", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+            Text(
+                "追问会带上这道题的题干、解析和原图。",
+                fontSize = 12.5.sp, lineHeight = 19.sp, color = Muted,
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+            )
+            listOf("这一步为什么这样？", "再讲简单一点").forEach { prompt ->
+                Text(
+                    prompt, fontSize = 13.sp, color = Accent, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.tjClickable(label = prompt) { vm.askAboutCurrent(prompt) }
+                        .padding(vertical = 6.dp)
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            TjButton("打开追问", Modifier.fillMaxWidth(), style = ActionStyle.Secondary) { vm.openChat() }
+        }
     }
 }
 
@@ -1836,7 +2041,7 @@ fun ZoomableImage(file: File, maxHeight: Dp = 240.dp, onClick: () -> Unit = {}) 
 @Composable
 fun LabelValue(label: String, value: String) {
     Column {
-        Text(label, fontSize = 11.sp, letterSpacing = 1.sp, color = Muted)
+        Text(label, fontSize = 11.sp, color = Muted)
         Text(value, fontSize = 12.5.sp, lineHeight = 20.sp, color = Ink, modifier = Modifier.padding(top = 4.dp))
     }
 }
@@ -2040,24 +2245,29 @@ fun BusyOverlay(label: String) {
 @Composable
 fun ExportSheet(count: Int, onDismiss: () -> Unit, onExport: (PdfExporter.Options, Boolean) -> Unit) {
     var onePerPage by remember { mutableStateOf(true) }
-    var answer by remember { mutableStateOf(true) }
-    var analysis by remember { mutableStateOf(true) }
+    var answer by remember { mutableStateOf(false) }
+    var analysis by remember { mutableStateOf(false) }
     var tags by remember { mutableStateOf(true) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = CardBg) {
         Column(Modifier.blockSheetDrag().padding(horizontal = Space.page).padding(bottom = 26.dp)) {
             Text("导出 PDF", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
-            Text("已选 $count 题 · A4 / 2cm 页边距", fontSize = 12.5.sp, color = Muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
+            Text("已选 $count 题 · 默认只印题目，答案和解析需单独打开", fontSize = 12.5.sp, color = Muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
+            var answersAtEnd by remember { mutableStateOf(false) }
             OptRow("版式", if (onePerPage) "一题一页" else "紧凑") { onePerPage = !onePerPage }
-            OptRow("答案", if (answer) "包含" else "不包含") { answer = !answer }
+            OptRow("答案", if (!answer) "不包含" else if (answersAtEnd) "集中在文末" else "跟在每题后面") {
+                if (!answer) { answer = true; answersAtEnd = false }
+                else if (!answersAtEnd) answersAtEnd = true
+                else answer = false
+            }
             OptRow("解析", if (analysis) "包含" else "不包含") { analysis = !analysis }
             OptRow("知识点标签", if (tags) "包含" else "不包含") { tags = !tags }
             Spacer(Modifier.height(14.dp))
             Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TjButton("生成并分享", Modifier.weight(1f).fillMaxHeight(), style = ActionStyle.Secondary) {
-                    onExport(PdfExporter.Options(answer, analysis, tags, onePerPage), true)
+                    onExport(PdfExporter.Options(answer, analysis, tags, onePerPage, answersAtEnd), true)
                 }
                 TjButton("保存 PDF", Modifier.weight(1f).fillMaxHeight()) {
-                    onExport(PdfExporter.Options(answer, analysis, tags, onePerPage), false)
+                    onExport(PdfExporter.Options(answer, analysis, tags, onePerPage, answersAtEnd), false)
                 }
             }
         }
@@ -2089,41 +2299,77 @@ fun parseColor(hex: String): Color = try {
 fun dateStamp(): String = SimpleDateFormat("yyyyMMdd", Locale.CHINA).format(Date())
 
 
+fun reviewWhenLabel(next: Long): String {
+    if (next <= 0L) return "稍后复习"
+    val delta = next - System.currentTimeMillis()
+    return when {
+        delta <= 0L -> "今天到期"
+        delta < 36 * 3_600_000L -> "明天复习"
+        else -> "约 ${delta / 86_400_000L} 天后复习"
+    }
+}
+
 @Composable
-private fun RecentCard(q: QuestionRow, onClick: () -> Unit) {
-    Column(
-        Modifier.width(148.dp)
-            .bounceClick(label = "打开错题", onClick = onClick)
-            .clip(RoundedCornerShape(16.dp)).background(CardBg)
-            .border(1.dp, Line, RoundedCornerShape(16.dp))
-    ) {
-        Box(Modifier.fillMaxWidth().height(100.dp).background(SurfaceAlt)) {
-            if (q.imagePath != null) {
-                AsyncImage(
-                    model = File(q.imagePath), contentDescription = null,
-                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+private fun TodayRow(
+    q: QuestionRow,
+    onOpen: () -> Unit,
+    onMastered: () -> Unit,
+    onSkip: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = Space.page, vertical = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                Modifier.weight(1f).tjClickable(label = "打开这道题", onClick = onOpen).padding(vertical = 4.dp)
+            ) {
+                Text(
+                    listOf(
+                        if (q.starred) "重要" else null,
+                        q.subjectName.ifBlank { null },
+                        q.categoryName.ifBlank { null },
+                    ).filterNotNull().joinToString(" · "),
+                    fontSize = 11.sp, color = if (q.starred) Amber else Muted, maxLines = 1
                 )
-            } else {
-                Text("题", fontSize = 22.sp, color = Muted, modifier = Modifier.align(Alignment.Center))
+                StemText(q.stem, color = Ink, fontSizeSp = 14f, lineHeightSp = 20f, maxLines = 2, modifier = Modifier.padding(top = 2.dp))
             }
         }
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 14.dp)) {
-            StemText(q.stem, color = Ink, fontSizeSp = 13f, lineHeightSp = 19f, maxLines = 2, blankHint = "（无题干）")
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                listOf(q.customTag, q.categoryName).filter { it.isNotBlank() }.joinToString(" · "),
-                fontSize = 11.sp, color = Muted, modifier = Modifier.padding(top = 5.dp), maxLines = 1
+                "掌握", fontSize = 12.5.sp, color = Green, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.tjClickable(label = "标为掌握", onClick = onMastered).padding(vertical = 4.dp)
+            )
+            Text(
+                "不重要", fontSize = 12.5.sp, color = Muted, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.tjClickable(label = "标为不重要", onClick = onSkip).padding(vertical = 4.dp)
             )
         }
     }
 }
 
+@Composable
+private fun RecentRow(q: QuestionRow, onClick: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth()
+            .tjClickable(label = "打开错题", onClick = onClick)
+            .padding(horizontal = Space.page, vertical = 10.dp)
+    ) {
+        Text(
+            listOf(q.categoryName.ifBlank { "未分类" }, reviewWhenLabel(q.nextReviewAt)).joinToString(" · "),
+            fontSize = 11.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis
+        )
+        StemText(
+            q.stem, color = Ink, fontSizeSp = 14f, lineHeightSp = 21f, maxLines = 2,
+            modifier = Modifier.padding(top = 3.dp)
+        )
+    }
+    Box(Modifier.padding(horizontal = Space.page).fillMaxWidth().height(1.dp).background(Line))
+}
 
 @Composable
 private fun OverviewCell(value: String, label: String, modifier: Modifier = Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             value, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.Medium,
-            color = if (value == "0") Muted else Ink, fontFamily = NumFont, letterSpacing = (-0.8).sp
+            color = if (value == "0") Muted else Ink, fontFamily = NumFont
         )
         Text(label, fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 3.dp))
     }

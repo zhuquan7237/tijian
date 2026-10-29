@@ -6,14 +6,19 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish 8.1.0 with the original signing key
+        description: Publish the current versionName with the original signing key
         type: boolean
         default: false
 permissions:
   contents: read
 jobs:
   validate:
+    # /dev/kvm exists on the Linux runner, but the job user is not in group kvm,
+    # so the emulator action turns acceleration off. The API 35 "default" image
+    # then boots under TCG, is reported as API 15, and instrumentation crashes
+    # before any test. macOS hosted runners currently reject HVF (HV_UNSUPPORTED).
     runs-on: ubuntu-latest
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -32,12 +37,24 @@ jobs:
           path: |
             app/build/outputs/apk/debug/*.apk
             app/build/reports/lint-results-debug.*
+      - name: Allow KVM
+        run: |
+          if [ ! -e /dev/kvm ]; then
+            echo "/dev/kvm is missing; hardware acceleration is unavailable." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          ls -l /dev/kvm
       - name: Run Android regressions
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 34
+          target: google_apis
           arch: x86_64
-          profile: pixel_2
+          profile: pixel_6
+          disable-linux-hw-accel: false
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: bash gradlew connectedDebugAndroidTest --console=plain
       - uses: actions/upload-artifact@v4
         if: always()
@@ -76,4 +93,6 @@ jobs:
           TIJIAN_KEY_ALIAS: ${{ secrets.TIJIAN_KEY_ALIAS }}
           TIJIAN_KEY_PASSWORD: ${{ secrets.TIJIAN_KEY_PASSWORD }}
           GH_TOKEN: ${{ github.token }}
-        run: bash scripts/release.sh 8.1.0 "$(cat docs/releases/8.1.0.md)"
+        run: |
+          VER=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
+          bash scripts/release.sh "$VER" "$(cat "docs/releases/${VER}.md")"

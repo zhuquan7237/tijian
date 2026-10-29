@@ -46,6 +46,7 @@ import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.RestoreFromTrash
@@ -61,6 +62,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -86,6 +88,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(vm: AppVm) {
     var showAbout by remember { mutableStateOf(false) }
+    var showRemind by remember { mutableStateOf(false) }
     var showBackup by remember { mutableStateOf(false) }
     var showAppearance by remember { mutableStateOf(false) }
     var showCrash by remember { mutableStateOf(false) }
@@ -103,7 +106,7 @@ fun SettingsScreen(vm: AppVm) {
     Column(Modifier.fillMaxSize()) {
         TjTopBar(
             title = "我的",
-            subtitle = "本地优先 · 数据只在本机与你配置的模型之间流转"
+            subtitle = if (vm.provider.ready()) "AI 已接入" else "识别前需要接入 AI，题目仍只存在本机"
         )
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.page)) {
             if (vm.lastCrashReport != null) {
@@ -146,7 +149,13 @@ fun SettingsScreen(vm: AppVm) {
             SectionLabel("快捷操作")
             CardBox(Modifier.fillMaxWidth()) {
                 Column {
-                    SettingRow(Icons.Rounded.PlayArrow, "开始今日复习", if (vm.stats.due > 0) "${vm.stats.due} 道到期" else "今天没有到期任务") {
+                    SettingRow(
+                        Icons.Rounded.Notifications,
+                        "复习提醒",
+                        if (!vm.remindEnabled) "已关闭" else "每天 %02d:%02d · 只提醒今天要看的题".format(vm.remindHour, vm.remindMinute)
+                    ) { showRemind = true }
+                    DividerSoft()
+                    SettingRow(Icons.Rounded.PlayArrow, "开始今日复习", if (vm.stats.due > 0) "${vm.todayQueue.size} 道，共 ${vm.stats.due} 道到期" else "今天没有到期任务") {
                         if (vm.stats.due > 0) vm.startReview() else vm.home()
                     }
                     DividerSoft()
@@ -196,6 +205,56 @@ fun SettingsScreen(vm: AppVm) {
             )
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (showRemind) {
+        var enabled by remember { mutableStateOf(vm.remindEnabled) }
+        var hour by remember { mutableIntStateOf(vm.remindHour) }
+        val ctx = LocalContext.current
+        val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                vm.setReminder(true, hour, 0)
+                showRemind = false
+            } else vm.toast = "没有通知权限。首页仍会列出今天的题。"
+        }
+        AlertDialog(
+            onDismissRequest = { showRemind = false },
+            title = { Text("复习提醒", fontSize = 16.sp) },
+            text = {
+                Column {
+                    Text(
+                        if (enabled) "每天这个时间提醒你今天要复习哪几道。关掉之后，清单还在首页。" else "提醒已关闭。",
+                        fontSize = 13.sp, color = Ink2
+                    )
+                    Row(Modifier.padding(top = 12.dp).horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(8, 12, 18, 20, 21, 22).forEach { h ->
+                            TjChip("%02d:00".format(h), enabled && hour == h) { enabled = true; hour = h }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (!enabled) {
+                        vm.setReminder(false, hour, 0)
+                        showRemind = false
+                    } else if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                        !com.zhuquan.tijian.review.ReviewReminder.notificationsAllowed(ctx)
+                    ) {
+                        askNotify.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        vm.setReminder(true, hour, 0)
+                        showRemind = false
+                    }
+                }) { Text(if (enabled) "保存" else "关闭提醒", color = if (enabled) Accent else Ink2) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    vm.setReminder(false, hour, 0)
+                    showRemind = false
+                }) { Text("关掉提醒", color = Muted) }
+            }
+        )
     }
 
     if (showAppearance) {
@@ -732,7 +791,7 @@ private fun ModelPickerSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("选择模型", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink, letterSpacing = (-0.2).sp)
+                    Text("选择模型", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink)
                     Text(
                         when {
                             loading -> "正在从 /models 拉取…"
