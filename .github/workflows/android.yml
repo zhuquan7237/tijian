@@ -13,11 +13,11 @@ permissions:
   contents: read
 jobs:
   validate:
-    # GitHub-hosted Linux has no KVM. The API 35 x86_64 image then runs under TCG,
-    # adb names the device "emulator-5554 - 15", and instrumentation dies before
-    # any test starts ("Process crashed", 0 tests). That failure is on master too.
-    # macOS runners have HVF, and arm64 images match the Apple Silicon host.
-    runs-on: macos-latest
+    # /dev/kvm exists on the Linux runner, but the job user is not in group kvm,
+    # so the emulator action turns acceleration off. The API 35 "default" image
+    # then boots under TCG, is reported as API 15, and instrumentation crashes
+    # before any test. macOS hosted runners currently reject HVF (HV_UNSUPPORTED).
+    runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
@@ -37,13 +37,22 @@ jobs:
           path: |
             app/build/outputs/apk/debug/*.apk
             app/build/reports/lint-results-debug.*
+      - name: Allow KVM
+        run: |
+          if [ ! -e /dev/kvm ]; then
+            echo "/dev/kvm is missing; hardware acceleration is unavailable." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          ls -l /dev/kvm
       - name: Run Android regressions
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
           target: google_apis
-          arch: arm64-v8a
+          arch: x86_64
           profile: pixel_6
+          disable-linux-hw-accel: false
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: bash gradlew connectedDebugAndroidTest --console=plain
