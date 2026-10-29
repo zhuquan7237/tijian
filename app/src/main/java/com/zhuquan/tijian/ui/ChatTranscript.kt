@@ -7,12 +7,25 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import org.json.JSONArray
 import org.json.JSONObject
@@ -102,6 +115,23 @@ fun ChatTranscript(
     val latestJson = rememberUpdatedState(json)
     // 组合期读取主题：夜/昼切换会触发重组，进而重发 __setNight
     val nightNow = isNight
+    val crashed = remember { mutableStateOf(false) }
+    val onRendererGone = rememberUpdatedState { crashed.value = true }
+    if (crashed.value) {
+        Column(modifier.verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+            messages.forEach { (role, text) ->
+                Text(
+                    if (role == "user") "我" else "题笺",
+                    color = Muted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                MathText(text, Ink, 15f, Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp))
+            }
+            Spacer(Modifier.height(4.dp))
+        }
+        return
+    }
 
     AndroidView(
         modifier = modifier,
@@ -145,7 +175,14 @@ fun ChatTranscript(
                             "window.__setMessages(" + JSONObject.quote(latestJson.value) + ")", null
                         )
                     }
+
+                    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                        android.util.Log.e("ChatTranscript", "renderer gone crashed=${detail.didCrash()}")
+                        onRendererGone.value.invoke()
+                        return true
+                    }
                 }
+                setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
                 addJavascriptInterface(object {
                     @JavascriptInterface
                     fun copy(text: String) {

@@ -6,12 +6,16 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.text.TextPaint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
+import android.text.Layout
+import android.text.StaticLayout
 import com.zhuquan.tijian.data.QuestionRow
 import com.zhuquan.tijian.data.orientBitmap
+import com.zhuquan.tijian.ui.MathTextEngine
 import com.zhuquan.tijian.ui.cleanMath
 import java.io.File
 import java.io.FileOutputStream
@@ -112,15 +116,13 @@ object PdfExporter {
             val richStemH = richStem?.let { CONTENT_W * it.height / it.width.toFloat() } ?: 0f
             val richAnswerH = richAnswer?.let { CONTENT_W * it.height / it.width.toFloat() } ?: 0f
 
-            // 位图渲染失败时才退回纯文本
-            val stemLines = if (richStem == null)
-                wrap(cleanMath(q.stem.ifBlank { "（未识别题干）" }), body, CONTENT_W)
-            else emptyList()
+            // 位图渲染失败时退回与列表相同的行内公式，不再把 x^2、e^{xy} 当源码印出来。
+            val stemLayout = if (richStem == null) mixedLayout(richStemMd.ifBlank { "（未识别题干）" }, body) else null
             val answerText = if (richAnswer != null || opts.answersAtEnd) "" else buildString {
                 if (opts.includeAnswer && q.answer.isNotBlank()) append("答案：").append(q.answer).append("\n")
                 if (opts.includeAnalysis && q.analysis.isNotBlank()) append("解析：").append(q.analysis)
             }.trim()
-            val answerLines = if (answerText.isBlank()) emptyList() else wrap(answerText, paint(10.5f), CONTENT_W)
+            val answerLayout = if (answerText.isBlank()) null else mixedLayout(answerText, paint(10.5f))
 
             // 题块高度预判：标题 + 题干 + 图片 + 富文本 + 答案
             val bmp = bmp0
@@ -130,7 +132,8 @@ object PdfExporter {
             val imgH = if (bmp != null) CONTENT_W * bmp.height.toFloat() / bmp.width else 0f
             // Pager.y already includes the question-number/header row (32f) when
             // the fit is calculated. Count drawing offsets exactly once here.
-            val blockH = headerH + stemLines.size * 17f + 6f + imgH + 4f + richStemH + 4f + richAnswerH + 18f
+            val stemBlockH = stemLayout?.height?.toFloat() ?: 0f
+            val blockH = headerH + stemBlockH + 6f + imgH + 4f + richStemH + 4f + richAnswerH + 18f
 
             // 一题一页和换主题的翻页已经在本题开头做过。紧凑版式只在题块放不下时才翻页。
             if (!opts.onePerPage && index > 0 && topic == prevTopic) pager.ensure(headerH + 8f)
@@ -154,11 +157,7 @@ object PdfExporter {
             }
             pager.y += 32f
 
-            stemLines.forEach { line ->
-                pager.ensure(17f * fit)
-                pager.canvas!!.drawText(line, MARGIN, pager.y + 11f * fit, Paint(body).apply { textSize = body.textSize * fit })
-                pager.y += 17f * fit
-            }
+            if (stemLayout != null) drawLayout(pager, stemLayout)
             pager.y += 6f * fit
 
             // Text is painted before the scan so an oversized image can never
@@ -177,7 +176,7 @@ object PdfExporter {
                 richStem.recycle()
             }
             if (bmp != null) {
-                val reservedText = richAnswerH + answerLines.size * 16f + writingReserve + 12f
+                val reservedText = richAnswerH + (answerLayout?.height?.toFloat() ?: 0f) + writingReserve + 12f
                 val imageRoom = (BOTTOM - pager.y - reservedText).coerceAtLeast(120f)
                 // 原图按比例缩小到本页剩余空间，保留作答线，不切到下一页。
                 pager.image(bmp, 1f, allowSlice = false, maxHeight = imageRoom)
@@ -192,18 +191,13 @@ object PdfExporter {
 
             if (practicePage) drawWritingLines(pager, 6)
 
-            if (answerLines.isNotEmpty()) {
+            if (answerLayout != null) {
                 pager.y += 8f
-                pager.ensure(16f * fit)
                 pager.canvas!!.drawLine(MARGIN, pager.y, MARGIN + 36f, pager.y, Paint().apply {
                     color = lineColor; strokeWidth = 1f
                 })
-                pager.y += 14f * fit
-                answerLines.forEach { line ->
-                    pager.ensure(16f * fit)
-                    pager.canvas!!.drawText(line, MARGIN, pager.y + 10f * fit, paint(10.5f * fit))
-                    pager.y += 16f * fit
-                }
+                pager.y += 10f
+                drawLayout(pager, answerLayout)
             }
             pager.y += 20f
         }
@@ -231,6 +225,8 @@ object PdfExporter {
                     pager.y += 4f
                     pager.image(bmp, 1f, allowSlice = false)
                     bmp.recycle()
+                } else {
+                    drawLayout(pager, mixedLayout(md, paint(11f)))
                 }
                 pager.y += 16f
             }
@@ -424,6 +420,31 @@ object PdfExporter {
             canvas.drawLine(MARGIN, pager.y + 16f, PAGE_W - MARGIN, pager.y + 16f, line)
             pager.y += lineH
         }
+    }
+
+    /** WebView 位图失败时，用列表同一套行内公式画进 PDF。 */
+    private fun mixedLayout(text: String, p: Paint): StaticLayout {
+        val spanned = runCatching {
+            MathTextEngine.build(text, p.textSize, p.color, CONTENT_W.toInt())
+        }.getOrNull()
+        val content: CharSequence = spanned ?: cleanMath(text)
+        val tp = TextPaint(p)
+        return StaticLayout.Builder.obtain(content, 0, content.length, tp, CONTENT_W.toInt())
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setIncludePad(false)
+            .setLineSpacing(0f, 1.2f)
+            .build()
+    }
+
+    private fun drawLayout(pager: Pager, layout: StaticLayout) {
+        val h = layout.height.toFloat().coerceAtLeast(1f)
+        pager.ensure(h.coerceAtMost(BOTTOM - TOP - 8f))
+        val canvas = pager.canvas ?: return
+        canvas.save()
+        canvas.translate(MARGIN, pager.y)
+        layout.draw(canvas)
+        canvas.restore()
+        pager.y += h
     }
 
     private fun wrap(text: String, p: Paint, width: Float): List<String> {

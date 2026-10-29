@@ -144,7 +144,7 @@ fun PrintScreen(vm: AppVm) {
             }
         }
         if (topics.isEmpty()) {
-            EmptyState("还没有可以打印的题", "先收录几道错题")
+            Box(Modifier.weight(1f)) { EmptyState("还没有可以打印的题", "先收录几道错题") }
         } else {
             LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 12.dp)) {
                 val bySubject = topics.groupBy { it.subject }
@@ -185,24 +185,18 @@ fun PrintScreen(vm: AppVm) {
                 }
             }
         }
-        Column(Modifier.fillMaxWidth().background(CardBg).padding(horizontal = Space.page, vertical = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (withAnswers) "附上答案（印在最后）" else "只印题目",
-                    fontSize = 13.sp, color = Ink, modifier = Modifier.weight(1f)
-                )
-                Text(
-                    if (withAnswers) "关闭答案" else "附上答案",
-                    fontSize = 13.sp, color = Accent, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.tjClickable(label = "切换是否附答案") { withAnswers = !withAnswers }
-                        .padding(vertical = 8.dp, horizontal = 4.dp)
-                )
-            }
+        Column(
+            Modifier.fillMaxWidth().background(Bg)
+                .padding(horizontal = Space.page, vertical = 10.dp)
+        ) {
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
+            Spacer(Modifier.height(10.dp))
+            AnswerToggle(withAnswers) { withAnswers = it }
             Text(
-                "默认不含答案和解析，每题单独一页，页下留作答线。",
-                fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(bottom = 8.dp)
+                if (withAnswers) "答案集中印在最后，题目页仍留作答线。" else "默认不含答案和解析，每题单独一页，页下留作答线。",
+                fontSize = 11.5.sp, color = Muted, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
             )
-            Row(Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().height(52.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TjButton(
                     "分享",
                     Modifier.weight(1f).fillMaxHeight(),
@@ -260,12 +254,20 @@ private fun TopicBlock(
                     fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 2.dp)
                 )
             }
-            Icon(
-                if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                contentDescription = if (expanded) "收起" else "展开",
-                tint = Muted,
-                modifier = Modifier.size(22.dp).tjClickable(label = "展开${topic.name}", onClick = onToggleExpand)
-            )
+            Box(
+                Modifier.size(40.dp).tjClickable(
+                    label = if (expanded) "收起${topic.name}" else "展开${topic.name}",
+                    onClick = onToggleExpand,
+                ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = if (expanded) "收起" else "展开",
+                    tint = Muted,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
         }
         if (expanded) {
             if (starred > 0) {
@@ -309,19 +311,46 @@ private fun TopicBlock(
 }
 
 @Composable
-private fun CheckBox(checked: Boolean, partial: Boolean, label: String, onClick: () -> Unit) {
-    Box(
-        Modifier.size(28.dp).clip(RoundedCornerShape(7.dp))
-            .background(if (checked) Accent else CardBg)
-            .border(1.5.dp, if (checked || partial) Accent else FieldBorder, RoundedCornerShape(7.dp))
-            .tjClickable(label = label, onClick = onClick),
-        contentAlignment = Alignment.Center
+private fun AnswerToggle(withAnswers: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(CircleShape).background(SurfaceAlt).padding(3.dp)
     ) {
-        if (checked) {
-            Text("✓", fontSize = 14.sp, color = OnAccent, fontWeight = FontWeight.Bold)
-        } else if (partial) {
-            Box(Modifier.size(width = 12.dp, height = 2.dp).background(Accent))
+        listOf(false to "只印题目", true to "附上答案").forEach { (on, label) ->
+            val selected = withAnswers == on
+            Box(
+                Modifier.weight(1f).height(40.dp).clip(CircleShape)
+                    .background(if (selected) Accent else androidx.compose.ui.graphics.Color.Transparent)
+                    .tjClickable(label = label) { onChange(on) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label,
+                    fontSize = 13.sp,
+                    color = if (selected) OnAccent else Ink2,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         }
     }
-    Spacer(Modifier.size(8.dp))
+}
+
+@Composable
+private fun CheckBox(checked: Boolean, partial: Boolean, label: String, onClick: () -> Unit) {
+    Box(
+        Modifier.size(40.dp).tjClickable(label = label, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(22.dp).clip(RoundedCornerShape(6.dp))
+                .background(if (checked) Accent else androidx.compose.ui.graphics.Color.Transparent)
+                .border(1.5.dp, if (checked || partial) Accent else FieldBorder, RoundedCornerShape(6.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (checked) {
+                Text("✓", fontSize = 13.sp, color = OnAccent, fontWeight = FontWeight.Bold)
+            } else if (partial) {
+                Box(Modifier.size(width = 10.dp, height = 2.dp).clip(RoundedCornerShape(1.dp)).background(Accent))
+            }
+        }
+    }
 }

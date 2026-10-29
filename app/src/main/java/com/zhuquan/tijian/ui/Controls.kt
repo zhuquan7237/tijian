@@ -1,5 +1,6 @@
 package com.zhuquan.tijian.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -53,15 +54,27 @@ fun TjButton(
         animationSpec = androidx.compose.animation.core.tween(Motion.Fast, easing = Motion.Enter),
         label = "button-press"
     )
+    val enabledNow = enabled && !loading
     Button(
-        onClick = onClick, enabled = enabled && !loading,
+        onClick = onClick, enabled = enabledNow,
         modifier = modifier.heightIn(min = 48.dp)
             .graphicsLayer { scaleX = pressScale; scaleY = pressScale },
         interactionSource = pressSource,
         shape = CircleShape,
+        border = when (style) {
+            // 次按钮始终带描边：禁用时也和实心主按钮区分开，不会两个灰块分不清。
+            ActionStyle.Secondary -> BorderStroke(1.dp, if (enabledNow) FieldBorder else Line)
+            ActionStyle.Quiet -> null
+            else -> if (enabledNow) null else BorderStroke(1.dp, Line)
+        },
         colors = ButtonDefaults.buttonColors(
             containerColor = bg, contentColor = fg,
-            disabledContainerColor = SurfaceAlt, disabledContentColor = Muted,
+            disabledContainerColor = when (style) {
+                ActionStyle.Primary -> Fill
+                ActionStyle.Danger -> RedSoft
+                else -> Color.Transparent
+            },
+            disabledContentColor = Muted,
         ),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
         elevation = null,

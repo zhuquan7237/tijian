@@ -58,7 +58,7 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
         )
         if (children.isEmpty()) {
             Column(
-                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.page, vertical = 4.dp)
+                Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Space.page, vertical = 4.dp)
                     .padding(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -74,7 +74,7 @@ fun SubjectScreen(vm: AppVm, route: Route.Subject) {
             }
         } else {
             LazyColumn(
-                Modifier.fillMaxSize().dragContainer(dragState) {
+                Modifier.weight(1f).dragContainer(dragState) {
                     vm.write { it.reorderCategories(children.map { c -> c.id }) }
                 }
                     .padding(horizontal = Space.page, vertical = 4.dp)

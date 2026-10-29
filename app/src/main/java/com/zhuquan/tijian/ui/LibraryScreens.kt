@@ -93,7 +93,7 @@ fun LibraryScreen(vm: AppVm) {
             }
         )
 
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Space.page, vertical = 6.dp)) {
+        LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Space.page, vertical = 6.dp)) {
             item {
                 GenerateCard(vm.categories.filter { it.count > 0 }.size) { pickCategory = true }
                 SectionLabel("最近生成") {
@@ -347,7 +347,7 @@ fun DocScreen(vm: AppVm, route: Route.Doc? = vm.route as? Route.Doc) {
                 }
             }
         )
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Space.page)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Space.page, vertical = 8.dp)) {
             RichText(d.contentMd, fontSize = (14 * vm.readingScaleValue).roundToInt())
             Spacer(Modifier.height(18.dp))
             Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
