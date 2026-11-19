@@ -1,0 +1,48 @@
+# One-time setup (e.g., install system tools, global CLIs).
+initialize:
+  - name: Install Android SDK (matches CI packages)
+    run: |
+      SDK="$HOME/android-sdk"
+      if [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
+        mkdir -p "$SDK/cmdline-tools"
+        curl -sSfLo /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+        rm -rf "$SDK/cmdline-tools/latest" "$SDK/cmdline-tools/cmdline-tools"
+        unzip -q /tmp/cmdtools.zip -d "$SDK/cmdline-tools"
+        mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+        rm -f /tmp/cmdtools.zip
+      fi
+      yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses > /dev/null || true
+      "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "platforms;android-35" "build-tools;34.0.0" > /dev/null
+      echo "ANDROID_HOME=$SDK" >> $ENVRC
+      echo "ANDROID_SDK_ROOT=$SDK" >> $ENVRC
+      echo "PATH=$SDK/platform-tools:$SDK/cmdline-tools/latest/bin:$PATH" >> $ENVRC
+  - name: Gradle Maven Central mirror (repo.maven.apache.org returns 429 from cloud IPs)
+    run: |
+      mkdir -p "$HOME/.gradle/init.d"
+      cat > "$HOME/.gradle/init.d/maven-central-mirror.gradle" <<'GRADLE'
+      def mirror = 'https://maven-central.storage-download.googleapis.com/maven2/'
+      beforeSettings { settings ->
+          settings.pluginManagement.repositories { maven { url mirror } }
+          settings.dependencyResolutionManagement.repositories { maven { url mirror } }
+      }
+      GRADLE
+# Install project dependencies (runs during builds, surfaced to agent at session start).
+maintenance:
+  - name: Warm Gradle wrapper and plugins
+    run: ./gradlew help --console=plain
+knowledge:
+  - name: build
+    contents: |
+      ./gradlew assembleDebug --console=plain   # -> app/build/outputs/apk/debug/app-debug.apk
+      ./gradlew assembleRelease                 # release uses debug signing unless TIJIAN_KEYSTORE is set
+  - name: test
+    contents: |
+      ./gradlew testDebugUnitTest --console=plain          # JVM unit tests
+      ./gradlew connectedDebugAndroidTest --console=plain  # needs a running emulator (CI uses API 34 google_apis x86_64)
+  - name: lint
+    contents: |
+      ./gradlew lintDebug --console=plain
+  - name: notes
+    contents: |
+      Release publishing (scripts/release.sh) needs gh auth and TIJIAN_KEYSTORE/TIJIAN_STORE_PASSWORD/TIJIAN_KEY_ALIAS/TIJIAN_KEY_PASSWORD; not needed for dev builds.
+      tools/mock_ai.py is a mock OpenAI-compatible server for testing AI features without a real API key.
